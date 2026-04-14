@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 update_feeds() {
+    log_info "更新 feeds 配置..."
     local FEEDS_PATH="$BUILD_DIR/$FEEDS_CONF"
     if [[ -f "$BUILD_DIR/feeds.conf" ]]; then
         FEEDS_PATH="$BUILD_DIR/feeds.conf"
@@ -25,34 +26,38 @@ update_feeds() {
 
     if ! grep -q "luci_app_bandix" "$BUILD_DIR/$FEEDS_CONF"; then
         [ -z "$(tail -c 1 "$BUILD_DIR/$FEEDS_CONF")" ] || echo "" >>"$BUILD_DIR/$FEEDS_CONF"
-        echo 'src-git luci_app_bandix https://github.com/timsaya/luci-app-bandix.git;main' >>"$BUILD_DIR/$FEEDS_CONF"
+        echo 'src-git luci_app_bandix https://github.com/timsaya/luci-app-bandix.git;main' >>"$BUILD_DIR/$BUILD_DIR/$FEEDS_CONF"
     fi
 
     if ! grep -q "nikki" "$BUILD_DIR/$FEEDS_CONF"; then
         [ -z "$(tail -c 1 "$BUILD_DIR/$FEEDS_CONF")" ] || echo "" >>"$BUILD_DIR/$FEEDS_CONF"
-        echo 'src-git nikki https://github.com/nikkinikki-org/OpenWrt-nikki.git;main' >>"$BUILD_DIR/$FEEDS_CONF"
+        echo 'src-git nikki https://github.com/nikkinikki-org/OpenWrt-nikki.git;main' >>"$BUILD_DIR/$BUILD_DIR/$FEEDS_CONF"
     fi
 
     if [ ! -f "$BUILD_DIR/include/bpf.mk" ]; then
         touch "$BUILD_DIR/include/bpf.mk"
     fi
 
+    log_info "执行 feeds update..."
     ./scripts/feeds update -a
 }
 
 install_feeds() {
+    log_info "执行 feeds install..."
     ./scripts/feeds update -i
     for dir in $BUILD_DIR/feeds/*; do
         if [ -d "$dir" ] && [[ ! "$dir" == *.tmp ]] && [[ ! "$dir" == *.index ]] && [[ ! "$dir" == *.targetindex ]]; then
-            if [[ $(basename "$dir") == "small8" ]]; then
+            local feed_name=$(basename "$dir")
+            log_info "正在安装 feed: $feed_name"
+            if [[ "$feed_name" == "small8" ]]; then
                 install_small8
                 install_fullconenat
-            elif [[ $(basename "$dir") == "passwall" ]]; then
+            elif [[ "$feed_name" == "passwall" ]]; then
                 install_passwall
-            elif [[ $(basename "$dir") == "nikki" ]]; then
+            elif [[ "$feed_name" == "nikki" ]]; then
                 install_nikki
             else
-                ./scripts/feeds install -f -ap $(basename "$dir")
+                ./scripts/feeds install -f -ap "$feed_name" > /dev/null
             fi
         fi
     done

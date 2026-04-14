@@ -41,6 +41,8 @@ main() {
     clone_repo
     clean_up
     reset_feeds_conf
+    
+    group_start "正在更新源并安装依赖"
     update_feeds
     remove_unwanted_packages
     remove_tweaked_packages
@@ -50,7 +52,6 @@ main() {
     update_golang
     change_dnsmasq2full
     fix_mk_def_depends
-
     update_default_lan_addr
     remove_something_nss_kmod
     update_affinity_script
@@ -99,6 +100,8 @@ main() {
     install_pbr_cmcc
     fix_pbr_ip_forward
     # apply_hash_fixes
+    log_success "所有组件更新完成"
+    group_end
 }
 
 main "$@"

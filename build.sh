@@ -128,7 +128,7 @@ if [[ $# -eq 0 ]]; then
     collect_supported_devs
 
     if [[ ${#SUPPORTED_DEVS[@]} -eq 0 ]]; then
-        echo "Error: no supported devices found."
+        log_error "错误：未发现支持的设备。"
         exit 1
     fi
 
@@ -144,6 +144,9 @@ if [[ $# -eq 0 ]]; then
         prompt_select_build_mode
     fi
 fi
+
+log_info "目标设备: ${GREEN}$Dev${NC}"
+log_info "构建模式: ${GREEN}${Build_Mod:-normal}${NC}"
 
 CONFIG_FILE="$BASE_PATH/deconfig/$Dev.config"
 INI_FILE="$BASE_PATH/compilecfg/$Dev.ini"
@@ -203,11 +206,14 @@ fi
 
 "$BASE_PATH/update.sh" "$REPO_URL" "$REPO_BRANCH" "$BUILD_DIR" "$COMMIT_HASH"
 
+group_start "正在生成配置文件"
 apply_config
 remove_uhttpd_dependency
 
 cd "$BASE_PATH/../$BUILD_DIR"
-make defconfig
+log_info "执行 make defconfig..."
+make defconfig > /dev/null
+group_end
 
 if grep -qE "^CONFIG_TARGET_x86_64=y" "$CONFIG_FILE"; then
     DISTFEEDS_PATH="$BASE_PATH/../$BUILD_DIR/package/emortal/default-settings/files/99-distfeeds.conf"
@@ -225,8 +231,20 @@ if [[ -d $TARGET_DIR ]]; then
     find "$TARGET_DIR" -type f \( -name "*.bin" -o -name "*.manifest" -o -name "*efi.img.gz" -o -name "*.itb" -o -name "*.fip" -o -name "*.ubi" -o -name "*rootfs.tar.gz" \) -exec rm -f {} +
 fi
 
+group_start "正在下载依赖包"
+log_info "执行 make download..."
 make download -j$(($(nproc) * 2))
-make -j$(($(nproc) + 1)) || make -j1 V=s
+group_end
+
+group_start "正在编译固件 (这可能需要较长时间)"
+log_info "使用多核编译: -j$(($(nproc) + 1))"
+if make -j$(($(nproc) + 1)); then
+    log_success "固件编译成功！"
+else
+    log_warn "多核编译失败，尝试单核详细输出模式..."
+    make -j1 V=s
+fi
+group_end
 
 FIRMWARE_DIR="$BASE_PATH/../firmware"
 \rm -rf "$FIRMWARE_DIR"

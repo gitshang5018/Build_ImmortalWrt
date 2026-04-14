@@ -27,20 +27,21 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - name: Build System Setup
+      - name: 编译环境准备
         run: |
+          echo "::group::正在初始化编译环境"
           sudo bash -c 'bash <(curl -sL https://build-scripts.immortalwrt.org/init_build_environment.sh)'
-          sudo -E apt -yqq install dos2unix
-          sudo -E apt -yqq install libfuse-dev
+          sudo -E apt -yqq install dos2unix libfuse-dev
           sudo -E apt -yqq autoremove --purge
           sudo -E apt -yqq autoclean
           sudo -E apt -yqq clean
           sudo -E systemctl daemon-reload
+          echo "::endgroup::"
 
-      - name: Checkout
+      - name: 检出源码
         uses: actions/checkout@v6.0.2
 
-      - name: Set Build Date and Timezone
+      - name: 设置编译时间与时区
         run: |
           sudo -E timedatectl set-timezone "Asia/Shanghai"
           export BUILD_DATE=$(TZ=UTC-8 date +"%y.%m.%d_%H.%M.%S")
@@ -49,7 +50,7 @@ jobs:
       - name: Pre Clone
         run: ./wrt_core/pre_clone_action.sh ${{ inputs.model }}
 
-      - name: Cache Dependencies
+      - name: 缓存依赖库
         uses: actions/cache@v5.0.2
         with:
           path: |
@@ -59,82 +60,82 @@ jobs:
           restore-keys: |
             ${{ matrix.os }}-${{ hashFiles('**/repo_flag') }}-
 
-      - name: Refresh the cache
+      - name: 刷新缓存时间戳
         run: |
+          echo "::group::正在更新 stamp 依赖文件时间戳"
           if [ -d "./action_build/staging_dir" ]; then
             find "./action_build/staging_dir" -type d -name "stamp" -not -path "*target*" | while read -r dir; do
                 find "$dir" -type f -exec touch {} +
             done
           fi
+          echo "::endgroup::"
 
-      - name: Machine Information (Pre-build)
+      - name: 硬件与环境信息 (编译前)
         run: |
-          echo "=============== Pre-build Snapshot ==============="
-          echo "Time: $(date '+%F %T %Z')"
-          echo "Runner: ${RUNNER_NAME} (${RUNNER_OS}/${RUNNER_ARCH})"
-          echo "Kernel: $(uname -r)"
-          echo "Uptime: $(uptime -p)"
-          echo "=================================================="
-          echo "[CPU]"
+          echo "::group::编译前环境概览"
+          echo "当前时间: $(date '+%F %T %Z')"
+          echo "构建机器: ${RUNNER_NAME} (${RUNNER_OS}/${RUNNER_ARCH})"
+          echo "内核版本: $(uname -r)"
+          echo "运行时间: $(uptime -p)"
+          echo "--------------------------------------------------"
+          echo "[CPU 信息]"
           lscpu | grep -E "Model name|Architecture|CPU\\(s\\)|Thread\\(s\\) per core|Core\\(s\\) per socket|CPU max MHz"
-          echo "=================================================="
-          echo "[Memory]"
+          echo "--------------------------------------------------"
+          echo "[内存状态]"
           free -h
-          echo "=================================================="
-          echo "[Disk]"
+          echo "--------------------------------------------------"
+          echo "[磁盘空间]"
           df -hT
           echo "--------------------------------------------------"
-          df -hi
-          echo "=================================================="
-          echo "[Workspace]"
+          echo "[工作区占用]"
           echo "GITHUB_WORKSPACE=${GITHUB_WORKSPACE}"
           du -sh "${GITHUB_WORKSPACE}" 2>/dev/null || true
           du -sh ./action_build/.ccache 2>/dev/null || true
           du -sh ./action_build/staging_dir 2>/dev/null || true
           du -sh ./firmware 2>/dev/null || true
-          echo "=================================================="
+          echo "::endgroup::"
 
-      - name: Build Firmware
+      - name: 开始编译固件
         run: ./build.sh ${{ inputs.model }}
 
-      - name: Delete Old Cache
+      - name: 清理过期缓存
         run: |
+          echo "::group::正在管理 GitHub Actions 缓存"
           # 获取缓存列表并删除
           gh cache list --key ${{ matrix.os }}-${{ hashFiles('**/repo_flag') }}- --json key --jq '.[] | .key' | while read -r key; do
             gh cache delete "$key"
           done
           # 输出缓存状态
-          echo "========cache status========"
-          echo "ccache: $(du -sh ./action_build/.ccache | cut -f 1)"
-          echo "staging: $(du -sh ./action_build/staging_dir | cut -f 1)"
+          echo "======== 缓存状态 ========"
+          echo "ccache 占用: $(du -sh ./action_build/.ccache 2>/dev/null | cut -f 1 || echo "0")"
+          echo "staging 占用: $(du -sh ./action_build/staging_dir 2>/dev/null | cut -f 1 || echo "0")"
+          echo "::endgroup::"
 
-      - name: Machine Information (Post-build)
+      - name: 硬件与环境信息 (编译后)
         run: |
-          echo "=============== Post-build Snapshot ==============="
-          echo "Time: $(date '+%F %T %Z')"
-          echo "Runner: ${RUNNER_NAME} (${RUNNER_OS}/${RUNNER_ARCH})"
-          echo "Kernel: $(uname -r)"
-          echo "Uptime: $(uptime -p)"
-          echo "===================================================="
-          echo "[CPU]"
+          echo "::group::编译后环境详情"
+          echo "当前时间: $(date '+%F %T %Z')"
+          echo "构建机器: ${RUNNER_NAME} (${RUNNER_OS}/${RUNNER_ARCH})"
+          echo "内核版本: $(uname -r)"
+          echo "运行时间: $(uptime -p)"
+          echo "----------------------------------------------------"
+          echo "[CPU 状态]"
           lscpu | grep -E "Model name|Architecture|CPU\\(s\\)|Thread\\(s\\) per core|Core\\(s\\) per socket|CPU max MHz"
-          echo "===================================================="
-          echo "[Memory]"
+          echo "----------------------------------------------------"
+          echo "[内存利用率]"
           free -h
-          echo "===================================================="
-          echo "[Disk]"
+          echo "----------------------------------------------------"
+          echo "[磁盘空间占用]"
           df -hT
           echo "----------------------------------------------------"
-          df -hi
-          echo "===================================================="
-          echo "[Build Outputs]"
+          echo "[编译产物大小]"
           du -sh ./action_build/.ccache 2>/dev/null || true
           du -sh ./action_build/staging_dir 2>/dev/null || true
           du -sh ./firmware 2>/dev/null || true
-          echo "Firmware file count: $(ls -1 ./firmware 2>/dev/null | wc -l)"
-          echo "===================================================="
+          echo "固件文件总数: $(ls -1 ./firmware 2>/dev/null | wc -l)"
+          echo "::endgroup::"
 
-      - name: Upload Firmware
+      - name: 上传固件产物
         uses: actions/upload-artifact@v6
         with:
           name: ${{ env.BUILD_DATE }}_${{ inputs.model }}
