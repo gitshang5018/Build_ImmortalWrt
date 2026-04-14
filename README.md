@@ -33,7 +33,6 @@ sudo bash -c 'bash <(curl -sL https://build-scripts.immortalwrt.org/init_build_e
 2. **本地编译**:
    使用 `./build.sh` 脚本并指定目标名称：
    
-   - **京东云 雅典娜 (AX6600)**: `./build.sh jdcloud_ax6000_immwrt`
    - **京东云 亚瑟 (AX1800)**: `./build.sh jdcloud_ipq60xx_immwrt`
    - **歌华链 (GHL-R-001)**: `./build.sh gehua_ghl-r-001_immwrt`
    - **竞斗云 2.0 (R619AC)**: `./build.sh p2w_r619ac-128m_immwrt`

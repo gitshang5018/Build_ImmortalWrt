@@ -10,7 +10,6 @@ on:
         type: choice
         default: jdcloud_ipq60xx_immwrt
         options:
-          - jdcloud_ax6000_immwrt
           - jdcloud_ipq60xx_immwrt
           - p2w_r619ac-128m_immwrt
           - gehua_ghl-r-001_immwrt
