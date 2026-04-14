@@ -37,15 +37,27 @@ jobs:
           remove-codeql: 'true'
           remove-docker-images: 'true'
 
-      - name: 彻底清理 Snap 和桌面残留
+      - name: 彻底屏蔽并清理 Snap
         run: |
+          # 1. 尽可能清理现有的 snap 包
           sudo snap remove --purge firefox || true
           sudo snap remove --purge gnome-46-2404 || true
           sudo snap remove --purge gtk-common-themes || true
-          sudo snap remove --purge core24 || true
-          sudo snap remove --purge bare || true
-          sudo apt-get purge -y snapd libapparmor1 || true
-          sudo rm -rf /var/cache/snapd /var/lib/snapd
+          sudo snap remove --purge snapd || true
+          
+          # 2. 彻底卸载 snapd 并清理目录
+          sudo apt-get purge -y snapd firefox || true
+          sudo rm -rf /var/cache/snapd /var/lib/snapd /root/snap
+          
+          # 3. 设置 APT 锁定规则，禁止系统中再次出现 snapd
+          sudo bash -c 'cat > /etc/apt/preferences.d/nosnap.pref <<EOF
+          Package: snapd
+          Pin: release a=*
+          Pin-Priority: -10
+          EOF'
+          
+          # 4. 锁定 firefox 防止它作为过渡包再次把 snap 拽回来
+          sudo apt-mark hold firefox || true
 
       - name: 编译环境准备
         run: |
