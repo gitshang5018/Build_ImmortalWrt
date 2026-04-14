@@ -23,6 +23,7 @@ fi
 FEEDS_CONF="feeds.conf.default"
 GOLANG_REPO="https://github.com/sbwml/packages_lang_golang"
 GOLANG_BRANCH="26.x"
+NODE_PREBUILT_REPO="https://github.com/sbwml/feeds_packages_lang_node-prebuilt"
 THEME_SET="design"
 LAN_ADDR="10.10.10.1"
 
@@ -50,6 +51,7 @@ main() {
     fix_default_set
     fix_miniupnpd
     update_golang
+    update_node
     change_dnsmasq2full
     fix_mk_def_depends
     update_default_lan_addr

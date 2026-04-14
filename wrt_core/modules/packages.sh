@@ -69,6 +69,17 @@ update_golang() {
     fi
 }
 
+update_node() {
+    if [[ -d ./feeds/packages/lang/node ]]; then
+        echo "正在集成预编译 Node.js 软件包..."
+        \rm -rf ./feeds/packages/lang/node
+        if ! git clone --depth 1 $NODE_PREBUILT_REPO ./feeds/packages/lang/node; then
+            echo "错误：克隆预编译 Node.js 仓库 $NODE_PREBUILT_REPO 失败" >&2
+            exit 1
+        fi
+    fi
+}
+
 install_small8() {
     ./scripts/feeds install -p small8 -f xray-core xray-plugin dns2tcp dns2socks haproxy hysteria \
         naiveproxy shadowsocks-rust sing-box v2ray-core v2ray-geodata geoview v2ray-plugin \
