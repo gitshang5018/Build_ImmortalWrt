@@ -249,7 +249,8 @@ update_lucky() {
     fi
 
     echo "正在更新 lucky Makefile..."
-    local patch_line="\\t[ -f \$(TOPDIR)/../wrt_core/patches/lucky_${version}_Linux_\$(LUCKY_ARCH)_wanji.tar.gz ] && install -Dm644 \$(TOPDIR)/../wrt_core/patches/lucky_${version}_Linux_\$(LUCKY_ARCH)_wanji.tar.gz \$(PKG_BUILD_DIR)/\$(PKG_NAME)_\$(PKG_VERSION)_Linux_\$(LUCKY_ARCH).tar.gz"
+    local arch_fix="LUCKY_ARCH_FIXED=\$(LUCKY_ARCH); [ \"\$(LUCKY_ARCH)\" = \"aarch64\" ] \&\& LUCKY_ARCH_FIXED=\"arm64\";"
+    local patch_line="\\t$arch_fix [ -f \$(TOPDIR)/../wrt_core/patches/lucky_${version}_Linux_\${LUCKY_ARCH_FIXED}_wanji.tar.gz ] && install -Dm644 \$(TOPDIR)/../wrt_core/patches/lucky_${version}_Linux_\${LUCKY_ARCH_FIXED}_wanji.tar.gz \$(PKG_BUILD_DIR)/\$(PKG_NAME)_\$(PKG_VERSION)_Linux_\$(LUCKY_ARCH).tar.gz"
 
     if grep -q "Build/Prepare" "$makefile_path"; then
         sed -i "/Build\\/Prepare/a\\$patch_line" "$makefile_path"
