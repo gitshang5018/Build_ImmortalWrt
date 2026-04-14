@@ -13,6 +13,7 @@ else
 fi
 
 BASE_PATH=$(cd "$WRT_CORE_PATH" && pwd)
+source "$BASE_PATH/modules/general.sh"
 
 Dev=$1
 Build_Mod=$2
