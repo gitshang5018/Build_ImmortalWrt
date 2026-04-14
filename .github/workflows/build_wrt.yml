@@ -37,6 +37,16 @@ jobs:
           remove-codeql: 'true'
           remove-docker-images: 'true'
 
+      - name: 彻底清理 Snap 和桌面残留
+        run: |
+          sudo snap remove --purge firefox || true
+          sudo snap remove --purge gnome-46-2404 || true
+          sudo snap remove --purge gtk-common-themes || true
+          sudo snap remove --purge core24 || true
+          sudo snap remove --purge bare || true
+          sudo apt-get purge -y snapd libapparmor1 || true
+          sudo rm -rf /var/cache/snapd /var/lib/snapd
+
       - name: 编译环境准备
         run: |
           echo "::group::正在初始化编译环境"
