@@ -1,11 +1,20 @@
-# 编译指南
+# ImmortalWrt 固件编译项目
 
-## 1. 环境准备
+本项目基于 **ImmortalWrt** 源码，针对特定硬件平台（如京东云、歌华链等）进行深度定制与优化，旨在提供轻量、快速、功能丰富的固件。
 
-首先安装 Linux 系统，推荐 Ubuntu LTS。
+## 🚀 核心特性
 
-## 2. 安装编译依赖
+- **默认后台地址**: `10.10.10.1` (账户: `root` / 密码: `无` 或 `password`)
+- **主流科学套件**: 精心集成了 **PassWall 2**、**SSR-Plus** 和 **OpenClash**，支持主流协议及订阅迁移。
+- **美化界面**: 默认采用 **luci-theme-design (JS 版本)**，提供流畅的现代 UI 交互。
+- **硬件加速**: 针对 MT7621 (歌华链) 和 IPQ60XX (雅典娜/亚瑟) 开启了 HNAT/NSS 加速。
+- **精简极致**: 歌华链 (32M Flash) 版本经过深度瘦身，仅保留 PassWall 2 和 MosDNS，确保系统稳定。
 
+## 🛠️ 环境准备
+
+建议使用 **Ubuntu 20.04 LTS / 22.04 LTS** 环境进行编译。
+
+### 安装依赖
 ```bash
 sudo apt -y update
 sudo apt -y full-upgrade
@@ -13,129 +22,37 @@ sudo apt install -y dos2unix libfuse-dev
 sudo bash -c 'bash <(curl -sL https://build-scripts.immortalwrt.org/init_build_environment.sh)'
 ```
 
-## 3. 使用步骤
+## 📦 编译步骤
 
-1.  克隆仓库：
-    ```bash
-    git clone https://github.com/ZqinKing/wrt_release.git
-    ```
-2.  进入目录：
-    ```bash
-    cd wrt_release
-    ```
+1. **克隆仓库**:
+   ```bash
+   git clone https://github.com/gitshang5018/Build_ImmortalWrt.git
+   cd Build_ImmortalWrt
+   ```
 
-## 4. 编译固件
+2. **本地编译**:
+   使用 `./build.sh` 脚本并指定目标名称：
+   
+   - **京东云 雅典娜 (AX6600)**: `./build.sh jdcloud_ax6000_immwrt`
+   - **京东云 亚瑟 (AX1800)**: `./build.sh jdcloud_ipq60xx_immwrt`
+   - **歌华链 (GHL-R-001)**: `./build.sh gehua_ghl-r-001_immwrt`
+   - **竞斗云 2.0 (R619AC)**: `./build.sh p2w_r619ac-128m_immwrt`
+   - **DELL Wyse 3040**: `./build.sh dell_wyse_3040_immwrt`
+   - **通用 X86 (64位)**: `./build.sh x64_immwrt`
 
-使用 `./build.sh` 脚本进行编译，支持以下设备：
+## 📂 项目结构
 
-### 京东云
+- **wrt_core/**: 核心配置库
+  - **deconfig/**: 存放插件选中的碎片配置（如 `proxy.config` 管理代理插件）。
+  - **compilecfg/**: 定义不同设备的系统级 INI 映射。
+  - **modules/**: 模块化脚本集合（`packages.sh` 处理插件增删，`system.sh` 处理系统微调）。
+  - **update.sh**: 构建流程的逻辑主入口。
+- **build.sh**: 顶层一键编译脚本。
 
-*   **雅典娜(02)、亚瑟(01)、太乙(07)、AX5(JDC版)**:
-    ```bash
-    ./build.sh jdcloud_ipq60xx_immwrt
-    ./build.sh jdcloud_ipq60xx_libwrt
-    ```
-*   **百里**:
-    ```bash
-    ./build.sh jdcloud_ax6000_immwrt
-    ```
+## ⚠️ 开发注意事项
 
-### 阿里云
-
-*   **AP8220**:
-    ```bash
-    ./build.sh aliyun_ap8220_immwrt
-    ```
-
-### 领势
-
-*   **MX4200v1、MX4200v2、MX4300**:
-    ```bash
-    ./build.sh linksys_mx4x00_immwrt
-    ```
-
-### 奇虎
-
-*   **360v6**:
-    ```bash
-    ./build.sh qihoo_360v6_immwrt
-    ```
-
-### 红米
-
-*   **AX5**:
-    ```bash
-    ./build.sh redmi_ax5_immwrt
-    ```
-*   **AX6**:
-    ```bash
-    ./build.sh redmi_ax6_immwrt
-    ```
-*   **AX6000**:
-    ```bash
-    ./build.sh redmi_ax6000_immwrt21
-    ```
-
-### CMCC （中国移动）
-
-*   **RAX3000M**:
-    ```bash
-    ./build.sh cmcc_rax3000m_immwrt
-    ```
-
-### 斐讯
-
-*   **N1**:
-    ```bash
-    ./build.sh n1_immwrt
-    ```
-
-### 兆能
-
-*   **M2**:
-    ```bash
-    ./build.sh zn_m2_immwrt
-    ./build.sh zn_m2_libwrt
-    ```
-
-### Gemtek
-
-*   **W1701K**:
-    ```bash
-    ./build.sh gemtek_w1701k_immwrt
-    ```
-
-### 其他
-
-*   **X64**:
-    ```bash
-    ./build.sh x64_immwrt
-    ```
+- **插件管理**: 增加或删除插件请修改 `wrt_core/modules/packages.sh` 中的安装列表，并在 `deconfig/` 下同步开启/关闭对应的 `CONFIG_PACKAGE_` 选项。
+- **自定义设置**: 默认 IP、主题及地区设置集中在 `wrt_core/update.sh` 的变量定义区。
 
 ---
-
-## 5. 三方插件
-
-三方插件源自：[https://github.com/kenzok8/small-package.git](https://github.com/kenzok8/small-package.git)
-
-## 6. 项目结构说明
-
-- **wrt_core/**: 核心模块目录，包含所有配置、补丁和脚本。
-  - **compilecfg/**: 编译配置文件 (.ini)。
-  - **deconfig/**: 默认配置文件 (.config)。
-  - **modules/**: 模块化脚本 (general.sh, feeds.sh, packages.sh, system.sh)。
-  - **patches/**: 系统和软件包补丁。
-  - **scripts/**: 辅助脚本。
-  - **update.sh**: 更新逻辑主入口脚本。
-  - **pre_clone_action.sh**: 预克隆操作脚本。
-
-- **build.sh**: 主编译脚本，调用 `wrt_core` 中的资源。
-- **firmware/**: 编译完成的固件输出目录。
-
-## 7. OAF（应用过滤）功能使用说明
-
-使用 OAF（应用过滤）功能前，需先完成以下操作：
-
-1.  打开系统设置 → 启动项 → 定位到「appfilter」
-2.  将「appfilter」当前状态**从已禁用更改为已启用**
-3.  完成配置后，点击**启动**按钮激活服务
+*Created by Antigravity Assistant.*
