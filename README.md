@@ -55,4 +55,4 @@ sudo bash -c 'bash <(curl -sL https://build-scripts.immortalwrt.org/init_build_e
 - **自定义设置**: 默认 IP、主题及地区设置集中在 `wrt_core/update.sh` 的变量定义区。
 
 ---
-*Created by Antigravity Assistant.*
+*Modified from ZqinKing's original source.*
