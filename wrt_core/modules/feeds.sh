@@ -10,7 +10,6 @@ update_feeds() {
 
     if ! grep -q "small-package" "$FEEDS_PATH"; then
         [ -z "$(tail -c 1 "$FEEDS_PATH")" ] || echo "" >>"$FEEDS_PATH"
-        # small8 contains SSR-Plus, PassWall 2, MosDNS, etc.
         echo "src-git small8 https://github.com/kenzok8/jell" >>"$FEEDS_PATH"
     fi
 
@@ -18,7 +17,7 @@ update_feeds() {
         [ -z "$(tail -c 1 "$FEEDS_PATH")" ] || echo "" >>"$FEEDS_PATH"
         echo "src-git passwall https://github.com/Openwrt-Passwall/openwrt-passwall;main" >>"$FEEDS_PATH"
     fi
-
+    
     if ! grep -q "openwrt_bandix" "$BUILD_DIR/$FEEDS_CONF"; then
         [ -z "$(tail -c 1 "$BUILD_DIR/$FEEDS_CONF")" ] || echo "" >>"$BUILD_DIR/$FEEDS_CONF"
         echo 'src-git openwrt_bandix https://github.com/timsaya/openwrt-bandix.git;main' >>"$BUILD_DIR/$FEEDS_CONF"
