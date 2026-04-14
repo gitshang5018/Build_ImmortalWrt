@@ -2,10 +2,10 @@
 
 remove_unwanted_packages() {
     local luci_packages=(
-        "luci-app-passwall" "luci-app-ddns-go" "luci-app-rclone" "luci-app-ssr-plus"
+        "luci-app-passwall" "luci-app-ddns-go" "luci-app-rclone"
         "luci-app-vssr" "luci-app-daed" "luci-app-dae" "luci-app-alist" "luci-app-homeproxy"
-        "luci-app-haproxy-tcp" "luci-app-openclash" "luci-app-mihomo" "luci-app-appfilter"
-        "luci-app-msd_lite" "luci-app-unblockneteasemusic" "luci-app-adguardhome"
+        "luci-app-haproxy-tcp" "luci-app-mihomo" "luci-app-appfilter"
+        "luci-app-msd_lite" "luci-app-adguardhome"
     )
     local packages_net=(
         "haproxy" "xray-core" "xray-plugin" "dns2socks" "alist" "hysteria"
@@ -74,9 +74,8 @@ install_small8() {
         naiveproxy shadowsocks-rust sing-box v2ray-core v2ray-geodata geoview v2ray-plugin \
         tuic-client chinadns-ng ipt2socks tcping trojan-plus simple-obfs shadowsocksr-libev \
         v2dat mosdns luci-app-mosdns adguardhome luci-app-adguardhome ddns-go \
-        luci-app-ddns-go taskd luci-lib-xterm luci-lib-taskd luci-app-store quickstart \
-        luci-app-quickstart luci-app-istorex luci-app-cloudflarespeedtest netdata luci-app-netdata \
-        lucky luci-app-lucky luci-app-openclash luci-app-homeproxy luci-app-amlogic \
+        luci-app-ddns-go taskd luci-lib-xterm luci-lib-taskd luci-app-cloudflarespeedtest netdata luci-app-netdata \
+        lucky luci-app-lucky luci-app-openclash luci-app-ssr-plus luci-app-homeproxy luci-app-unblockneteasemusic luci-app-amlogic \
         tailscale luci-app-tailscale oaf open-app-filter luci-app-oaf easytier luci-app-easytier \
         msd_lite luci-app-msd_lite cups luci-app-cupsd
 }
@@ -408,6 +407,27 @@ update_argon() {
     mv "$tmp_dir" "$dst_theme_path"
 
     echo "luci-theme-argon 更新完成"
+}
+
+update_design() {
+    local repo_url="https://github.com/0x676e67/luci-theme-design.git"
+    local dst_theme_path="$BUILD_DIR/feeds/luci/themes/luci-theme-design"
+    local tmp_dir
+    tmp_dir=$(mktemp -d)
+
+    echo "正在更新 design 主题 (JS 版本)..."
+
+    if ! git clone --depth 1 -b js "$repo_url" "$tmp_dir"; then
+        echo "错误：从 $repo_url 克隆 design 主题仓库失败" >&2
+        rm -rf "$tmp_dir"
+        exit 1
+    fi
+
+    rm -rf "$dst_theme_path"
+    rm -rf "$tmp_dir/.git"
+    mv "$tmp_dir" "$dst_theme_path"
+
+    echo "luci-theme-design 更新完成"
 }
 
 remove_attendedsysupgrade() {

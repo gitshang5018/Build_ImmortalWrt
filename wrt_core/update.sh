@@ -23,8 +23,8 @@ fi
 FEEDS_CONF="feeds.conf.default"
 GOLANG_REPO="https://github.com/sbwml/packages_lang_golang"
 GOLANG_BRANCH="26.x"
-THEME_SET="argon"
-LAN_ADDR="192.168.1.1"
+THEME_SET="design"
+LAN_ADDR="10.10.10.1"
 
 SCRIPT_DIR=$(cd $(dirname $0) && pwd)
 BASE_PATH=${BASE_PATH:-$SCRIPT_DIR}
@@ -69,7 +69,6 @@ main() {
     update_dnsmasq_conf
     add_backup_info_to_sysupgrade
     update_mosdns_deconfig
-    fix_quickstart
     update_oaf_deconfig
     add_timecontrol
     add_quickfile
@@ -80,7 +79,7 @@ main() {
     update_dockerman
     set_nginx_default_config
     update_uwsgi_limit_as
-    update_argon
+    update_design
     update_nginx_ubus_module
     check_default_settings
     install_opkg_distfeeds
