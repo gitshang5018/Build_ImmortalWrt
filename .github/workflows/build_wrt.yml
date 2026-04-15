@@ -27,44 +27,6 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - name: 最大化磁盘空间与添加 Swap
-        uses: easimon/maximize-build-space@master
-        with:
-          swap-size-mb: 12288
-          remove-dotnet: 'true'
-          remove-android: 'true'
-          remove-haskell: 'true'
-          remove-codeql: 'true'
-          remove-docker-images: 'true'
-
-      - name: 彻底屏蔽并清理 Snap
-        run: |
-          # 0. 停止后台自动更新，防止 dpkg 锁冲突
-          sudo systemctl disable --now unattended-upgrades || true
-          sudo killall -9 unattended-upgr apt apt-get dpkg 2>/dev/null || true
-          sleep 3
-          sudo dpkg --configure -a || true
-          
-          # 1. 尽可能清理现有的 snap 包
-          sudo snap remove --purge firefox || true
-          sudo snap remove --purge gnome-46-2404 || true
-          sudo snap remove --purge gtk-common-themes || true
-          sudo snap remove --purge snapd || true
-          
-          # 2. 彻底卸载 snapd 并清理目录
-          sudo apt-get purge -y snapd firefox || true
-          sudo rm -rf /var/cache/snapd /var/lib/snapd /root/snap
-          
-          # 3. 设置 APT 锁定规则，禁止系统中再次出现 snapd
-          sudo bash -c 'cat > /etc/apt/preferences.d/nosnap.pref <<EOF
-          Package: snapd
-          Pin: release a=*
-          Pin-Priority: -10
-          EOF'
-          
-          # 4. 锁定 firefox 防止它作为过渡包再次把 snap 拽回来
-          sudo apt-mark hold firefox || true
-
       - name: 编译环境准备
         run: |
           echo "::group::正在初始化编译环境"
