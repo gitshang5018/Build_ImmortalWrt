@@ -39,6 +39,12 @@ jobs:
 
       - name: 彻底屏蔽并清理 Snap
         run: |
+          # 0. 停止后台自动更新，防止 dpkg 锁冲突
+          sudo systemctl disable --now unattended-upgrades || true
+          sudo killall -9 unattended-upgr apt apt-get dpkg 2>/dev/null || true
+          sleep 3
+          sudo dpkg --configure -a || true
+          
           # 1. 尽可能清理现有的 snap 包
           sudo snap remove --purge firefox || true
           sudo snap remove --purge gnome-46-2404 || true
@@ -62,6 +68,8 @@ jobs:
       - name: 编译环境准备
         run: |
           echo "::group::正在初始化编译环境"
+          sudo dpkg --configure -a || true
+          sudo apt-get update || true
           sudo bash -c 'bash <(curl -sL https://build-scripts.immortalwrt.org/init_build_environment.sh)'
           sudo -E apt -yqq install dos2unix libfuse-dev
           sudo -E apt -yqq autoremove --purge
@@ -135,7 +143,7 @@ jobs:
           echo "::group::正在管理 GitHub Actions 缓存"
           # 获取缓存列表并删除
           gh cache list --key ${{ matrix.os }}-${{ hashFiles('**/repo_flag') }}- --json key --jq '.[] | .key' | while read -r key; do
-            gh cache delete "$key"
+            gh cache delete "$key" || true
           done
           # 输出缓存状态
           echo "======== 缓存状态 ========"
