@@ -547,9 +547,22 @@ update_package() {
 }
 
 fix_trojan_plus() {
-    local makefile_path="$BUILD_DIR/feeds/small8/trojan-plus/Makefile"
+    local trojan_dir="$BUILD_DIR/feeds/small8/trojan-plus"
+    local makefile_path="$trojan_dir/Makefile"
     if [ -f "$makefile_path" ]; then
-        echo "正在修复 trojan-plus Boost 依赖..."
-        sed -i 's/\+boost/\+boost +boost-system +boost-program_options +boost-date_time/g' "$makefile_path"
+        echo "正在修复 trojan-plus Boost system 组件问题 (header-only in Boost 1.86+)..."
+        mkdir -p "$trojan_dir/patches"
+        cat > "$trojan_dir/patches/010-fix-boost-system-header-only.patch" << 'EOF'
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -174,7 +174,7 @@
+     target_link_libraries(trojan ${ANDROID_MY_LIBS_LIBRARIES})
+ else()
+-    find_package(Boost 1.66.0 REQUIRED COMPONENTS system program_options)
++    find_package(Boost 1.66.0 REQUIRED COMPONENTS program_options)
+     include_directories(${Boost_INCLUDE_DIR})
+     target_link_libraries(trojan ${Boost_LIBRARIES})
+     if(MSVC)
+EOF
     fi
 }
