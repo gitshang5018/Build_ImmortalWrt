@@ -545,3 +545,11 @@ update_package() {
         echo "更新软件包 $1 到 $PKG_VER $PKG_HASH"
     fi
 }
+
+fix_trojan_plus() {
+    local makefile_path="$BUILD_DIR/feeds/small8/trojan-plus/Makefile"
+    if [ -f "$makefile_path" ]; then
+        echo "正在修复 trojan-plus Boost 依赖..."
+        sed -i 's/\+boost/\+boost +boost-system +boost-program_options +boost-date_time/g' "$makefile_path"
+    fi
+}

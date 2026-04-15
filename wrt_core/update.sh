@@ -76,6 +76,7 @@ main() {
     add_timecontrol
     add_quickfile
     update_lucky
+    fix_trojan_plus
     fix_rust_compile_error
     update_smartdns
     update_diskman
