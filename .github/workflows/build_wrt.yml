@@ -22,6 +22,7 @@ env:
 permissions:
   contents: write
   actions: write
+  repository-projects: write
 
 jobs:
   build:
