@@ -550,7 +550,7 @@ fix_trojan_plus() {
     local trojan_dir="$BUILD_DIR/feeds/small8/trojan-plus"
     local makefile_path="$trojan_dir/Makefile"
     if [ -f "$makefile_path" ]; then
-        echo "正在修复 trojan-plus Boost 1.86+ 适配问题..."
+        echo "正在修复 trojan-plus Boost 1.86+ 适配问题 (完整补丁)..."
         mkdir -p "$trojan_dir/patches"
 
         # 1. 修复 Boost system 依赖 (header-only)
@@ -567,22 +567,115 @@ fix_trojan_plus() {
      if(MSVC)
 EOF
 
-        # 2. 修复 boost::asio::buffer_cast 报错
-        cat > "$trojan_dir/patches/020-fix-boost-asio-buffer-cast.patch" << 'EOF'
+        # 2. 完整 ASIO/Timer 兼容性补丁
+        cat > "$trojan_dir/patches/020-fix-boost-1.86-compatibility.patch" << 'EOF'
 --- a/src/core/service.cpp
 +++ b/src/core/service.cpp
 @@ -547,7 +547,7 @@
-               uint32_t ttl = 0;
-               service->nat_manager.in(
-               endpoint,
+             int ttl         = -1;
+ 
+             targetdst = recv_tproxy_udp_msg((int)udp_socket.native_handle(), udp_recv_endpoint,
 -              boost::asio::buffer_cast<char*>(udp_read_buf.prepare(config.get_udp_recv_buf())), read_length, ttl);
-+              static_cast<char*>(udp_read_buf.prepare(config.get_udp_recv_buf()).data()), read_length, ttl);
-               if (ttl > 0) {
-                   char ttl_char = (char)ttl;
-                   service->udp_async_write(endpoint, std::string(&ttl_char, 1) + std::string(udp_read_buf.head(), read_length));
++              const_cast<char*>(static_cast<const char*>(udp_read_buf.prepare(config.get_udp_recv_buf()).data())), read_length, ttl);
+ 
+             length = read_length < 0 ? 0 : read_length;
+             udp_read_buf.commit(length);
+--- a/src/core/utils.cpp
++++ b/src/core/utils.cpp
+@@ -59,8 +59,8 @@
+         return 0;
+     }
+ 
+-    auto* dest      = boost::asio::buffer_cast<uint8_t*>(target.prepare(n));
+-    const auto* src = boost::asio::buffer_cast<const uint8_t*>(append_buf.data()) + start;
++    auto* dest      = static_cast<uint8_t*>(target.prepare(n).data());
++    const auto* src = static_cast<const uint8_t*>(append_buf.data().data()) + start;
+     memcpy(dest, src, n);
+     target.commit(n);
+     return n;
+@@ -102,7 +102,7 @@
+ size_t streambuf_append(boost::asio::streambuf& target, char append_char) {
+     _guard;
+     const size_t char_length = sizeof(char);
+-    auto cp = gsl::span<char>(boost::asio::buffer_cast<char*>(target.prepare(char_length)), char_length);
++    auto cp = gsl::span<char>(static_cast<char*>(target.prepare(char_length).data()), char_length);
+     cp[0]   = append_char;
+     target.commit(char_length);
+     return char_length;
+@@ -137,7 +137,7 @@
+ 
+ std::string_view streambuf_to_string_view(const boost::asio::streambuf& target) {
+     _guard;
+-    return std::string_view(boost::asio::buffer_cast<const char*>(target.data()), target.size());
++    return std::string_view(static_cast<const char*>(target.data().data()), target.size());
+     _unguard;
+ }
+ 
+--- a/src/session/session.cpp
++++ b/src/session/session.cpp
+@@ -40,7 +40,7 @@
+     s_total_session_count--;
+     _log_with_date_time_ALL((is_udp_forward_session() ? "[udp] ~" : "[tcp] ~") + string(session_name) +
+                             " called, current all sessions:  " + to_string(s_total_session_count));
+-};
++}
+ 
+ int Session::get_udp_timer_timeout_val() const { return get_config().get_udp_timeout(); }
+ 
+@@ -67,22 +69,16 @@
+         udp_gc_timer_checker = time(nullptr);
+     }
+ 
+-    boost::system::error_code ec;
+-    udp_gc_timer.cancel(ec);
+-    if (ec) {
+-        output_debug_info_ec(ec);
+-        destroy();
+-        return;
+-    }
++    udp_gc_timer.cancel();
+ 
+     udp_gc_timer.expires_after(chrono::seconds(timeout));
+     auto self = shared_from_this();
+-    udp_gc_timer.async_wait([this, self, timeout](const boost::system::error_code error) {
++    udp_gc_timer.async_wait([this, self, timeout](const boost::system::error_code& error) {
+         _guard;
+         if (!error) {
+             auto curr = time(nullptr);
+             if (curr - udp_gc_timer_checker < timeout) {
+-                auto diff            = int(timeout - (curr - udp_gc_timer_checker));
++                auto diff = timeout - (curr - udp_gc_timer_checker);
+                 udp_gc_timer_checker = 0;
+                 udp_timer_async_wait(diff);
+                 return;
+@@ -90,6 +86,8 @@
+ 
+             _log_with_date_time("session_id: " + to_string(get_session_id()) + " UDP session timeout");
+             destroy();
++        } else if (error != boost::asio::error::operation_aborted) {
++            output_debug_info_ec(error);
+         }
+         _unguard;
+     });
+@@ -99,14 +97,13 @@
+ 
+ void Session::udp_timer_cancel() {
+     _guard;
++
+     if (udp_gc_timer_checker == 0) {
+         return;
+     }
+ 
+-    boost::system::error_code ec;
+-    udp_gc_timer.cancel(ec);
+-    if (ec) {
+-        output_debug_info_ec(ec);
+-    }
++    udp_gc_timer.cancel();
++
++    udp_gc_timer_checker = 0;
+     _unguard;
+ }
 EOF
-
-        # 3. 如果 Makefile 中没有应用补丁的逻辑，则添加 (通常 OpenWrt Makefile 会自动应用 patches/ 目录下的补丁，但以防万一)
-        # 经确认 small8 的 trojan-plus Makefile 逻辑，只要补丁放在 patches 目录下即可。
     fi
 }
