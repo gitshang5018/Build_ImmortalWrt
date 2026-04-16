@@ -550,9 +550,11 @@ fix_trojan_plus() {
     local trojan_dir="$BUILD_DIR/feeds/small8/trojan-plus"
     local makefile_path="$trojan_dir/Makefile"
     if [ -f "$makefile_path" ]; then
-        echo "正在修复 trojan-plus Boost system 组件问题 (header-only in Boost 1.86+)..."
+        echo "正在修复 trojan-plus Boost 1.86+ 适配问题..."
         mkdir -p "$trojan_dir/patches"
-        cat > "$trojan_dir/patches/010-fix-boost-system-header-only.patch" << 'EOF'
+
+        # 1. 修复 Boost system 依赖 (header-only)
+        cat > "$trojan_dir/patches/010-fix-boost-system.patch" << 'EOF'
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -174,7 +174,7 @@
@@ -564,5 +566,23 @@ fix_trojan_plus() {
      target_link_libraries(trojan ${Boost_LIBRARIES})
      if(MSVC)
 EOF
+
+        # 2. 修复 boost::asio::buffer_cast 报错
+        cat > "$trojan_dir/patches/020-fix-boost-asio-buffer-cast.patch" << 'EOF'
+--- a/src/core/service.cpp
++++ b/src/core/service.cpp
+@@ -547,7 +547,7 @@
+               uint32_t ttl = 0;
+               service->nat_manager.in(
+               endpoint,
+-              boost::asio::buffer_cast<char*>(udp_read_buf.prepare(config.get_udp_recv_buf())), read_length, ttl);
++              static_cast<char*>(udp_read_buf.prepare(config.get_udp_recv_buf()).data()), read_length, ttl);
+               if (ttl > 0) {
+                   char ttl_char = (char)ttl;
+                   service->udp_async_write(endpoint, std::string(&ttl_char, 1) + std::string(udp_read_buf.head(), read_length));
+EOF
+
+        # 3. 如果 Makefile 中没有应用补丁的逻辑，则添加 (通常 OpenWrt Makefile 会自动应用 patches/ 目录下的补丁，但以防万一)
+        # 经确认 small8 的 trojan-plus Makefile 逻辑，只要补丁放在 patches 目录下即可。
     fi
 }
