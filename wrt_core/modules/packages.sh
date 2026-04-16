@@ -550,10 +550,14 @@ fix_trojan_plus() {
     local trojan_dir="$BUILD_DIR/feeds/small8/trojan-plus"
     local makefile_path="$trojan_dir/Makefile"
     if [ -f "$makefile_path" ]; then
-        echo "正在修复 trojan-plus Boost 1.86+ 适配问题 (完整补丁)..."
+        echo "正在修复 trojan-plus Boost 1.86+ 适配问题 (完整补丁 & 依赖移除)..."
+        
+        # 1. 移除 Makefile 中的 boost-system 依赖 (Boost 1.86+ 已移除相关二进制包)
+        sed -i 's/+boost-system//g' "$makefile_path"
+
         mkdir -p "$trojan_dir/patches"
 
-        # 1. 修复 Boost system 依赖 (header-only)
+        # 2. 修复 Boost system 链接补丁
         cat > "$trojan_dir/patches/010-fix-boost-system.patch" << 'EOF'
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
@@ -567,7 +571,7 @@ fix_trojan_plus() {
      if(MSVC)
 EOF
 
-        # 2. 完整 ASIO/Timer 兼容性补丁
+        # 3. 完整 ASIO/Timer 兼容性补丁 (用户提供)
         cat > "$trojan_dir/patches/020-fix-boost-1.86-compatibility.patch" << 'EOF'
 --- a/src/core/service.cpp
 +++ b/src/core/service.cpp
