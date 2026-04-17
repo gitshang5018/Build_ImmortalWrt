@@ -193,15 +193,21 @@ apply_config() {
 
     cat "$BASE_PATH/deconfig/proxy.config" >> "$BASE_PATH/../$BUILD_DIR/.config"
     
-    # Remove heavy plugins for low-flash devices (32MB)
+# Remove heavy plugins for low-flash devices
     if [[ "$Dev" == "p2w_r619ac-128m_immwrt" || "$Dev" == "gehua_ghl-r-001_immwrt" ]]; then
         echo "Detect low-flash device ($Dev), removing heavy packages..."
+        
+        # 两款设备共同需要移除的 5 项插件
         sed -i 's/CONFIG_PACKAGE_luci-app-smartdns=y/# CONFIG_PACKAGE_luci-app-smartdns is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
         sed -i 's/CONFIG_PACKAGE_luci-app-passwall=y/# CONFIG_PACKAGE_luci-app-passwall is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
         sed -i 's/CONFIG_PACKAGE_luci-app-adguardhome=y/# CONFIG_PACKAGE_luci-app-adguardhome is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
         sed -i 's/CONFIG_PACKAGE_luci-app-dockerman=y/# CONFIG_PACKAGE_luci-app-dockerman is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
         sed -i 's/CONFIG_PACKAGE_luci-app-samba4=y/# CONFIG_PACKAGE_luci-app-samba4 is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
-        sed -i 's/CONFIG_PACKAGE_luci-app-lucky=y/# CONFIG_PACKAGE_luci-app-lucky is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
+
+        # 仅 gehua 需要额外移除 lucky（r619ac 会跳过此步，从而保留 lucky）
+        if [[ "$Dev" == "gehua_ghl-r-001_immwrt" ]]; then
+            sed -i 's/CONFIG_PACKAGE_luci-app-lucky=y/# CONFIG_PACKAGE_luci-app-lucky is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
+        fi
     fi
 }
 
