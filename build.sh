@@ -204,9 +204,14 @@ apply_config() {
         sed -i 's/CONFIG_PACKAGE_luci-app-dockerman=y/# CONFIG_PACKAGE_luci-app-dockerman is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
         sed -i 's/CONFIG_PACKAGE_luci-app-samba4=y/# CONFIG_PACKAGE_luci-app-samba4 is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
 
-        # 仅 gehua 需要额外移除 lucky（r619ac 会跳过此步，从而保留 lucky）
+        # 仅 gehua 需要额外移除的插件 (32M Flash 极端精简)
         if [[ "$Dev" == "gehua_ghl-r-001_immwrt" ]]; then
             sed -i 's/CONFIG_PACKAGE_luci-app-lucky=y/# CONFIG_PACKAGE_luci-app-lucky is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
+            sed -i 's/CONFIG_PACKAGE_luci-app-oaf=y/# CONFIG_PACKAGE_luci-app-oaf is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
+            sed -i 's/CONFIG_PACKAGE_luci-app-easytier=y/# CONFIG_PACKAGE_luci-app-easytier is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
+            sed -i 's/CONFIG_PACKAGE_luci-app-openclash=y/# CONFIG_PACKAGE_luci-app-openclash is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
+            sed -i 's/CONFIG_PACKAGE_luci-app-ssr-plus=y/# CONFIG_PACKAGE_luci-app-ssr-plus is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
+            sed -i 's/CONFIG_PACKAGE_luci-app-pbr=y/# CONFIG_PACKAGE_luci-app-pbr is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
         fi
     fi
 }
