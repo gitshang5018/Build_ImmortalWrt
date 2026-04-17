@@ -1,5 +1,5 @@
 name: Release WRT
-run-name: Release - ${{ inputs.model }}
+run-name: Release - ${{ inputs.model || github.event.client_payload.model || 'All' }}
 
 on:
   workflow_dispatch:
@@ -10,11 +10,14 @@ on:
         type: choice
         default: jdcloud_ipq60xx_immwrt
         options:
+          - all
           - jdcloud_ipq60xx_immwrt
           - p2w_r619ac-128m_immwrt
           - gehua_ghl-r-001_immwrt
           - dell_wyse_3040_immwrt
           - x64_immwrt
+  repository_dispatch:
+    types: [build_wrt]
 
 env:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -25,11 +28,36 @@ permissions:
   repository-projects: write
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      build_date: ${{ steps.set-date.outputs.build_date }}
+    steps:
+      - name: 设置编译时间
+        id: set-date
+        run: |
+          sudo -E timedatectl set-timezone "Asia/Shanghai"
+          echo "build_date=$(TZ=UTC-8 date +"%y.%m.%d_%H.%M.%S")" >> $GITHUB_OUTPUT
+
+      - name: 生成 Matrix 列表
+        id: set-matrix
+        run: |
+          MODELS='["jdcloud_ipq60xx_immwrt", "p2w_r619ac-128m_immwrt", "gehua_ghl-r-001_immwrt", "dell_wyse_3040_immwrt", "x64_immwrt"]'
+          SELECTED_MODEL="${{ github.event.inputs.model || github.event.client_payload.model }}"
+          
+          if [ "$SELECTED_MODEL" = "all" ] || [ -z "$SELECTED_MODEL" ]; then
+            echo "matrix={\"model\":$MODELS}" >> $GITHUB_OUTPUT
+          else
+            echo "matrix={\"model\":[\"$SELECTED_MODEL\"]}" >> $GITHUB_OUTPUT
+          fi
+
   build:
+    needs: prepare
     strategy:
-      matrix:
-        os: [ubuntu-24.04]
-    runs-on: ${{ matrix.os }}
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
+    runs-on: ubuntu-24.04
 
     steps:
       - name: 编译环境准备
@@ -52,16 +80,14 @@ jobs:
       - name: 检出源码
         uses: actions/checkout@v6.0.2
 
-      - name: 设置编译时间与源码信息
+      - name: 设置环境变量
         run: |
-          sudo -E timedatectl set-timezone "Asia/Shanghai"
-          export BUILD_DATE=$(TZ=UTC-8 date +"%y.%m.%d_%H.%M.%S")
-          echo "BUILD_DATE=$BUILD_DATE" >> $GITHUB_ENV
-          export BUILD_SRC=$(awk -F"=" '/REPO_URL/ {print $NF}' "./wrt_core/compilecfg/${{ inputs.model }}.ini")
+          echo "BUILD_DATE=${{ needs.prepare.outputs.build_date }}" >> $GITHUB_ENV
+          export BUILD_SRC=$(awk -F"=" '/REPO_URL/ {print $NF}' "./wrt_core/compilecfg/${{ matrix.model }}.ini")
           echo "BUILD_SRC=$BUILD_SRC" >> $GITHUB_ENV
 
       - name: Pre Clone
-        run: ./wrt_core/pre_clone_action.sh ${{ inputs.model }}
+        run: ./wrt_core/pre_clone_action.sh ${{ matrix.model }}
 
       - name: 缓存依赖库
         uses: actions/cache@v5.0.2
@@ -69,9 +95,9 @@ jobs:
           path: |
             ./action_build/.ccache
             ./action_build/staging_dir
-          key: ${{ matrix.os }}-${{ hashFiles('**/repo_flag') }}-${{ env.BUILD_DATE }}
+          key: ubuntu-24.04-${{ hashFiles('**/repo_flag') }}-${{ env.BUILD_DATE }}
           restore-keys: |
-            ${{ matrix.os }}-${{ hashFiles('**/repo_flag') }}-
+            ubuntu-24.04-${{ hashFiles('**/repo_flag') }}-
 
       - name: 刷新缓存时间戳
         run: |
@@ -109,7 +135,7 @@ jobs:
           echo "::endgroup::"
 
       - name: 开始编译固件
-        run: ./build.sh ${{ inputs.model }}
+        run: ./build.sh ${{ matrix.model }}
 
       - name: 提取内核版本
         run: |
@@ -121,7 +147,7 @@ jobs:
         run: |
           echo "::group::正在管理 GitHub Actions 缓存"
           # 获取缓存列表并删除
-          gh cache list --key ${{ matrix.os }}-${{ hashFiles('**/repo_flag') }}- --json key --jq '.[] | .key' | while read -r key; do
+          gh cache list --key ubuntu-24.04-${{ hashFiles('**/repo_flag') }}- --json key --jq '.[] | .key' | while read -r key; do
             gh cache delete "$key" || true
           done
           # 输出缓存状态
@@ -155,7 +181,7 @@ jobs:
           echo "::endgroup::"
 
       - name: 固件打包 (N1)
-        if: ${{ inputs.model == 'n1_immwrt' }}
+        if: ${{ matrix.model == 'n1_immwrt' }}
         uses: unifreq/openwrt_packit@master
         env:
           OPENWRT_ARMVIRT: firmware/*.tar.gz
@@ -165,6 +191,7 @@ jobs:
       - name: 生成发布日志
         run: |
           echo "云编译发布" > release_body.txt
+          echo "型号: ${{ matrix.model }}" >> release_body.txt
           echo "源码：${{ env.BUILD_SRC }}" >> release_body.txt
           echo "内核版本: ${{ env.KVER }}" >> release_body.txt
           echo "WIFI 默认密码: 12345678" >> release_body.txt
@@ -176,6 +203,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          tag_name: ${{ env.BUILD_DATE }}_${{ inputs.model }}
-          files: ${{ inputs.model == 'n1_immwrt' && env.PACKAGED_OUTPUTPATH || './firmware' }}/*.*
+          tag_name: ${{ env.BUILD_DATE }}_${{ matrix.model }}
+          files: ${{ matrix.model == 'n1_immwrt' && env.PACKAGED_OUTPUTPATH || './firmware' }}/*.*
           body_path: ./release_body.txt
