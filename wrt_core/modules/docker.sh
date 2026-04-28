@@ -190,11 +190,15 @@ _docker_stack_update_dockerd_depends_block() {
             in_depends = 0
             replaced = 0
         }
-        /^  DEPENDS:=\$\(GO_ARCH_DEPENDS\) \\$/ {
+        /^  DEPENDS:=\$\(GO_ARCH_DEPENDS\) \\$/ || /^  DEPENDS:=\$\(ARCH_DEPENDS\) \\$/ {
             in_depends = 1
             replaced = 1
 
-            print "  DEPENDS:=$(GO_ARCH_DEPENDS) \\" 
+            if ($0 ~ /GO_ARCH_DEPENDS/) {
+                print "  DEPENDS:=$(GO_ARCH_DEPENDS) \\" 
+            } else {
+                print "  DEPENDS:=$(ARCH_DEPENDS) \\" 
+            }
             print "    +ca-certificates \\" 
             print "    +containerd \\" 
             print "    +iptables-nft \\" 
