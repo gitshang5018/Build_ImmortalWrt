@@ -17,3 +17,11 @@ if uci show dropbear | grep -q "DirectInterface"; then
     uci commit dropbear
     /etc/init.d/dropbear restart
 fi
+
+# 修复 AX1800/AX6600 等设备 TCP: out of memory 问题
+if ! grep -q "net.ipv4.tcp_mem" /etc/sysctl.conf; then
+    echo "net.ipv4.tcp_mem = 786432 1048576 26777216" >>/etc/sysctl.conf
+    echo "net.ipv4.tcp_rmem = 4096 4096 16777216" >>/etc/sysctl.conf
+    echo "net.ipv4.tcp_wmem = 4096 4096 16777216" >>/etc/sysctl.conf
+    sysctl -p
+fi
