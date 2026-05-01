@@ -639,4 +639,19 @@ fix_kmod_nf_ipt_file_clash() {
             sed -i 's/--force-depends/--force-depends --force-overwrite/g' "$ipkg_mk"
         fi
     fi
+
+    local pkg_mk="$BUILD_DIR/package/Makefile"
+    if [ -f "$pkg_mk" ]; then
+        if ! grep -q '\-\-force-overwrite' "$pkg_mk"; then
+            echo "正在修复 package/Makefile 的 rootfs 安装冲突..."
+            sed -i 's/$(OPKG) install /$(OPKG) install --force-overwrite /g' "$pkg_mk"
+        fi
+    fi
+
+    local rootfs_mk="$BUILD_DIR/include/rootfs.mk"
+    if [ -f "$rootfs_mk" ]; then
+        if ! grep -q '\-\-force-overwrite' "$rootfs_mk"; then
+            sed -i 's/$(OPKG) install /$(OPKG) install --force-overwrite /g' "$rootfs_mk"
+        fi
+    fi
 }

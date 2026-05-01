@@ -201,13 +201,7 @@ _docker_stack_update_dockerd_depends_block() {
             }
             print "    +ca-certificates \\" 
             print "    +containerd \\" 
-            print "    +iptables-nft \\" 
-            print "    +iptables-mod-extra \\" 
-            print "    +IPV6:ip6tables-nft \\" 
-            print "    +IPV6:kmod-ipt-nat6 \\" 
             print "    +KERNEL_SECCOMP:libseccomp \\" 
-            print "    +kmod-ipt-nat \\" 
-            print "    +kmod-ipt-physdev \\" 
             print "    +kmod-nf-ipvs \\" 
             print "    +kmod-veth \\" 
             print "    +nftables \\" 
