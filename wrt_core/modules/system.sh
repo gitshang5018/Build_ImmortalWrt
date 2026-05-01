@@ -636,6 +636,7 @@ fix_kmod_nf_ipt_file_clash() {
         if ! grep -q '\-\-force-overwrite' "$pkg_mk"; then
             echo "正在修复 package/Makefile 的 rootfs 安装冲突..."
             sed -i 's/$(OPKG) install /$(OPKG) install --force-overwrite /g' "$pkg_mk"
+            sed -i 's/$(call opkg,$(TARGET_DIR)) install /$(call opkg,$(TARGET_DIR)) install --force-overwrite /g' "$pkg_mk"
         fi
     fi
 
@@ -643,6 +644,8 @@ fix_kmod_nf_ipt_file_clash() {
     if [ -f "$rootfs_mk" ]; then
         if ! grep -q '\-\-force-overwrite' "$rootfs_mk"; then
             sed -i 's/$(OPKG) install /$(OPKG) install --force-overwrite /g' "$rootfs_mk"
+            sed -i 's/$(call opkg,$(TARGET_DIR)) install /$(call opkg,$(TARGET_DIR)) install --force-overwrite /g' "$rootfs_mk"
+            sed -i 's/--force-postinstall/--force-postinstall --force-overwrite/g' "$rootfs_mk"
         fi
     fi
 }
