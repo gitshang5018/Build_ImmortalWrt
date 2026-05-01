@@ -627,3 +627,16 @@ remove_tweaked_packages() {
         fi
     fi
 }
+
+fix_kmod_nf_ipt_file_clash() {
+    # 修复 kmod-nf-ipt 与 kmod-iptables 在内核 6.18+ 中的文件冲突
+    # 两个包都提供 ip_tables.ko 和 x_tables.ko，导致 opkg 安装失败 (Error 255)
+    # 受影响的包链: kmod-oaf, kmod-nf-ipt6, kmod-nft-compat 等
+    local ipkg_mk="$BUILD_DIR/include/package-ipkg.mk"
+    if [ -f "$ipkg_mk" ]; then
+        if ! grep -q 'force-overwrite' "$ipkg_mk"; then
+            echo "正在修复 kmod-nf-ipt 与 kmod-iptables 文件冲突 (添加 --force-overwrite)..."
+            sed -i 's/--force-depends/--force-depends --force-overwrite/g' "$ipkg_mk"
+        fi
+    fi
+}

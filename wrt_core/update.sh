@@ -90,6 +90,7 @@ main() {
     fix_easytier_mk
     remove_attendedsysupgrade
     fix_kconfig_recursive_dependency
+    fix_kmod_nf_ipt_file_clash
     install_feeds
     update_docker_stack
     fix_cups_libcups_avahi_depends
