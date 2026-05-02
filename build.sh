@@ -204,7 +204,10 @@ apply_config() {
         sed -i 's/CONFIG_PACKAGE_luci-app-passwall=y/# CONFIG_PACKAGE_luci-app-passwall is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
         sed -i 's/CONFIG_PACKAGE_luci-app-adguardhome=y/# CONFIG_PACKAGE_luci-app-adguardhome is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
         sed -i 's/CONFIG_PACKAGE_luci-app-dockerman=y/# CONFIG_PACKAGE_luci-app-dockerman is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
+        sed -i 's/CONFIG_PACKAGE_luci-i18n-dockerman-zh-cn=y/# CONFIG_PACKAGE_luci-i18n-dockerman-zh-cn is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
         sed -i 's/CONFIG_PACKAGE_luci-app-samba4=y/# CONFIG_PACKAGE_luci-app-samba4 is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
+        echo "# CONFIG_PACKAGE_luci-app-dockerman is not set" >> "$BASE_PATH/../$BUILD_DIR/.config"
+        echo "# CONFIG_PACKAGE_luci-i18n-dockerman-zh-cn is not set" >> "$BASE_PATH/../$BUILD_DIR/.config"
 
         # 仅 gehua 需要额外移除的插件 (32M Flash 极端精简)
         if [[ "$Dev" == "gehua_ghl-r-001_immwrt" ]]; then
