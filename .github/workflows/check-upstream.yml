@@ -21,7 +21,7 @@ jobs:
       - name: 获取上游最新 commit
         id: upstream
         run: |
-          LATEST=$(git ls-remote https://github.com/VIKINGYFY/immortalwrt.git HEAD | awk '{print $1}')
+          LATEST=$(git ls-remote https://github.com/immortalwrt/immortalwrt.git refs/heads/master | awk '{print $1}')
           echo "latest=$LATEST" >> $GITHUB_OUTPUT
 
       - name: 读取本地记录的 commit
@@ -47,7 +47,6 @@ jobs:
         if: steps.compare.outputs.updated == 'no'
         run: |
           echo "上游无更新，停止执行。"
-          exit 0
 
       - name: 更新本地 UPSTREAM_VERSION
         if: steps.compare.outputs.updated == 'yes'
@@ -56,14 +55,16 @@ jobs:
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add UPSTREAM_VERSION
-          git commit -m "Update upstream version to ${{ steps.upstream.outputs.latest }}"
+          git commit -m "chore: update upstream version to ${{ steps.upstream.outputs.latest }}"
           git push
 
       - name: 触发编译工作流
         if: steps.compare.outputs.updated == 'yes'
         run: |
-          curl -X POST \
+          curl -sf -X POST \
             -H "Accept: application/vnd.github.v3+json" \
             -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            https://api.github.com/repos/${{ github.repository }}/actions/workflows/build.yml/dispatches \
-            -d '{"ref":"main"}'
+            https://api.github.com/repos/${{ github.repository }}/dispatches \
+            -d '{"event_type":"build_wrt","client_payload":{"model":"all"}}' \
+            && echo "✅ 成功触发 Release WRT 编译工作流" \
+            || echo "❌ 触发编译工作流失败"
