@@ -212,8 +212,22 @@ _docker_stack_update_dockerd_depends_block() {
             next
         }
         in_depends {
+            # Old format: DEPENDS block ends with @!(mips||mips64||mipsel) line
             if ($0 ~ /@!\(mips\|\|mips64\|\|mipsel\)/) {
                 in_depends = 0
+                next
+            }
+            # New format (29.x): last dep line has no trailing backslash, e.g. "+uci-firewall"
+            # If current line is a dep line (starts with +) without trailing \, it is the last dep
+            if ($0 ~ /^[[:space:]]+\+[a-zA-Z]/ && $0 !~ /\\$/) {
+                in_depends = 0
+                next
+            }
+            # If line does not look like a dependency continuation, stop skipping
+            if ($0 !~ /^[[:space:]]+[+@]/ && $0 !~ /\\$/) {
+                in_depends = 0
+                print
+                next
             }
             next
         }
