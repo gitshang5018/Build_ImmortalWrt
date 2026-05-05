@@ -649,3 +649,12 @@ fix_kmod_nf_ipt_file_clash() {
         fi
     fi
 }
+
+fix_ath11k_nss_timer_api() {
+    local patch_dir="$BUILD_DIR/package/kernel/mac80211/patches"
+    if [ -d "$patch_dir" ]; then
+        echo "正在修复 ath11k nss.c 在高版本内核的定时器 API 兼容性..."
+        find "$patch_dir" -type f -name "*.patch" -exec sed -i 's/from_timer(/timer_container_of(/g' {} +
+        find "$patch_dir" -type f -name "*.patch" -exec sed -i 's/del_timer_sync(/timer_delete_sync(/g' {} +
+    fi
+}

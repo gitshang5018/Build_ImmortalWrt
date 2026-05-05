@@ -279,6 +279,19 @@ _docker_stack_fix_dockerd_vendored_checks() {
                 next
             }
 
+            if ($0 ~ /^[[:space:]]*DEP_VER=\$\$\([[:space:]]*grep[[:space:]]+--only-matching[[:space:]]+--perl-regexp/) {
+                print "\t@echo \"Skipping vendored version check for $(PKG_BUILD_DIR)\""
+                skip_vendored_block = 1
+                next
+            }
+
+            if (skip_vendored_block == 1) {
+                if ($0 ~ /^[[:space:]]*fi[[:space:]]*;?[[:space:]]*$/) {
+                    skip_vendored_block = 0
+                }
+                next
+            }
+
             print
         }
     ' "$mk_path" > "$tmp_path" || {
@@ -1138,8 +1151,8 @@ _docker_stack_update_component() {
 
 update_docker_stack() {
     local build_dir="${BUILD_DIR:-}"
-    local runc_version="${DOCKER_STACK_RUNC_VERSION:-v1.3.3}"
-    local containerd_version="${DOCKER_STACK_CONTAINERD_VERSION:-v1.7.28}"
+    local runc_version="${DOCKER_STACK_RUNC_VERSION:-v1.2.5}"
+    local containerd_version="${DOCKER_STACK_CONTAINERD_VERSION:-v2.2.2}"
     local docker_version="${DOCKER_STACK_DOCKER_VERSION:-v29.3.1}"
     local dockerd_version="${DOCKER_STACK_DOCKERD_VERSION:-$docker_version}"
     local storage_driver="${DOCKER_STACK_STORAGE_DRIVER:-vfs}"

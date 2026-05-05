@@ -103,6 +103,7 @@ main() {
     fix_quectel_cm
     install_pbr_cmcc
     fix_pbr_ip_forward
+    fix_ath11k_nss_timer_api
     # apply_hash_fixes
     log_success "所有组件更新完成"
     group_end
