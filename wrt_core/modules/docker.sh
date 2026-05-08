@@ -279,9 +279,11 @@ _docker_stack_fix_dockerd_vendored_checks() {
                 next
             }
 
-            if ($0 ~ /^[[:space:]]*DEP_VER=\$\$\([[:space:]]*grep[[:space:]]+--only-matching[[:space:]]+--perl-regexp/) {
+            if ($0 ~ /DEP_VER=\$\$?\([[:space:]]*grep[[:space:]]+--only-matching[[:space:]]+--perl-regexp/) {
                 print "\t@echo \"Skipping vendored version check for $(PKG_BUILD_DIR)\""
-                skip_vendored_block = 1
+                if ($0 !~ /fi[[:space:]]*;?[[:space:]]*(\\)?$/) {
+                    skip_vendored_block = 1
+                }
                 next
             }
 
@@ -1146,7 +1148,19 @@ _docker_stack_update_component() {
     sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=$version_clean/g" "$mk_path"
     sed -i "s/^PKG_HASH:=.*/PKG_HASH:=$pkg_hash/g" "$mk_path"
 
-    echo "更新 $component 到 $version_clean ($pkg_hash)"
+    if ! grep -q 'no-mips16' "$mk_path"; then
+        if grep -q '^PKG_BUILD_FLAGS:=' "$mk_path"; then
+            sed -i 's/^PKG_BUILD_FLAGS:=.*/& no-mips16/' "$mk_path"
+        else
+            sed -i '/^PKG_VERSION:=/a PKG_BUILD_FLAGS:=no-mips16' "$mk_path"
+        fi
+    fi
+
+    if ! grep -q '^PKG_USE_MIPS16:=' "$mk_path"; then
+        sed -i '/^PKG_VERSION:=/a PKG_USE_MIPS16:=0' "$mk_path"
+    fi
+
+    echo "更新 $component 到 $version_clean ($pkg_hash) 并且强制关闭 mips16"
 }
 
 update_docker_stack() {

@@ -81,11 +81,12 @@ update_node() {
         # 修复 packages-25.12 分支的 apk extract 兼容性问题
         # 该分支 Makefile 使用 $(STAGING_DIR_HOST)/bin/apk extract 解压预编译包
         # 但 opkg 体系的 immortalwrt 没有 apk 工具，导致 usr/bin/node 无法被提取
-        # 将 apk extract 替换为等效的 tar 解压命令（.apk 本质上是 gzip tar 包）
+        # Alpine apk 是拼接的 gzip 压缩 tar 包，普通的 tar -zxf 只能解压出签名
+        # 使用 gzip -dc 联合 tar -i 可以完整解压所有拼接的流
         local node_makefile="./feeds/packages/lang/node/Makefile"
         if [ -f "$node_makefile" ] && grep -q 'apk extract' "$node_makefile"; then
             echo "检测到 packages-25.12 分支，正在修补 Node.js Makefile 以兼容 opkg 体系..."
-            sed -i '/apk extract/c\\t\t\tfor f in *.apk; do $(TAR) -zxf "$$f"; done ; \\' "$node_makefile"
+            sed -i '/apk extract/c\\t\t\tfor f in *.apk; do gzip -dc "$$f" | $(TAR) -ixf - ; done ; \\' "$node_makefile"
             echo "Node.js Makefile 修补完成"
         fi
     fi
