@@ -71,24 +71,15 @@ update_golang() {
 
 update_node() {
     if [[ -d ./feeds/packages/lang/node ]]; then
-        echo "正在集成预编译 Node.js 软件包..."
+        echo "正在集成预编译 Node.js 软件包 (锁定为原生 ipk 格式)..."
         \rm -rf ./feeds/packages/lang/node
-        if ! git clone --depth 1 $NODE_PREBUILT_REPO ./feeds/packages/lang/node; then
+        # 强制使用 packages-24.10 分支。该分支使用标准的 .ipk 格式，原生兼容 opkg 及标准 tar，
+        # 彻底避免了 packages-25.12 分支中 Alpine ADB v3 格式 (.apk) 导致的无法解压问题。
+        if ! git clone --depth 1 -b packages-24.10 $NODE_PREBUILT_REPO ./feeds/packages/lang/node; then
             echo "错误：克隆预编译 Node.js 仓库 $NODE_PREBUILT_REPO 失败" >&2
             exit 1
         fi
-
-        # 修复 packages-25.12 分支的 apk extract 兼容性问题
-        # 该分支 Makefile 使用 $(STAGING_DIR_HOST)/bin/apk extract 解压预编译包
-        # 但 opkg 体系的 immortalwrt 没有 apk 工具，导致 usr/bin/node 无法被提取
-        # Alpine apk 是拼接的 gzip 压缩 tar 包，普通的 tar -zxf 只能解压出签名
-        # 使用 gzip -dc 联合 tar -i 可以完整解压所有拼接的流
-        local node_makefile="./feeds/packages/lang/node/Makefile"
-        if [ -f "$node_makefile" ] && grep -q 'apk extract' "$node_makefile"; then
-            echo "检测到 packages-25.12 分支，正在修补 Node.js Makefile 以兼容 opkg 体系..."
-            sed -i '/apk extract/c\\t\t\tfor f in *.apk; do gzip -dc "$$f" | $(TAR) -ixf - ; done ; \\' "$node_makefile"
-            echo "Node.js Makefile 修补完成"
-        fi
+        echo "Node.js 预编译包已成功切换至兼容模式 (packages-24.10 分支)"
     fi
 }
 
