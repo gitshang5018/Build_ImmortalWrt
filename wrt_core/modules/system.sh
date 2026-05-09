@@ -319,18 +319,30 @@ update_script_priority() {
         sed -i 's/START=.*/START=89/g' "$pbuf_path"
     fi
 
-    local mosdns_path="$BUILD_DIR/package/feeds/small8/luci-app-mosdns/root/etc/init.d/mosdns"
-    if [ -d "${mosdns_path%/*}" ] && [ -f "$mosdns_path" ]; then
-        sed -i 's/START=.*/START=94/g' "$mosdns_path"
-    fi
+    local mosdns_paths=(
+        "$BUILD_DIR/package/mosdns/luci-app-mosdns/root/etc/init.d/mosdns"
+        "$BUILD_DIR/package/feeds/small8/luci-app-mosdns/root/etc/init.d/mosdns"
+    )
+    local mosdns_path
+    for mosdns_path in "${mosdns_paths[@]}"; do
+        if [ -d "${mosdns_path%/*}" ] && [ -f "$mosdns_path" ]; then
+            sed -i 's/START=.*/START=94/g' "$mosdns_path"
+        fi
+    done
 }
 
 update_mosdns_deconfig() {
-    local mosdns_conf="$BUILD_DIR/feeds/small8/luci-app-mosdns/root/etc/config/mosdns"
-    if [ -d "${mosdns_conf%/*}" ] && [ -f "$mosdns_conf" ]; then
-        sed -i 's/8000/300/g' "$mosdns_conf"
-        sed -i 's/5335/5336/g' "$mosdns_conf"
-    fi
+    local mosdns_configs=(
+        "$BUILD_DIR/package/mosdns/luci-app-mosdns/root/etc/config/mosdns"
+        "$BUILD_DIR/feeds/small8/luci-app-mosdns/root/etc/config/mosdns"
+    )
+    local mosdns_conf
+    for mosdns_conf in "${mosdns_configs[@]}"; do
+        if [ -d "${mosdns_conf%/*}" ] && [ -f "$mosdns_conf" ]; then
+            sed -i 's/8000/300/g' "$mosdns_conf"
+            sed -i 's/5335/5336/g' "$mosdns_conf"
+        fi
+    done
 }
 
 
@@ -362,8 +374,15 @@ EOF
 }
 
 update_geoip() {
-    local geodata_path="$BUILD_DIR/package/feeds/small8/v2ray-geodata/Makefile"
-    if [ -d "${geodata_path%/*}" ] && [ -f "$geodata_path" ]; then
+    local geodata_paths=(
+        "$BUILD_DIR/package/v2ray-geodata/Makefile"
+        "$BUILD_DIR/package/feeds/small8/v2ray-geodata/Makefile"
+    )
+    local geodata_path
+    for geodata_path in "${geodata_paths[@]}"; do
+        if [ ! -d "${geodata_path%/*}" ] || [ ! -f "$geodata_path" ]; then
+            continue
+        fi
         local GEOIP_VER=$(awk -F"=" '/GEOIP_VER:=/ {print $NF}' $geodata_path | grep -oE "[0-9]{1,}")
         if [ -n "$GEOIP_VER" ]; then
             local base_url="https://github.com/v2fly/geoip/releases/download/${GEOIP_VER}"
@@ -384,7 +403,7 @@ update_geoip() {
                 fi
             fi
         fi
-    fi
+    done
 }
 
 fix_rust_compile_error() {

@@ -20,6 +20,7 @@ remove_unwanted_packages() {
     local small8_packages=(
         "ppp" "firewall" "dae" "daed" "daed-next" "libnftnl" "nftables" "dnsmasq" "luci-app-alist"
         "alist" "opkg" "smartdns" "luci-app-smartdns" "easytier"
+        "v2ray-geodata" "v2dat" "mosdns" "luci-app-mosdns"
     )
 
     for pkg in "${luci_packages[@]}"; do
@@ -83,11 +84,64 @@ update_node() {
     fi
 }
 
+update_mosdns() {
+    local mosdns_repo="https://github.com/sbwml/luci-app-mosdns"
+    local mosdns_branch="v5"
+    local geodata_repo="https://github.com/sbwml/v2ray-geodata"
+    local pkg_path
+    local search_dir
+    local remove_paths=(
+        "./package/mosdns"
+        "./package/v2ray-geodata"
+        "./package/feeds/small8/mosdns"
+        "./package/feeds/small8/luci-app-mosdns"
+        "./package/feeds/small8/v2ray-geodata"
+        "./package/feeds/small8/v2dat"
+        "./feeds/small8/mosdns"
+        "./feeds/small8/luci-app-mosdns"
+        "./feeds/small8/v2ray-geodata"
+        "./feeds/small8/v2dat"
+        "./feeds/packages/net/mosdns"
+        "./feeds/packages/net/v2ray-geodata"
+    )
+
+    log_info "切换 MosDNS 到 sbwml/luci-app-mosdns v5..."
+
+    for pkg_path in "${remove_paths[@]}"; do
+        if [[ -e "$pkg_path" || -L "$pkg_path" ]]; then
+            \rm -rf "$pkg_path"
+        fi
+    done
+
+    for search_dir in ./feeds ./package; do
+        if [[ -d "$search_dir" ]]; then
+            find "$search_dir" -type f \( \
+                -path "*/v2ray-geodata/Makefile" -o \
+                -path "*/v2dat/Makefile" -o \
+                -path "*/mosdns/Makefile" -o \
+                -path "*/luci-app-mosdns/Makefile" \
+            \) -exec \rm -f {} +
+        fi
+    done
+
+    if ! git clone --depth 1 -b "$mosdns_branch" "$mosdns_repo" ./package/mosdns; then
+        log_error "错误：克隆 MosDNS 仓库 $mosdns_repo 失败"
+        exit 1
+    fi
+
+    if ! git clone --depth 1 "$geodata_repo" ./package/v2ray-geodata; then
+        log_error "错误：克隆 v2ray-geodata 仓库 $geodata_repo 失败"
+        exit 1
+    fi
+
+    log_success "MosDNS 已切换到 sbwml/luci-app-mosdns v5"
+}
+
 install_small8() {
     ./scripts/feeds install -p small8 -f xray-core xray-plugin dns2tcp dns2socks haproxy hysteria \
-        naiveproxy shadowsocks-rust sing-box v2ray-core v2ray-geodata geoview v2ray-plugin \
+        naiveproxy shadowsocks-rust sing-box v2ray-core geoview v2ray-plugin \
         tuic-client chinadns-ng ipt2socks tcping trojan-plus simple-obfs shadowsocksr-libev \
-        v2dat mosdns luci-app-mosdns adguardhome luci-app-adguardhome ddns-go \
+        adguardhome luci-app-adguardhome ddns-go \
         luci-app-ddns-go taskd luci-lib-xterm luci-lib-taskd luci-app-cloudflarespeedtest netdata luci-app-netdata \
         lucky luci-app-lucky luci-app-openclash luci-app-ssr-plus luci-app-homeproxy luci-app-unblockneteasemusic luci-app-amlogic \
         tailscale luci-app-tailscale oaf open-app-filter luci-app-oaf easytier luci-app-easytier \
