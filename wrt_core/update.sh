@@ -80,7 +80,11 @@ main() {
     fix_rust_compile_error
     update_smartdns
     update_diskman
-    update_dockerman
+    if [[ "${DOCKER_STACK_REQUESTED:-1}" == "1" ]]; then
+        update_dockerman
+    else
+        log_info "未启用 Docker/Dockerman，跳过 dockerman 源同步。"
+    fi
     set_nginx_default_config
     update_uwsgi_limit_as
     update_design
@@ -92,7 +96,11 @@ main() {
     fix_kconfig_recursive_dependency
     fix_kmod_nf_ipt_file_clash
     install_feeds
-    update_docker_stack
+    if [[ "${DOCKER_STACK_REQUESTED:-1}" == "1" ]]; then
+        update_docker_stack
+    else
+        log_info "未启用 Docker/Dockerman，跳过 Docker 栈版本同步。"
+    fi
     fix_cups_libcups_avahi_depends
     fix_easytier_lua
     update_adguardhome

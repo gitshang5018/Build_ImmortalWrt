@@ -167,6 +167,20 @@ read_ini_by_key() {
     awk -F"=" -v key="$key" '$1 == key {print $2}' "$INI_FILE"
 }
 
+config_requests_docker_stack() {
+    grep -Eq '^(CONFIG_PACKAGE_luci-app-dockerman|CONFIG_PACKAGE_dockerd|CONFIG_PACKAGE_docker|CONFIG_PACKAGE_containerd)=[ym]' "$CONFIG_FILE"
+}
+
+disable_docker_stack_packages() {
+    local config_path="$1"
+    local pkg
+
+    for pkg in luci-app-dockerman luci-i18n-dockerman-zh-cn dockerd docker containerd runc tini; do
+        sed -i "/^CONFIG_PACKAGE_${pkg}=.*/d; /^# CONFIG_PACKAGE_${pkg} is not set/d" "$config_path"
+        echo "# CONFIG_PACKAGE_${pkg} is not set" >> "$config_path"
+    done
+}
+
 remove_uhttpd_dependency() {
     local config_path="$BASE_PATH/../$BUILD_DIR/.config"
     local luci_makefile_path="$BASE_PATH/../$BUILD_DIR/feeds/luci/collections/luci/Makefile"
@@ -189,11 +203,17 @@ apply_config() {
 
     cat "$BASE_PATH/deconfig/compile_base.config" >> "$BASE_PATH/../$BUILD_DIR/.config"
 
-    if [[ "$Dev" != "jdcloud_ipq60xx_immwrt" ]]; then
+    if [[ "${DOCKER_STACK_REQUESTED:-0}" == "1" ]]; then
         cat "$BASE_PATH/deconfig/docker_deps.config" >> "$BASE_PATH/../$BUILD_DIR/.config"
+    else
+        log_info "Docker stack is not requested by $Dev; skip docker_deps.config."
     fi
 
     cat "$BASE_PATH/deconfig/proxy.config" >> "$BASE_PATH/../$BUILD_DIR/.config"
+
+    if [[ "${DOCKER_STACK_REQUESTED:-0}" != "1" ]]; then
+        disable_docker_stack_packages "$BASE_PATH/../$BUILD_DIR/.config"
+    fi
     
 # Remove heavy plugins for low-flash devices
     if [[ "$Dev" == "p2w_r619ac-128m_immwrt" || "$Dev" == "gehua_ghl-r-001_immwrt" ]]; then
@@ -206,6 +226,7 @@ apply_config() {
         sed -i 's/CONFIG_PACKAGE_luci-app-dockerman=y/# CONFIG_PACKAGE_luci-app-dockerman is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
         sed -i 's/CONFIG_PACKAGE_luci-i18n-dockerman-zh-cn=y/# CONFIG_PACKAGE_luci-i18n-dockerman-zh-cn is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
         sed -i 's/CONFIG_PACKAGE_luci-app-samba4=y/# CONFIG_PACKAGE_luci-app-samba4 is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
+        disable_docker_stack_packages "$BASE_PATH/../$BUILD_DIR/.config"
         echo "# CONFIG_PACKAGE_luci-app-dockerman is not set" >> "$BASE_PATH/../$BUILD_DIR/.config"
         echo "# CONFIG_PACKAGE_luci-i18n-dockerman-zh-cn is not set" >> "$BASE_PATH/../$BUILD_DIR/.config"
 
@@ -230,6 +251,12 @@ COMMIT_HASH=${COMMIT_HASH:-none}
 
 if [[ -d action_build ]]; then
     BUILD_DIR="action_build"
+fi
+
+if config_requests_docker_stack; then
+    export DOCKER_STACK_REQUESTED=1
+else
+    export DOCKER_STACK_REQUESTED=0
 fi
 
 "$BASE_PATH/update.sh" "$REPO_URL" "$REPO_BRANCH" "$BUILD_DIR" "$COMMIT_HASH"

@@ -1163,9 +1163,42 @@ _docker_stack_update_component() {
     echo "更新 $component 到 $version_clean ($pkg_hash) 并且强制关闭 mips16"
 }
 
+_docker_stack_read_pkg_version() {
+    local mk_path="$1"
+
+    awk -F":=" '/^PKG_VERSION:=/ {print $2; exit}' "$mk_path"
+}
+
+_docker_stack_print_pkg_versions() {
+    local runc_makefile="$1"
+    local containerd_makefile="$2"
+    local docker_makefile="$3"
+    local dockerd_makefile="$4"
+
+    echo "Docker package Makefile versions after sync:"
+    echo "  runc=$(_docker_stack_read_pkg_version "$runc_makefile")"
+    echo "  containerd=$(_docker_stack_read_pkg_version "$containerd_makefile")"
+    echo "  docker=$(_docker_stack_read_pkg_version "$docker_makefile")"
+    echo "  dockerd=$(_docker_stack_read_pkg_version "$dockerd_makefile")"
+}
+
+_docker_stack_assert_pkg_version() {
+    local component="$1"
+    local mk_path="$2"
+    local expected_tag="$3"
+    local expected_version="${expected_tag#v}"
+    local actual_version=""
+
+    actual_version=$(_docker_stack_read_pkg_version "$mk_path")
+    if [ "$actual_version" != "$expected_version" ]; then
+        echo "错误：$component 版本同步失败，期望 PKG_VERSION:=$expected_version，实际 PKG_VERSION:=$actual_version ($mk_path)" >&2
+        return 1
+    fi
+}
+
 update_docker_stack() {
     local build_dir="${BUILD_DIR:-}"
-    local runc_version="${DOCKER_STACK_RUNC_VERSION:-v1.2.5}"
+    local runc_version="${DOCKER_STACK_RUNC_VERSION:-v1.3.4}"
     local containerd_version="${DOCKER_STACK_CONTAINERD_VERSION:-v2.2.2}"
     local docker_version="${DOCKER_STACK_DOCKER_VERSION:-v29.3.1}"
     local dockerd_version="${DOCKER_STACK_DOCKERD_VERSION:-$docker_version}"
@@ -1207,6 +1240,14 @@ update_docker_stack() {
     _docker_stack_update_component "docker" "$docker_makefile" "tags" "$docker_version" "$dry_run" || return 1
     _docker_stack_update_component "dockerd" "$dockerd_makefile" "releases" "$dockerd_version" "$dry_run" || return 1
     _docker_stack_update_dockerd_nftables_defaults "$build_dir" "$dry_run" "$storage_driver" || return 1
+
+    if [ "$dry_run" != "1" ]; then
+        _docker_stack_print_pkg_versions "$runc_makefile" "$containerd_makefile" "$docker_makefile" "$dockerd_makefile"
+        _docker_stack_assert_pkg_version "runc" "$runc_makefile" "$runc_version" || return 1
+        _docker_stack_assert_pkg_version "containerd" "$containerd_makefile" "$containerd_version" || return 1
+        _docker_stack_assert_pkg_version "docker" "$docker_makefile" "$docker_version" || return 1
+        _docker_stack_assert_pkg_version "dockerd" "$dockerd_makefile" "$dockerd_version" || return 1
+    fi
 
     if [ "$dry_run" = "1" ]; then
         echo "dry-run 完成，未修改文件。"
