@@ -171,6 +171,18 @@ config_requests_docker_stack() {
     grep -Eq '^(CONFIG_PACKAGE_luci-app-dockerman|CONFIG_PACKAGE_dockerd|CONFIG_PACKAGE_docker|CONFIG_PACKAGE_containerd)=[ym]' "$CONFIG_FILE"
 }
 
+append_config_fragment() {
+    local fragment_path="$1"
+    local target_config="$BASE_PATH/../$BUILD_DIR/.config"
+    local symbol
+
+    while IFS= read -r symbol; do
+        sed -i "/^${symbol}=.*/d; /^# ${symbol} is not set/d" "$target_config"
+    done < <(sed -nE 's/^(# )?(CONFIG_[-A-Za-z0-9_+.]+)(=.*| is not set)$/\2/p' "$fragment_path" | sort -u)
+
+    cat "$fragment_path" >> "$target_config"
+}
+
 disable_docker_stack_packages() {
     local config_path="$1"
     local pkg
@@ -198,18 +210,23 @@ apply_config() {
     
     if grep -qE "(ipq60xx|ipq807x)" "$BASE_PATH/../$BUILD_DIR/.config" &&
         ! grep -q "CONFIG_GIT_MIRROR" "$BASE_PATH/../$BUILD_DIR/.config"; then
-        cat "$BASE_PATH/deconfig/nss.config" >> "$BASE_PATH/../$BUILD_DIR/.config"
+        append_config_fragment "$BASE_PATH/deconfig/nss.config"
     fi
 
-    cat "$BASE_PATH/deconfig/compile_base.config" >> "$BASE_PATH/../$BUILD_DIR/.config"
+    append_config_fragment "$BASE_PATH/deconfig/compile_base.config"
 
     if [[ "${DOCKER_STACK_REQUESTED:-0}" == "1" ]]; then
-        cat "$BASE_PATH/deconfig/docker_deps.config" >> "$BASE_PATH/../$BUILD_DIR/.config"
+        append_config_fragment "$BASE_PATH/deconfig/docker_deps.config"
     else
         log_info "Docker stack is not requested by $Dev; skip docker_deps.config."
     fi
 
-    cat "$BASE_PATH/deconfig/proxy.config" >> "$BASE_PATH/../$BUILD_DIR/.config"
+    if grep -q "CONFIG_TARGET_qualcommax_ipq60xx=y" "$BASE_PATH/../$BUILD_DIR/.config"; then
+        log_info "Using proxy_lite.config for ipq60xx."
+        append_config_fragment "$BASE_PATH/deconfig/proxy_lite.config"
+    else
+        append_config_fragment "$BASE_PATH/deconfig/proxy.config"
+    fi
 
     if [[ "${DOCKER_STACK_REQUESTED:-0}" != "1" ]]; then
         disable_docker_stack_packages "$BASE_PATH/../$BUILD_DIR/.config"
