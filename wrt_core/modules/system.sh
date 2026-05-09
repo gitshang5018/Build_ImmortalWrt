@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
 
 fix_default_set() {
-    if [ -d "$BUILD_DIR/feeds/luci/collections/" ]; then
-        find "$BUILD_DIR/feeds/luci/collections/" -type f -name "Makefile" -exec sed -i "s/luci-theme-bootstrap/luci-theme-$THEME_SET/g" {} \;
-    fi
+    normalize_luci_theme_dependencies
 
     install -Dm544 "$BASE_PATH/patches/990_set_argon_primary" "$BUILD_DIR/package/base-files/files/etc/uci-defaults/990_set_argon_primary"
     install -Dm544 "$BASE_PATH/patches/991_custom_settings" "$BUILD_DIR/package/base-files/files/etc/uci-defaults/991_custom_settings"
@@ -13,6 +11,28 @@ fix_default_set() {
         if [ -f "$BASE_PATH/patches/tempinfo" ]; then
             \cp -f "$BASE_PATH/patches/tempinfo" "$BUILD_DIR/package/emortal/autocore/files/tempinfo"
         fi
+    fi
+}
+
+normalize_luci_theme_dependencies() {
+    local theme_package_name="${THEME_SET,,}"
+    local search_paths=()
+
+    theme_package_name="${theme_package_name:-argon}"
+
+    if [ -d "$BUILD_DIR/feeds/luci" ]; then
+        search_paths+=("$BUILD_DIR/feeds/luci")
+    fi
+    if [ -d "$BUILD_DIR/package/feeds/luci" ]; then
+        search_paths+=("$BUILD_DIR/package/feeds/luci")
+    fi
+
+    if [ ${#search_paths[@]} -gt 0 ]; then
+        find "${search_paths[@]}" -type f -name "Makefile" -exec sed -i \
+            -e "s/luci-theme-bootstrap/luci-theme-$theme_package_name/g" \
+            -e 's/luci-theme-Argon/luci-theme-argon/g' \
+            -e 's/luci-theme-Design/luci-theme-design/g' \
+            {} \;
     fi
 }
 

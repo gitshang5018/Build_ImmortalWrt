@@ -20,6 +20,24 @@ Build_Mod=$2
 
 SUPPORTED_DEVS=()
 
+dump_build_failure_logs() {
+    local log_dir="logs/package"
+    local log_file
+
+    echo "======== 最近的包编译日志 ========"
+    if [[ -d "$log_dir" ]]; then
+        find "$log_dir" -type f -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -n 8 | while read -r _ log_file; do
+            echo "-------- $log_file --------"
+            tail -n 160 "$log_file" || true
+        done
+    else
+        echo "未找到 $log_dir 目录。"
+    fi
+
+    echo "======== 关键错误索引 ========"
+    find logs -type f 2>/dev/null | xargs grep -nEi '(^|[^[:alpha:]])(error|failed|undefined reference|no such file|cannot find|conflicts with|not found)([^[:alpha:]]|$)' 2>/dev/null | tail -n 120 || true
+}
+
 collect_supported_devs() {
     local ini_file
     local dev_key
@@ -314,7 +332,10 @@ if make -j$(($(nproc) + 1)); then
     log_success "固件编译成功！"
 else
     log_warn "多核编译失败，尝试单核详细输出模式..."
-    make -j1 V=s
+    if ! make -j1 V=s; then
+        dump_build_failure_logs
+        exit 1
+    fi
 fi
 group_end
 

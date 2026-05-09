@@ -24,7 +24,7 @@ FEEDS_CONF="feeds.conf.default"
 GOLANG_REPO="https://github.com/sbwml/packages_lang_golang"
 GOLANG_BRANCH="26.x"
 NODE_PREBUILT_REPO="https://github.com/sbwml/feeds_packages_lang_node-prebuilt"
-THEME_SET="Argon"
+THEME_SET="argon"
 LAN_ADDR="10.10.10.1"
 
 SCRIPT_DIR=$(cd $(dirname $0) && pwd)
@@ -97,6 +97,7 @@ main() {
     fix_kconfig_recursive_dependency
     fix_kmod_nf_ipt_file_clash
     install_feeds
+    normalize_luci_theme_dependencies
     if [[ "${DOCKER_STACK_REQUESTED:-1}" == "1" ]]; then
         update_docker_stack
     else
