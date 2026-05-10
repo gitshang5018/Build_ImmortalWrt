@@ -88,7 +88,17 @@ main() {
     fi
     set_nginx_default_config
     update_uwsgi_limit_as
-    update_design
+    case "${THEME_SET,,}" in
+        argon)
+            update_argon
+            ;;
+        design)
+            update_design
+            ;;
+        *)
+            log_info "未配置额外主题更新: $THEME_SET"
+            ;;
+    esac
     update_nginx_ubus_module
     check_default_settings
     install_opkg_distfeeds
