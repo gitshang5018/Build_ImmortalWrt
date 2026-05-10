@@ -129,6 +129,13 @@ update_mosdns() {
         exit 1
     fi
 
+    if [[ "${BUILD_DEVICE:-}" == "gehua_ghl-r-001_immwrt" ]]; then
+        sed -i -E 's/[[:space:]]+\+curl//g; s/[[:space:]]+\+v2ray-geoip//g; s/[[:space:]]+\+v2ray-geosite//g; s/[[:space:]]+\+v2dat//g' ./package/mosdns/luci-app-mosdns/Makefile
+        log_info "Gehua 32M profile: stripped MosDNS geodata dependencies."
+        log_success "MosDNS 宸插垏鎹㈠埌 sbwml/luci-app-mosdns v5"
+        return 0
+    fi
+
     if ! git clone --depth 1 "$geodata_repo" ./package/v2ray-geodata; then
         log_error "错误：克隆 v2ray-geodata 仓库 $geodata_repo 失败"
         exit 1
@@ -225,6 +232,11 @@ update_homeproxy() {
 }
 
 add_timecontrol() {
+    if is_build_device "gehua_ghl-r-001_immwrt"; then
+        log_info "Gehua 32M profile: skip luci-app-timecontrol update."
+        return 0
+    fi
+
     local timecontrol_dir="$BUILD_DIR/package/luci-app-timecontrol"
     local repo_url="https://github.com/sirpdboy/luci-app-timecontrol.git"
     rm -rf "$timecontrol_dir" 2>/dev/null
@@ -236,6 +248,11 @@ add_timecontrol() {
 }
 
 update_adguardhome() {
+    if is_build_device "gehua_ghl-r-001_immwrt"; then
+        log_info "Gehua 32M profile: skip luci-app-adguardhome update."
+        return 0
+    fi
+
     local adguardhome_dir="$BUILD_DIR/package/feeds/small8/luci-app-adguardhome"
     local repo_url="https://github.com/ZqinKing/luci-app-adguardhome.git"
 
@@ -249,6 +266,11 @@ update_adguardhome() {
 }
 
 update_lucky() {
+    if is_build_device "gehua_ghl-r-001_immwrt"; then
+        log_info "Gehua 32M profile: skip luci-app-lucky update."
+        return 0
+    fi
+
     local lucky_repo_url="https://github.com/gdy666/luci-app-lucky.git"
     local target_small8_dir="$BUILD_DIR/feeds/small8"
     local lucky_dir="$target_small8_dir/lucky"
@@ -319,6 +341,11 @@ update_lucky() {
 }
 
 update_smartdns() {
+    if is_build_device "gehua_ghl-r-001_immwrt"; then
+        log_info "Gehua 32M profile: skip smartdns update."
+        return 0
+    fi
+
     local SMARTDNS_REPO="https://github.com/ZqinKing/openwrt-smartdns.git"
     local SMARTDNS_DIR="$BUILD_DIR/feeds/packages/net/smartdns"
     local LUCI_APP_SMARTDNS_REPO="https://github.com/pymumu/luci-app-smartdns.git"
@@ -349,6 +376,11 @@ update_smartdns() {
 }
 
 update_diskman() {
+    if is_build_device "gehua_ghl-r-001_immwrt"; then
+        log_info "Gehua 32M profile: skip diskman update."
+        return 0
+    fi
+
     local path="$BUILD_DIR/feeds/luci/applications/luci-app-diskman"
     local repo_url="https://github.com/lisaac/luci-app-diskman.git"
     if [ -d "$path" ]; then
@@ -441,6 +473,11 @@ update_dockerman() {
 }
 
 add_quickfile() {
+    if is_build_device "gehua_ghl-r-001_immwrt"; then
+        log_info "Gehua 32M profile: skip luci-app-quickfile update."
+        return 0
+    fi
+
     local repo_url="https://github.com/sbwml/luci-app-quickfile.git"
     local target_dir="$BUILD_DIR/package/emortal/quickfile"
     if [ -d "$target_dir" ]; then
@@ -464,6 +501,11 @@ add_quickfile() {
 }
 
 update_argon() {
+    if is_build_device "gehua_ghl-r-001_immwrt"; then
+        log_info "Gehua 32M profile: skip luci-theme-argon update."
+        return 0
+    fi
+
     local repo_url="https://github.com/ZqinKing/luci-theme-argon.git"
     local dst_theme_path="$BUILD_DIR/feeds/luci/themes/luci-theme-argon"
     local tmp_dir
@@ -485,6 +527,11 @@ update_argon() {
 }
 
 update_design() {
+    if is_build_device "gehua_ghl-r-001_immwrt"; then
+        log_info "Gehua 32M profile: skip luci-theme-design update."
+        return 0
+    fi
+
     local repo_url="https://github.com/0x676e67/luci-theme-design.git"
     local dst_theme_path="$BUILD_DIR/feeds/luci/themes/luci-theme-design"
     local tmp_dir
