@@ -24,6 +24,10 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+is_build_device() {
+    [[ "${BUILD_DEVICE:-}" == "$1" ]]
+}
+
 group_start() {
     if [[ -n "$GITHUB_ACTIONS" ]]; then
         echo "::group::$1"
@@ -40,9 +44,9 @@ group_end() {
 
 clone_repo() {
     group_start "正在克隆仓库"
-    if [[ ! -d $BUILD_DIR ]]; then
+    if [[ ! -d "$BUILD_DIR" ]]; then
         log_info "克隆仓库: $REPO_URL 分支: $REPO_BRANCH"
-        if ! git clone --depth 1 -b $REPO_BRANCH $REPO_URL $BUILD_DIR; then
+        if ! git clone --depth 1 -b "$REPO_BRANCH" "$REPO_URL" "$BUILD_DIR"; then
             log_error "错误：克隆仓库 $REPO_URL 失败"
             exit 1
         fi
@@ -78,12 +82,12 @@ clean_up() {
 
 reset_feeds_conf() {
     group_start "正在重置仓库状态"
-    git reset --hard origin/$REPO_BRANCH
+    git reset --hard "origin/$REPO_BRANCH"
     git clean -f -d
     git pull
     if [[ $COMMIT_HASH != "none" ]]; then
         log_info "检出指定提交: $COMMIT_HASH"
-        git checkout $COMMIT_HASH
+        git checkout "$COMMIT_HASH"
     fi
     group_end
 }

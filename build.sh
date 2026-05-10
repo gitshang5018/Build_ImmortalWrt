@@ -211,6 +211,17 @@ disable_docker_stack_packages() {
     done
 }
 
+disable_config_symbols() {
+    local config_path="$1"
+    shift
+    local symbol
+
+    for symbol in "$@"; do
+        sed -i "/^${symbol}=.*/d; /^# ${symbol} is not set/d" "$config_path"
+        echo "# ${symbol} is not set" >> "$config_path"
+    done
+}
+
 remove_uhttpd_dependency() {
     local config_path="$BASE_PATH/../$BUILD_DIR/.config"
     local luci_makefile_path="$BASE_PATH/../$BUILD_DIR/feeds/luci/collections/luci/Makefile"
@@ -223,6 +234,53 @@ remove_uhttpd_dependency() {
     #fi
 }
 
+get_file_size_bytes() {
+    local file="$1"
+    local size
+
+    if size=$(stat -c%s "$file" 2>/dev/null); then
+        printf '%s\n' "$size"
+        return 0
+    fi
+
+    wc -c < "$file" | tr -d '[:space:]'
+}
+
+enforce_gehua_firmware_size() {
+    [[ "$Dev" == "gehua_ghl-r-001_immwrt" ]] || return 0
+
+    local max_kib=${GEHUA_MAX_IMAGE_KIB:-32448}
+    local max_bytes=$((max_kib * 1024))
+    local failed=0
+    local found=0
+    local image
+    local size
+    local size_kib
+
+    while IFS= read -r -d '' image; do
+        found=1
+        size=$(get_file_size_bytes "$image")
+        [[ -n "$size" ]] || continue
+        size_kib=$(((size + 1023) / 1024))
+
+        if (( size > max_bytes )); then
+            log_error "Gehua firmware exceeds the ${max_kib} KiB image limit: $(basename "$image") is ${size_kib} KiB."
+            failed=1
+        else
+            log_success "Gehua firmware size OK: $(basename "$image") is ${size_kib} KiB <= ${max_kib} KiB."
+        fi
+    done < <(find "$FIRMWARE_DIR" -maxdepth 1 -type f \( -name "*gehua*.bin" -o -name "*ghl-r-001*.bin" \) -print0)
+
+    if (( found == 0 )); then
+        log_warn "No Gehua firmware image was found for size verification."
+    fi
+
+    if (( failed != 0 )); then
+        log_error "Refusing to publish an image larger than the Gehua firmware partition budget."
+        return 1
+    fi
+}
+
 apply_config() {
     \cp -f "$CONFIG_FILE" "$BASE_PATH/../$BUILD_DIR/.config"
     
@@ -231,7 +289,11 @@ apply_config() {
         append_config_fragment "$BASE_PATH/deconfig/nss.config"
     fi
 
-    append_config_fragment "$BASE_PATH/deconfig/compile_base.config"
+    if [[ "$Dev" == "gehua_ghl-r-001_immwrt" ]]; then
+        log_info "Using compact profile for Gehua GHL-R-001; skip shared heavy fragments."
+    else
+        append_config_fragment "$BASE_PATH/deconfig/compile_base.config"
+    fi
 
     if [[ "${DOCKER_STACK_REQUESTED:-0}" == "1" ]]; then
         append_config_fragment "$BASE_PATH/deconfig/docker_deps.config"
@@ -239,7 +301,9 @@ apply_config() {
         log_info "Docker stack is not requested by $Dev; skip docker_deps.config."
     fi
 
-    if grep -q "CONFIG_TARGET_qualcommax_ipq60xx=y" "$BASE_PATH/../$BUILD_DIR/.config"; then
+    if [[ "$Dev" == "gehua_ghl-r-001_immwrt" ]]; then
+        :
+    elif grep -q "CONFIG_TARGET_qualcommax_ipq60xx=y" "$BASE_PATH/../$BUILD_DIR/.config"; then
         log_info "Using proxy_lite.config for ipq60xx."
         append_config_fragment "$BASE_PATH/deconfig/proxy_lite.config"
     else
@@ -267,12 +331,41 @@ apply_config() {
 
         # 仅 gehua 需要额外移除的插件 (32M Flash 极端精简)
         if [[ "$Dev" == "gehua_ghl-r-001_immwrt" ]]; then
-            sed -i 's/CONFIG_PACKAGE_luci-app-lucky=y/# CONFIG_PACKAGE_luci-app-lucky is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
-            sed -i 's/CONFIG_PACKAGE_luci-app-oaf=y/# CONFIG_PACKAGE_luci-app-oaf is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
-            sed -i 's/CONFIG_PACKAGE_luci-app-easytier=y/# CONFIG_PACKAGE_luci-app-easytier is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
-            sed -i 's/CONFIG_PACKAGE_luci-app-openclash=y/# CONFIG_PACKAGE_luci-app-openclash is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
-            sed -i 's/CONFIG_PACKAGE_luci-app-ssr-plus=y/# CONFIG_PACKAGE_luci-app-ssr-plus is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
-            sed -i 's/CONFIG_PACKAGE_luci-app-pbr=y/# CONFIG_PACKAGE_luci-app-pbr is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
+            disable_config_symbols "$BASE_PATH/../$BUILD_DIR/.config" \
+                CONFIG_PACKAGE_luci-app-lucky \
+                CONFIG_PACKAGE_luci-app-oaf \
+                CONFIG_PACKAGE_luci-app-easytier \
+                CONFIG_PACKAGE_luci-app-openclash \
+                CONFIG_PACKAGE_luci-app-passwall \
+                CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Haproxy \
+                CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Xray \
+                CONFIG_PACKAGE_luci-app-ssr-plus \
+                CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Xray \
+                CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Socks5_Proxy \
+                CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Socks_Server \
+                CONFIG_PACKAGE_luci-app-pbr \
+                CONFIG_PACKAGE_luci-app-smartdns \
+                CONFIG_PACKAGE_luci-app-unblockneteasemusic \
+                CONFIG_PACKAGE_luci-app-ttyd \
+                CONFIG_PACKAGE_luci-app-vlmcsd \
+                CONFIG_PACKAGE_luci-theme-argon \
+                CONFIG_PACKAGE_luci-theme-design \
+                CONFIG_PACKAGE_smartdns \
+                CONFIG_PACKAGE_v2ray-geodata \
+                CONFIG_PACKAGE_v2ray-geoip \
+                CONFIG_PACKAGE_v2ray-geosite \
+                CONFIG_PACKAGE_v2dat \
+                CONFIG_PACKAGE_xray-core \
+                CONFIG_PACKAGE_sing-box \
+                CONFIG_PACKAGE_mihomo \
+                CONFIG_PACKAGE_haproxy \
+                CONFIG_PACKAGE_easytier \
+                CONFIG_PACKAGE_lucky \
+                CONFIG_PACKAGE_oaf \
+                CONFIG_PACKAGE_open-app-filter \
+                CONFIG_PACKAGE_coremark \
+                CONFIG_COREMARK_OPTIMIZE_O3 \
+                CONFIG_COREMARK_ENABLE_MULTITHREADING
         fi
     fi
 }
@@ -293,6 +386,7 @@ if config_requests_docker_stack; then
 else
     export DOCKER_STACK_REQUESTED=0
 fi
+export BUILD_DEVICE="$Dev"
 
 "$BASE_PATH/update.sh" "$REPO_URL" "$REPO_BRANCH" "$BUILD_DIR" "$COMMIT_HASH"
 
@@ -344,6 +438,7 @@ FIRMWARE_DIR="$BASE_PATH/../firmware"
 mkdir -p "$FIRMWARE_DIR"
 find "$TARGET_DIR" -type f \( -name "*.bin" -o -name "*.manifest" -o -name "*efi.img.gz" -o -name "*.itb" -o -name "*.fip" -o -name "*.ubi" -o -name "*rootfs.tar.gz" \) -exec cp -f {} "$FIRMWARE_DIR/" \;
 \rm -f "$BASE_PATH/../firmware/Packages.manifest" 2>/dev/null
+enforce_gehua_firmware_size
 
 if [[ -d action_build ]]; then
     make clean

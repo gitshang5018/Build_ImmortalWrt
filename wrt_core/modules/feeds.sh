@@ -45,7 +45,7 @@ update_feeds() {
 install_feeds() {
     log_info "执行 feeds install..."
     ./scripts/feeds update -i
-    for dir in $BUILD_DIR/feeds/*; do
+    for dir in "$BUILD_DIR"/feeds/*; do
         if [ -d "$dir" ] && [[ ! "$dir" == *.tmp ]] && [[ ! "$dir" == *.index ]] && [[ ! "$dir" == *.targetindex ]]; then
             local feed_name=$(basename "$dir")
             log_info "正在安装 feed: $feed_name"

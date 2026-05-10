@@ -27,7 +27,11 @@ NODE_PREBUILT_REPO="https://github.com/sbwml/feeds_packages_lang_node-prebuilt"
 THEME_SET="argon"
 LAN_ADDR="10.10.10.1"
 
-SCRIPT_DIR=$(cd $(dirname $0) && pwd)
+if [[ "${BUILD_DEVICE:-}" == "gehua_ghl-r-001_immwrt" ]]; then
+    THEME_SET="bootstrap"
+fi
+
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 BASE_PATH=${BASE_PATH:-$SCRIPT_DIR}
 
 source "$SCRIPT_DIR/modules/general.sh"
