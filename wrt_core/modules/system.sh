@@ -14,6 +14,11 @@ fix_default_set() {
             \cp -f "$BASE_PATH/patches/tempinfo" "$BUILD_DIR/package/emortal/autocore/files/tempinfo"
         fi
     fi
+    if [ -f "$BUILD_DIR/package/emortal/autocore/files/cpuinfo" ]; then
+        if [ -f "$BASE_PATH/patches/cpuinfo" ]; then
+            \cp -f "$BASE_PATH/patches/cpuinfo" "$BUILD_DIR/package/emortal/autocore/files/cpuinfo"
+        fi
+    fi
 }
 
 normalize_luci_theme_dependencies() {
