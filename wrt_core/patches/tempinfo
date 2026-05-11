@@ -11,7 +11,7 @@ format_temp_file() {
 		if (temp > 1000 || temp < -1000)
 			temp = temp / 1000
 		if (temp > 0 && temp < 130) {
-			printf("%.1f°C", temp)
+			printf("%.1fC", temp)
 			exit
 		}
 	}' "$1" 2>"/dev/null"
@@ -108,13 +108,27 @@ read_cpu_temp() {
 		return 0
 	}
 
-	read_temp_from_thermal_zone
+	temp="$(read_temp_from_thermal_zone)"
+	[ -n "$temp" ] && {
+		echo -n "$temp"
+		return 0
+	}
+
+	command -v sensors >/dev/null 2>&1 || return 1
+	sensors -u 2>"/dev/null" | awk '
+	/^[[:space:]]*temp[0-9]+_input:/ {
+		temp = $2 + 0
+		if (temp > 0 && temp < 130) {
+			printf("%.1fC", temp)
+			exit
+		}
+	}'
 }
 
 if grep -Eq "ipq40xx|ipq806x" "/etc/openwrt_release"; then
-	wifi_temp="$(awk '{printf("%.1f°C ", $0 / 1000)}' "$IEEE_PATH"/phy*/device/hwmon/hwmon*/temp1_input 2>"/dev/null" | awk '$1=$1')"
+	wifi_temp="$(awk '{printf("%.1fC ", $0 / 1000)}' "$IEEE_PATH"/phy*/device/hwmon/hwmon*/temp1_input 2>"/dev/null" | awk '$1=$1')"
 else
-	wifi_temp="$(cat "$IEEE_PATH"/phy*/hwmon*/temp1_input 2>"/dev/null" | awk '{printf("%.1f°C ", $0 / 1000)}' | awk '$1=$1')"
+	wifi_temp="$(cat "$IEEE_PATH"/phy*/hwmon*/temp1_input 2>"/dev/null" | awk '{printf("%.1fC ", $0 / 1000)}' | awk '$1=$1')"
 fi
 
 if grep -q "ipq40xx" "/etc/openwrt_release"; then

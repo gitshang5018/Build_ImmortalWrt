@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 
 fix_default_set() {
+    local autocore_base_dir
+    local autocore_files_dir
+    local patched_autocore=0
+
     normalize_luci_theme_dependencies
 
     if ! is_build_device "gehua_ghl-r-001_immwrt"; then
@@ -9,15 +13,27 @@ fix_default_set() {
     install -Dm544 "$BASE_PATH/patches/991_custom_settings" "$BUILD_DIR/package/base-files/files/etc/uci-defaults/991_custom_settings"
     install -Dm544 "$BASE_PATH/patches/992_set-wifi-uci.sh" "$BUILD_DIR/package/base-files/files/etc/uci-defaults/992_set-wifi-uci.sh"
 
-    if [ -f "$BUILD_DIR/package/emortal/autocore/files/tempinfo" ]; then
-        if [ -f "$BASE_PATH/patches/tempinfo" ]; then
-            \cp -f "$BASE_PATH/patches/tempinfo" "$BUILD_DIR/package/emortal/autocore/files/tempinfo"
-        fi
-    fi
-    if [ -f "$BUILD_DIR/package/emortal/autocore/files/cpuinfo" ]; then
-        if [ -f "$BASE_PATH/patches/cpuinfo" ]; then
-            \cp -f "$BASE_PATH/patches/cpuinfo" "$BUILD_DIR/package/emortal/autocore/files/cpuinfo"
-        fi
+    for autocore_base_dir in \
+        "$BUILD_DIR/package/emortal/autocore" \
+        "$BUILD_DIR/package/lean/autocore"; do
+        [ -d "$autocore_base_dir" ] || continue
+
+        for autocore_files_dir in \
+            "$autocore_base_dir/files" \
+            "$autocore_base_dir/files/sbin" \
+            "$autocore_base_dir/files/generic" \
+            "$autocore_base_dir/files/x86"; do
+            if [ -d "$autocore_files_dir" ]; then
+                install -Dm755 "$BASE_PATH/patches/tempinfo" "$autocore_files_dir/tempinfo"
+                install -Dm755 "$BASE_PATH/patches/cpuinfo" "$autocore_files_dir/cpuinfo"
+                patched_autocore=1
+            fi
+        done
+    done
+
+    if [ "$patched_autocore" = "0" ]; then
+        install -Dm755 "$BASE_PATH/patches/tempinfo" "$BUILD_DIR/package/base-files/files/sbin/tempinfo"
+        install -Dm755 "$BASE_PATH/patches/cpuinfo" "$BUILD_DIR/package/base-files/files/sbin/cpuinfo"
     fi
 }
 

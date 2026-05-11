@@ -14,7 +14,7 @@ format_temp_file() {
 		if (temp > 1000 || temp < -1000)
 			temp = temp / 1000
 		if (temp > 0 && temp < 130) {
-			printf("%.1f°C", temp)
+			printf("%.1fC", temp)
 			exit
 		}
 	}' "$1" 2>"/dev/null"
@@ -111,7 +111,45 @@ read_cpu_temp() {
 		return 0
 	}
 
-	read_temp_from_thermal_zone
+	temp="$(read_temp_from_thermal_zone)"
+	[ -n "$temp" ] && {
+		echo -n "$temp"
+		return 0
+	}
+
+	command -v sensors >/dev/null 2>&1 || return 1
+	sensors -u 2>"/dev/null" | awk '
+	/^[[:space:]]*temp[0-9]+_input:/ {
+		temp = $2 + 0
+		if (temp > 0 && temp < 130) {
+			printf("%.1fC", temp)
+			exit
+		}
+	}'
+}
+
+read_cpu_freq_from_cpufreq() {
+	for freq_file in \
+		"$CPUFREQ_PATH"/policy*/scaling_cur_freq \
+		"$CPUFREQ_PATH"/policy*/cpuinfo_cur_freq \
+		/sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq \
+		/sys/devices/system/cpu/cpu*/cpufreq/cpuinfo_cur_freq; do
+		[ -r "$freq_file" ] || continue
+		awk '
+		/^[0-9]+$/ {
+			freq = $1 + 0
+			if (freq > 10000000)
+				freq = freq / 1000000
+			else if (freq > 10000)
+				freq = freq / 1000
+			if (freq > 0)
+				printf("%.0fMHz\n", freq)
+		}' "$freq_file"
+	done | awk '!seen[$0]++ { if (out) out = out " " $0; else out = $0 } END { if (out) printf "%s", out }'
+}
+
+read_cpu_freq_from_cpuinfo() {
+	awk -F ': ' '/cpu MHz/ {freq = $2 + 0; if (freq > 0) {printf("%.0fMHz", freq); exit}}' "$CPUINFO_PATH" 2>"/dev/null"
 }
 
 cpu_arch="$(awk -F ': ' '/model name/ {print $2}' "$CPUINFO_PATH" | head -n1)"
@@ -133,7 +171,8 @@ case "$DISTRIB_TARGET" in
 "sunxi/cortexa53")
 	cpu_freq="$(awk '{printf("%.fMHz ", $0 / 1000)}' "$CPUFREQ_PATH"/policy*/cpuinfo_cur_freq | awk '$1=$1')" ;;
 "x86"/*)
-	cpu_freq="$(awk -F ': ' '/MHz/ {print $2}' "$CPUINFO_PATH" | head -n1)MHz" ;;
+	cpu_freq="$(read_cpu_freq_from_cpufreq)"
+	[ -n "$cpu_freq" ] || cpu_freq="$(read_cpu_freq_from_cpuinfo)" ;;
 *)
 	[ ! -e "$CPUFREQ_PATH/policy0/cpuinfo_cur_freq" ] || \
 		cpu_freq="$(awk '{printf("%.fMHz", $0 / 1000)}' "$CPUFREQ_PATH/policy0/cpuinfo_cur_freq")"
@@ -142,18 +181,18 @@ esac
 
 case "$DISTRIB_TARGET" in
 "bcm27xx"/*)
-	cpu_temp="$(vcgencmd measure_temp | awk -F '=' '{print $2}' | awk -F "'" '{print $1}')°C" ;;
+	cpu_temp="$(vcgencmd measure_temp | awk -F '=' '{print $2}' | awk -F "'" '{print $1}')C" ;;
 "ipq40xx"/*|"ipq806x"/*|"mediatek"/*|"qualcommax"/*) ;;
 "x86"/*)
 	if [ -n "$(uci -q get "wechatpush.config.server_host")" ]; then
-		cpu_temp="$(/usr/share/wechatpush/wechatpush soc)°C"
+		cpu_temp="$(/usr/share/wechatpush/wechatpush soc)C"
 	else
 		cpu_temp="$(read_cpu_temp)"
 	fi
 	;;
 *)
 	[ ! -e "$THERMAL_PATH/thermal_zone0/temp" ] || \
-		cpu_temp="$(awk '{printf("%.1f°C", $0 / 1000)}' "$THERMAL_PATH/thermal_zone0/temp")"
+		cpu_temp="$(awk '{printf("%.1fC", $0 / 1000)}' "$THERMAL_PATH/thermal_zone0/temp")"
 	;;
 esac
 
