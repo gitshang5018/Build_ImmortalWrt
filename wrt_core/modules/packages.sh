@@ -1,5 +1,24 @@
 #!/usr/bin/env bash
 
+cleanup_tmp_dir() {
+    local tmp_dir="$1"
+    local retry_index
+
+    [ -n "$tmp_dir" ] && [ -e "$tmp_dir" ] || return 0
+
+    for retry_index in 1 2 3; do
+        rm -rf "$tmp_dir" 2>/dev/null && return 0
+        sleep 1
+    done
+
+    log_info "Skip stale temporary directory cleanup: $tmp_dir"
+    return 0
+}
+
+git_no_maintenance() {
+    git -c gc.auto=0 -c maintenance.auto=false "$@"
+}
+
 remove_unwanted_packages() {
     local luci_packages=(
         "luci-app-passwall" "luci-app-ddns-go" "luci-app-rclone"
@@ -383,26 +402,25 @@ update_diskman() {
 
     local path="$BUILD_DIR/feeds/luci/applications/luci-app-diskman"
     local repo_url="https://github.com/lisaac/luci-app-diskman.git"
+    local tmp_dir
+
     if [ -d "$path" ]; then
         echo "正在更新 diskman..."
-        cd "$BUILD_DIR/feeds/luci/applications" || return
-        \rm -rf "luci-app-diskman"
+        \rm -rf "$path"
 
-        if ! git clone --filter=blob:none --no-checkout "$repo_url" diskman; then
+        tmp_dir=$(mktemp -d) || return 1
+        if ! git_no_maintenance clone --filter=blob:none --no-checkout "$repo_url" "$tmp_dir"; then
             echo "错误：从 $repo_url 克隆 diskman 仓库失败" >&2
+            cleanup_tmp_dir "$tmp_dir"
             exit 1
         fi
-        cd diskman || return
 
-        git sparse-checkout init --cone
-        git sparse-checkout set applications/luci-app-diskman || return
+        git_no_maintenance -C "$tmp_dir" sparse-checkout init --cone || { cleanup_tmp_dir "$tmp_dir"; return 1; }
+        git_no_maintenance -C "$tmp_dir" sparse-checkout set applications/luci-app-diskman || { cleanup_tmp_dir "$tmp_dir"; return 1; }
+        git_no_maintenance -C "$tmp_dir" checkout --quiet || { cleanup_tmp_dir "$tmp_dir"; return 1; }
 
-        git checkout --quiet
-
-        mv applications/luci-app-diskman ../luci-app-diskman || return
-        cd .. || return
-        \rm -rf diskman
-        cd "$BUILD_DIR"
+        mv "$tmp_dir/applications/luci-app-diskman" "$path" || { cleanup_tmp_dir "$tmp_dir"; return 1; }
+        cleanup_tmp_dir "$tmp_dir"
 
         sed -i 's/fs-ntfs /fs-ntfs3 /g' "$path/Makefile"
         sed -i '/ntfs-3g-utils /d' "$path/Makefile"
@@ -412,27 +430,25 @@ update_diskman() {
 _sync_luci_lib_docker() {
     local lib_path="$BUILD_DIR/feeds/luci/libs/luci-lib-docker"
     local repo_url="https://github.com/lisaac/luci-lib-docker.git"
+    local tmp_dir
     
     if [ ! -d "$lib_path" ]; then
         echo "正在同步 luci-lib-docker..."
         mkdir -p "$BUILD_DIR/feeds/luci/libs" || return
-        cd "$BUILD_DIR/feeds/luci/libs" || return
-        
-        if ! git clone --filter=blob:none --no-checkout "$repo_url" luci-lib-docker-tmp; then
+
+        tmp_dir=$(mktemp -d) || return 1
+        if ! git_no_maintenance clone --filter=blob:none --no-checkout "$repo_url" "$tmp_dir"; then
             echo "错误：从 $repo_url 克隆 luci-lib-docker 仓库失败" >&2
+            cleanup_tmp_dir "$tmp_dir"
             exit 1
         fi
-        cd luci-lib-docker-tmp || return
-        
-        git sparse-checkout init --cone
-        git sparse-checkout set collections/luci-lib-docker || return
-        
-        git checkout --quiet
-        
-        mv collections/luci-lib-docker ../luci-lib-docker || return
-        cd .. || return
-        \rm -rf luci-lib-docker-tmp
-        cd "$BUILD_DIR"
+
+        git_no_maintenance -C "$tmp_dir" sparse-checkout init --cone || { cleanup_tmp_dir "$tmp_dir"; return 1; }
+        git_no_maintenance -C "$tmp_dir" sparse-checkout set collections/luci-lib-docker || { cleanup_tmp_dir "$tmp_dir"; return 1; }
+        git_no_maintenance -C "$tmp_dir" checkout --quiet || { cleanup_tmp_dir "$tmp_dir"; return 1; }
+
+        mv "$tmp_dir/collections/luci-lib-docker" "$lib_path" || { cleanup_tmp_dir "$tmp_dir"; return 1; }
+        cleanup_tmp_dir "$tmp_dir"
         echo "luci-lib-docker 同步完成"
     fi
 }
@@ -440,29 +456,27 @@ _sync_luci_lib_docker() {
 update_dockerman() {
     local path="$BUILD_DIR/feeds/luci/applications/luci-app-dockerman"
     local repo_url="https://github.com/lisaac/luci-app-dockerman.git"
+    local tmp_dir
 
     if [ -d "$path" ]; then
         echo "正在更新 dockerman..."
         _sync_luci_lib_docker || return
         
-        cd "$BUILD_DIR/feeds/luci/applications" || return
-        \rm -rf "luci-app-dockerman"
+        \rm -rf "$path"
 
-        if ! git clone --filter=blob:none --no-checkout "$repo_url" dockerman; then
+        tmp_dir=$(mktemp -d) || return 1
+        if ! git_no_maintenance clone --filter=blob:none --no-checkout "$repo_url" "$tmp_dir"; then
             echo "错误：从 $repo_url 克隆 dockerman 仓库失败" >&2
+            cleanup_tmp_dir "$tmp_dir"
             exit 1
         fi
-        cd dockerman || return
 
-        git sparse-checkout init --cone
-        git sparse-checkout set applications/luci-app-dockerman || return
+        git_no_maintenance -C "$tmp_dir" sparse-checkout init --cone || { cleanup_tmp_dir "$tmp_dir"; return 1; }
+        git_no_maintenance -C "$tmp_dir" sparse-checkout set applications/luci-app-dockerman || { cleanup_tmp_dir "$tmp_dir"; return 1; }
+        git_no_maintenance -C "$tmp_dir" checkout --quiet || { cleanup_tmp_dir "$tmp_dir"; return 1; }
 
-        git checkout --quiet
-
-        mv applications/luci-app-dockerman ../luci-app-dockerman || return
-        cd .. || return
-        \rm -rf dockerman
-        cd "$BUILD_DIR"
+        mv "$tmp_dir/applications/luci-app-dockerman" "$path" || { cleanup_tmp_dir "$tmp_dir"; return 1; }
+        cleanup_tmp_dir "$tmp_dir"
 
         if declare -F docker_stack_sync_dockerman_nftables_compat >/dev/null 2>&1; then
             docker_stack_sync_dockerman_nftables_compat "$BUILD_DIR" "0" || return 1
