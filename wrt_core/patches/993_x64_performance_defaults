@@ -1,0 +1,31 @@
+#!/bin/sh
+
+touch /etc/sysctl.conf
+
+modprobe tcp_bbr 2>/dev/null
+modprobe sch_fq 2>/dev/null
+modprobe nft_flow_offload 2>/dev/null
+modprobe sch_cake 2>/dev/null
+modprobe ifb 2>/dev/null
+
+set_sysctl() {
+    local key="$1"
+    local value="$2"
+    local escaped_key
+
+    escaped_key=$(printf '%s' "$key" | sed 's/\./\\./g')
+    sed -i "/^${escaped_key}[[:space:]]*=/d" /etc/sysctl.conf
+    echo "${key} = ${value}" >> /etc/sysctl.conf
+}
+
+set_sysctl net.core.default_qdisc fq
+set_sysctl net.ipv4.tcp_congestion_control bbr
+set_sysctl net.ipv4.tcp_fastopen 3
+
+sysctl -p >/dev/null 2>&1
+
+uci -q set firewall.@defaults[0].flow_offloading='1'
+uci -q set firewall.@defaults[0].flow_offloading_hw='0'
+uci -q commit firewall
+
+exit 0
