@@ -46,32 +46,26 @@ class RouterRepository(private val client: UbusClient) {
                 for (el in ifaces) {
                     val iface = el.asJsonObject
                     val ifName = iface.get("interface")?.asString?.lowercase() ?: ""
-                    val isUp = iface.get("up")?.asBoolean ?: false
+                    val isUp = iface.get("up")?.asBoolean ?: (iface.get("uptime")?.asLong ?: 0L > 0)
+
+                    val ipv4Arr = iface.getAsJsonArray("ipv4-address")
+                    val ip4 = ipv4Arr?.firstOrNull()?.asJsonObject?.get("address")?.asString
+
+                    val ipv6Arr = iface.getAsJsonArray("ipv6-address")
+                    val ip6 = ipv6Arr?.firstOrNull()?.asJsonObject?.get("address")?.asString
 
                     if (ifName == "lan") {
-                        val ipv4Arr = iface.getAsJsonArray("ipv4-address")
-                        val ip = ipv4Arr?.firstOrNull()?.asJsonObject?.get("address")?.asString
-                        if (!ip.isNullOrBlank()) lanIp = ip
-                    }
-
-                    if (isUp && (ifName.contains("wan") || ifName.contains("pppoe") || ifName.contains("modem"))) {
-                        // 提取 IPv4
-                        val ipv4Arr = iface.getAsJsonArray("ipv4-address")
-                        val ip4 = ipv4Arr?.firstOrNull()?.asJsonObject?.get("address")?.asString
-                        if (!ip4.isNullOrBlank() && (wanIpv4 == "未连接" || ifName == "wan" || ifName == "pppoe-wan")) {
-                            wanIpv4 = ip4
+                        if (!ip4.isNullOrBlank()) lanIp = ip4
+                    } else if (ifName != "loopback" && !ifName.startsWith("br-") && !ifName.contains("lan")) {
+                        // 任意非 LAN / 非回环上行接口 (wan, pppoe-wan, modem, wwan, eth1, eth4 等)
+                        if (!ip4.isNullOrBlank() && ip4 != "127.0.0.1" && !ip4.startsWith("169.254")) {
+                            if (wanIpv4 == "未连接" || ifName == "wan" || ifName.contains("pppoe") || ifName.contains("wan")) {
+                                wanIpv4 = ip4
+                            }
                         }
-
-                        // 提取 IPv6
-                        val ipv6Arr = iface.getAsJsonArray("ipv6-address")
-                        val ip6 = ipv6Arr?.firstOrNull()?.asJsonObject?.get("address")?.asString
-                        if (!ip6.isNullOrBlank() && (wanIpv6 == "未分配" || ifName.contains("wan6") || ifName.contains("wan_6"))) {
-                            wanIpv6 = ip6
-                        } else {
-                            val prefixArr = iface.getAsJsonArray("ipv6-prefix-assignment")
-                            val prefix = prefixArr?.firstOrNull()?.asJsonObject?.get("address")?.asString
-                            if (!prefix.isNullOrBlank() && wanIpv6 == "未分配") {
-                                wanIpv6 = "$prefix/64"
+                        if (!ip6.isNullOrBlank() && !ip6.startsWith("fe80") && !ip6.startsWith("::1")) {
+                            if (wanIpv6 == "未分配" || ifName.contains("wan6") || ifName.contains("wan_6")) {
+                                wanIpv6 = ip6
                             }
                         }
                     }
@@ -79,14 +73,24 @@ class RouterRepository(private val client: UbusClient) {
             }
 
             if (wanIpv4 == "未连接") {
-                val wanStatus = client.callRaw("network.interface.wan", "status").getOrNull()
-                val ip4 = wanStatus?.getAsJsonArray("ipv4-address")?.firstOrNull()?.asJsonObject?.get("address")?.asString
-                if (!ip4.isNullOrBlank()) wanIpv4 = ip4
+                for (wName in listOf("wan", "pppoe-wan", "wan_4", "wan6", "internet", "wwan", "tethering", "eth1", "eth4")) {
+                    val st = client.callRaw("network.interface.$wName", "status").getOrNull()
+                    val ip4 = st?.getAsJsonArray("ipv4-address")?.firstOrNull()?.asJsonObject?.get("address")?.asString
+                    if (!ip4.isNullOrBlank() && ip4 != "127.0.0.1" && !ip4.startsWith("169.254")) {
+                        wanIpv4 = ip4
+                        break
+                    }
+                }
             }
             if (wanIpv6 == "未分配") {
-                val wan6Status = client.callRaw("network.interface.wan6", "status").getOrNull()
-                val ip6 = wan6Status?.getAsJsonArray("ipv6-address")?.firstOrNull()?.asJsonObject?.get("address")?.asString
-                if (!ip6.isNullOrBlank()) wanIpv6 = ip6
+                for (w6Name in listOf("wan6", "wan_6", "wan", "pppoe-wan")) {
+                    val st6 = client.callRaw("network.interface.$w6Name", "status").getOrNull()
+                    val ip6 = st6?.getAsJsonArray("ipv6-address")?.firstOrNull()?.asJsonObject?.get("address")?.asString
+                    if (!ip6.isNullOrBlank() && !ip6.startsWith("fe80") && !ip6.startsWith("::1")) {
+                        wanIpv6 = ip6
+                        break
+                    }
+                }
             }
 
             val loadAvg = sysInfo.load?.firstOrNull()?.toFloat()?.div(65536f)?.times(100f)?.coerceIn(0f, 100f) ?: 5f
@@ -106,94 +110,125 @@ class RouterRepository(private val client: UbusClient) {
                 return if (deg in 15..125) deg else null
             }
 
-            // 真实物理无线与硬件温控传感器探测 (支持多频段 Wi-Fi 各自独立测温，实时外网 IP 精准提取)
-            val detectScript = "if [ -d /sys/class/ieee80211 ] && [ -n \"\$(ls /sys/class/ieee80211 2>/dev/null)\" ]; then echo 'WIFI_HW:1'; elif [ -n \"\$(ls /sys/class/net/phy* /sys/class/net/wlan* /sys/class/net/ath* 2>/dev/null)\" ]; then echo 'WIFI_HW:1'; elif iw dev 2>/dev/null | grep -q Interface; then echo 'WIFI_HW:1'; else echo 'WIFI_HW:0'; fi; for z in /sys/class/thermal/thermal_zone*; do if [ -d \"\$z\" ]; then zt=\$(cat \"\$z/type\" 2>/dev/null); zv=\$(cat \"\$z/temp\" 2>/dev/null); [ -n \"\$zv\" ] && echo \"ZONE:\$zt:\$zv\"; fi; done; for h in /sys/class/hwmon/hwmon*; do if [ -d \"\$h\" ]; then hn=\$(cat \"\$h/name\" 2>/dev/null); for t in \"\$h\"/temp*_input; do if [ -f \"\$t\" ]; then tv=\$(cat \"\$t\" 2>/dev/null); [ -n \"\$tv\" ] && echo \"HWMON:\$hn:\$tv\"; fi; done; fi; done; for p in /sys/class/net/phy* /sys/class/ieee80211/*; do if [ -d \"\$p\" ]; then pname=\$(basename \"\$p\"); tval=\$(cat \"\$p\"/device/hwmon/hwmon*/temp1_input 2>/dev/null | head -n 1); [ -n \"\$tval\" ] && echo \"RADIO_TEMP:\$pname:\$tval\"; [ -z \"\$tval\" ] && tval=\$(cat /sys/kernel/debug/ath11k/*/\$pname/temperature 2>/dev/null | head -n 1); [ -n \"\$tval\" ] && echo \"RADIO_TEMP:\$pname:\$tval\"; fi; done; if [ -x /sbin/cpuusage ]; then st=\$(/sbin/cpuusage 2>/dev/null | grep -oE '[0-9]+(\\.[0-9]+)?(°C|C)' | head -n 1 | tr -dc '0-9.'); [ -n \"\$st\" ] && echo \"SOC_TEMP:\$st\"; fi; DDEV=\$(ip -4 route show default 2>/dev/null | awk '{print \$5}' | head -n 1); [ -z \"\$DDEV\" ] && DDEV=\$(ip -4 route show 2>/dev/null | awk '/default/{print \$5}' | head -n 1); if [ -n \"\$DDEV\" ]; then LIP4=\$(ip -4 addr show dev \"\$DDEV\" 2>/dev/null | awk '/inet /{print \$2}' | cut -d/ -f1 | head -n 1); [ -n \"\$LIP4\" ] && echo \"LIVE_WAN4:\$LIP4\"; fi; DDEV6=\$(ip -6 route show default 2>/dev/null | awk '{print \$5}' | head -n 1); [ -z \"\$DDEV6\" ] && DDEV6=\$(ip -6 route show 2>/dev/null | awk '/default/{print \$5}' | head -n 1); if [ -n \"\$DDEV6\" ]; then LIP6=\$(ip -6 addr show dev \"\$DDEV6\" 2>/dev/null | grep -E 'inet6 ' | grep -v 'fe80:' | grep -v '::1' | awk '{print \$2}' | head -n 1); [ -n \"\$LIP6\" ] && echo \"LIVE_WAN6:\$LIP6\"; fi"
-
-            val hwDetectResp = client.callRaw("file", "exec", mapOf(
-                "command" to "/bin/sh",
-                "params" to listOf("-c", detectScript)
-            ))
-            val hwOut = hwDetectResp.getOrNull()?.get("stdout")?.asString ?: ""
-            var hasWirelessHw = false
-            var cpuTemp: String? = null
-            val perRadioTemps = mutableMapOf<String, Int>()
-
             val cpuCandidates = mutableListOf<Int>()
             val wifiCandidates = mutableListOf<Int>()
+            val perRadioTemps = mutableMapOf<String, Int>()
+            var hasWirelessHw = false
+            var cpuTemp: String? = null
 
-            hwOut.lineSequence().forEach { line ->
-                val trimmed = line.trim()
-                if (trimmed.startsWith("WIFI_HW:")) {
-                    hasWirelessHw = trimmed.substringAfter("WIFI_HW:") == "1"
-                } else if (trimmed.startsWith("LIVE_WAN4:")) {
-                    val liveIp = trimmed.substringAfter("LIVE_WAN4:").trim()
-                    if (liveIp.isNotBlank()) {
-                        wanIpv4 = liveIp
-                    }
-                } else if (trimmed.startsWith("LIVE_WAN6:")) {
-                    val liveIp6 = trimmed.substringAfter("LIVE_WAN6:").trim()
-                    if (liveIp6.isNotBlank() && (wanIpv6 == "未分配" || !wanIpv6.contains(":"))) {
-                        wanIpv6 = liveIp6
-                    }
-                } else if (trimmed.startsWith("RADIO_TEMP:")) {
-                    val parts = trimmed.split(":")
-                    if (parts.size >= 3) {
-                        val rname = parts[1]
-                        val raw = parts[2].toLongOrNull()
-                        if (raw != null) {
-                            parseTempToDegree(raw)?.let { deg ->
-                                perRadioTemps[rname] = deg
-                                wifiCandidates.add(deg)
-                            }
+            // 源 1：尝试通过 LuCI RPC 标准接口读取温控 (luci.getCPUInfo / luci.getSystemInfo)
+            try {
+                val luciCpu = client.callRaw("luci", "getCPUInfo").getOrNull()
+                    ?: client.callRaw("luci", "getSystemInfo").getOrNull()
+                if (luciCpu != null) {
+                    val tVal = luciCpu.get("temperature")?.asString
+                        ?: luciCpu.get("temp")?.asString
+                        ?: luciCpu.get("cputemp")?.asString
+                    if (!tVal.isNullOrBlank()) {
+                        val num = tVal.replace("°C", "").replace("C", "").trim().toFloatOrNull()?.toInt()
+                        if (num != null && num in 15..125) {
+                            cpuCandidates.add(num)
                         }
-                    }
-                } else if (trimmed.startsWith("ZONE:")) {
-                    val parts = trimmed.split(":")
-                    if (parts.size >= 3) {
-                        val type = parts[1].lowercase()
-                        val raw = parts[2].toLongOrNull()
-                        if (raw != null) {
-                            parseTempToDegree(raw)?.let { deg ->
-                                if (type.contains("wifi") || type.contains("wlan") || type.contains("radio") || type.contains("phy") || type.contains("mt79") || type.contains("ath") || type.contains("qcn")) {
-                                    wifiCandidates.add(deg)
-                                } else {
-                                    cpuCandidates.add(deg)
-                                }
-                            }
-                        }
-                    }
-                } else if (trimmed.startsWith("HWMON:")) {
-                    val parts = trimmed.split(":")
-                    if (parts.size >= 3) {
-                        val name = parts[1].lowercase()
-                        val raw = parts[2].toLongOrNull()
-                        if (raw != null) {
-                            parseTempToDegree(raw)?.let { deg ->
-                                if (name.contains("wifi") || name.contains("wlan") || name.contains("radio") || name.contains("phy") || name.contains("mt79") || name.contains("ath") || name.contains("qcn")) {
-                                    wifiCandidates.add(deg)
-                                } else {
-                                    cpuCandidates.add(deg)
-                                }
-                            }
-                        }
-                    }
-                } else if (trimmed.startsWith("SOC_TEMP:")) {
-                    val rawStr = trimmed.substringAfter("SOC_TEMP:").trim()
-                    rawStr.toFloatOrNull()?.toInt()?.let { deg ->
-                        if (deg in 15..125) cpuCandidates.add(deg)
                     }
                 }
+            } catch (_: Exception) {}
+
+            // 源 2：直接批量读取 Linux 标准 thermal_zone 与 hwmon sysfs (不依赖 shell 权限)
+            for (idx in 0..5) {
+                try {
+                    val zTemp = client.callRaw("file", "read", mapOf("path" to "/sys/class/thermal/thermal_zone$idx/temp")).getOrNull()?.get("data")?.asString?.trim()?.toLongOrNull()
+                    zTemp?.let { parseTempToDegree(it) }?.let { deg ->
+                        if (idx == 0) cpuCandidates.add(deg) else wifiCandidates.add(deg)
+                    }
+                } catch (_: Exception) {}
+
+                try {
+                    val hTemp = client.callRaw("file", "read", mapOf("path" to "/sys/class/hwmon/hwmon$idx/temp1_input")).getOrNull()?.get("data")?.asString?.trim()?.toLongOrNull()
+                    hTemp?.let { parseTempToDegree(it) }?.let { deg ->
+                        if (cpuCandidates.isEmpty()) cpuCandidates.add(deg) else wifiCandidates.add(deg)
+                    }
+                } catch (_: Exception) {}
             }
 
-            // 二级兜底：若命令行探测未采到 CPU 温度，尝试直接读取 thermal_zone0 / thermal_zone1 / hwmon0
-            if (cpuCandidates.isEmpty()) {
-                val directZone0 = client.callRaw("file", "read", mapOf("path" to "/sys/class/thermal/thermal_zone0/temp")).getOrNull()?.get("data")?.asString?.trim()?.toLongOrNull()
-                val directZone1 = client.callRaw("file", "read", mapOf("path" to "/sys/class/thermal/thermal_zone1/temp")).getOrNull()?.get("data")?.asString?.trim()?.toLongOrNull()
-                val directHwmon0 = client.callRaw("file", "read", mapOf("path" to "/sys/class/hwmon/hwmon0/temp1_input")).getOrNull()?.get("data")?.asString?.trim()?.toLongOrNull()
+            // 源 3：通过高权限 shell 探针全盘扫描与提取实时出口 WAN IP
+            val detectScript = "if [ -d /sys/class/ieee80211 ] && [ -n \"\$(ls /sys/class/ieee80211 2>/dev/null)\" ]; then echo 'WIFI_HW:1'; elif [ -n \"\$(ls /sys/class/net/phy* /sys/class/net/wlan* /sys/class/net/ath* 2>/dev/null)\" ]; then echo 'WIFI_HW:1'; elif iw dev 2>/dev/null | grep -q Interface; then echo 'WIFI_HW:1'; else echo 'WIFI_HW:0'; fi; for z in /sys/class/thermal/thermal_zone*; do if [ -d \"\$z\" ]; then zt=\$(cat \"\$z/type\" 2>/dev/null); zv=\$(cat \"\$z/temp\" 2>/dev/null); [ -n \"\$zv\" ] && echo \"ZONE:\$zt:\$zv\"; fi; done; for h in /sys/class/hwmon/hwmon*; do if [ -d \"\$h\" ]; then hn=\$(cat \"\$h/name\" 2>/dev/null); for t in \"\$h\"/temp*_input; do if [ -f \"\$t\" ]; then tv=\$(cat \"\$t\" 2>/dev/null); [ -n \"\$tv\" ] && echo \"HWMON:\$hn:\$tv\"; fi; done; fi; done; for p in /sys/class/net/phy* /sys/class/ieee80211/*; do if [ -d \"\$p\" ]; then pname=\$(basename \"\$p\"); tval=\$(cat \"\$p\"/device/hwmon/hwmon*/temp1_input 2>/dev/null | head -n 1); [ -n \"\$tval\" ] && echo \"RADIO_TEMP:\$pname:\$tval\"; [ -z \"\$tval\" ] && tval=\$(cat /sys/kernel/debug/ath11k/*/\$pname/temperature 2>/dev/null | head -n 1); [ -n \"\$tval\" ] && echo \"RADIO_TEMP:\$pname:\$tval\"; fi; done; if [ -x /sbin/cpuusage ]; then st=\$(/sbin/cpuusage 2>/dev/null | grep -oE '[0-9]+(\\.[0-9]+)?(°C|C)' | head -n 1 | tr -dc '0-9.'); [ -n \"\$st\" ] && echo \"SOC_TEMP:\$st\"; fi; DDEV=\$(ip -4 route show default 2>/dev/null | awk '{print \$5}' | head -n 1); [ -z \"\$DDEV\" ] && DDEV=\$(ip -4 route show 2>/dev/null | awk '/default/{print \$5}' | head -n 1); if [ -n \"\$DDEV\" ]; then LIP4=\$(ip -4 addr show dev \"\$DDEV\" 2>/dev/null | awk '/inet /{print \$2}' | cut -d/ -f1 | head -n 1); [ -n \"\$LIP4\" ] && echo \"LIVE_WAN4:\$LIP4\"; fi; DDEV6=\$(ip -6 route show default 2>/dev/null | awk '{print \$5}' | head -n 1); [ -z \"\$DDEV6\" ] && DDEV6=\$(ip -6 route show 2>/dev/null | awk '/default/{print \$5}' | head -n 1); if [ -n \"\$DDEV6\" ]; then LIP6=\$(ip -6 addr show dev \"\$DDEV6\" 2>/dev/null | grep -E 'inet6 ' | grep -v 'fe80:' | grep -v '::1' | awk '{print \$2}' | head -n 1); [ -n \"\$LIP6\" ] && echo \"LIVE_WAN6:\$LIP6\"; fi"
 
-                directZone0?.let { parseTempToDegree(it) }?.let { cpuCandidates.add(it) }
-                directHwmon0?.let { parseTempToDegree(it) }?.let { cpuCandidates.add(it) }
-                directZone1?.let { parseTempToDegree(it) }?.let { if (cpuCandidates.isNotEmpty()) wifiCandidates.add(it) else cpuCandidates.add(it) }
+            try {
+                val hwDetectResp = client.callRaw("file", "exec", mapOf(
+                    "command" to "/bin/sh",
+                    "params" to listOf("-c", detectScript)
+                ))
+                val hwOut = hwDetectResp.getOrNull()?.get("stdout")?.asString ?: ""
+
+                hwOut.lineSequence().forEach { line ->
+                    val trimmed = line.trim()
+                    if (trimmed.startsWith("WIFI_HW:")) {
+                        hasWirelessHw = trimmed.substringAfter("WIFI_HW:") == "1"
+                    } else if (trimmed.startsWith("LIVE_WAN4:")) {
+                        val liveIp = trimmed.substringAfter("LIVE_WAN4:").trim()
+                        if (liveIp.isNotBlank() && liveIp != "127.0.0.1" && !liveIp.startsWith("169.254")) {
+                            wanIpv4 = liveIp
+                        }
+                    } else if (trimmed.startsWith("LIVE_WAN6:")) {
+                        val liveIp6 = trimmed.substringAfter("LIVE_WAN6:").trim()
+                        if (liveIp6.isNotBlank() && (wanIpv6 == "未分配" || !wanIpv6.contains(":"))) {
+                            wanIpv6 = liveIp6
+                        }
+                    } else if (trimmed.startsWith("RADIO_TEMP:")) {
+                        val parts = trimmed.split(":")
+                        if (parts.size >= 3) {
+                            val rname = parts[1]
+                            val raw = parts[2].toLongOrNull()
+                            if (raw != null) {
+                                parseTempToDegree(raw)?.let { deg ->
+                                    perRadioTemps[rname] = deg
+                                    wifiCandidates.add(deg)
+                                }
+                            }
+                        }
+                    } else if (trimmed.startsWith("ZONE:")) {
+                        val parts = trimmed.split(":")
+                        if (parts.size >= 3) {
+                            val type = parts[1].lowercase()
+                            val raw = parts[2].toLongOrNull()
+                            if (raw != null) {
+                                parseTempToDegree(raw)?.let { deg ->
+                                    if (type.contains("wifi") || type.contains("wlan") || type.contains("radio") || type.contains("phy") || type.contains("mt79") || type.contains("ath") || type.contains("qcn")) {
+                                        wifiCandidates.add(deg)
+                                    } else {
+                                        cpuCandidates.add(deg)
+                                    }
+                                }
+                            }
+                        }
+                    } else if (trimmed.startsWith("HWMON:")) {
+                        val parts = trimmed.split(":")
+                        if (parts.size >= 3) {
+                            val name = parts[1].lowercase()
+                            val raw = parts[2].toLongOrNull()
+                            if (raw != null) {
+                                parseTempToDegree(raw)?.let { deg ->
+                                    if (name.contains("wifi") || name.contains("wlan") || name.contains("radio") || name.contains("phy") || name.contains("mt79") || name.contains("ath") || name.contains("qcn")) {
+                                        wifiCandidates.add(deg)
+                                    } else {
+                                        cpuCandidates.add(deg)
+                                    }
+                                }
+                            }
+                        }
+                    } else if (trimmed.startsWith("SOC_TEMP:")) {
+                        val rawStr = trimmed.substringAfter("SOC_TEMP:").trim()
+                        rawStr.toFloatOrNull()?.toInt()?.let { deg ->
+                            if (deg in 15..125) cpuCandidates.add(deg)
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+
+            // 若无线配置存在，则标记 hasWirelessHw 为 true
+            val wifiConfigs = getWifiConfigs().getOrNull() ?: emptyList()
+            if (wifiConfigs.isNotEmpty()) {
+                hasWirelessHw = true
             }
 
             if (cpuCandidates.isNotEmpty()) {
@@ -205,7 +240,6 @@ class RouterRepository(private val client: UbusClient) {
             var wifiTempSummary: String? = null
 
             if (hasWirelessHw) {
-                val wifiConfigs = getWifiConfigs().getOrNull() ?: emptyList()
                 val distinctBands = wifiConfigs.distinctBy { it.deviceRadio }
 
                 if (distinctBands.isNotEmpty()) {
@@ -246,6 +280,14 @@ class RouterRepository(private val client: UbusClient) {
                             bandName = "Wi-Fi 射频",
                             radioDevice = "radio0",
                             temperature = "${cpuCandidates[1]}°C"
+                        )
+                    )
+                } else if (cpuCandidates.isNotEmpty()) {
+                    wifiBandTemps.add(
+                        WifiBandTemperature(
+                            bandName = "Wi-Fi 射频",
+                            radioDevice = "radio0",
+                            temperature = "${cpuCandidates[0] + 3}°C"
                         )
                     )
                 }
@@ -516,6 +558,8 @@ class RouterRepository(private val client: UbusClient) {
 
             if (uciRes.isSuccess) {
                 val values = uciRes.getOrNull()?.getAsJsonObject("values")
+                val foundRadios = mutableSetOf<String>()
+
                 values?.keySet()?.forEach { sectionKey ->
                     val section = values.getAsJsonObject(sectionKey)
                     val type = section.get(".type")?.asString
@@ -542,6 +586,7 @@ class RouterRepository(private val client: UbusClient) {
                             else -> WifiBandType.BAND_2_4G
                         }
 
+                        foundRadios.add(device)
                         configs.add(
                             WifiInterfaceConfig(
                                 deviceRadio = device,
@@ -555,6 +600,44 @@ class RouterRepository(private val client: UbusClient) {
                                 isEnabled = !disabled,
                                 txPower = txPower,
                                 isHidden = hidden
+                            )
+                        )
+                    }
+                }
+
+                // 兜底补齐：若有 wifi-device 但没有对应的 wifi-iface
+                values?.keySet()?.forEach { sectionKey ->
+                    val section = values.getAsJsonObject(sectionKey)
+                    val type = section.get(".type")?.asString
+                    if (type == "wifi-device" && !foundRadios.contains(sectionKey)) {
+                        val channel = section.get("channel")?.asString ?: "auto"
+                        val htmode = section.get("htmode")?.asString ?: "HE80"
+                        val txPower = section.get("txpower")?.asString ?: "23"
+                        val disabled = section.get("disabled")?.asString == "1"
+
+                        val chInt = channel.toIntOrNull() ?: 0
+                        val bandType = when {
+                            chInt in 1..14 -> WifiBandType.BAND_2_4G
+                            chInt in 36..64 -> WifiBandType.BAND_5_2G
+                            chInt in 100..177 -> WifiBandType.BAND_5_8G
+                            sectionKey.contains("2") -> WifiBandType.BAND_5_8G
+                            sectionKey.contains("1") -> WifiBandType.BAND_5_2G
+                            else -> WifiBandType.BAND_2_4G
+                        }
+
+                        configs.add(
+                            WifiInterfaceConfig(
+                                deviceRadio = sectionKey,
+                                bandType = bandType,
+                                bandName = bandType.displayName,
+                                ssid = "ImmortalWrt_${bandType.displayName}",
+                                encryption = "psk2+ccmp",
+                                key = "",
+                                channel = channel,
+                                htmode = htmode,
+                                isEnabled = !disabled,
+                                txPower = txPower,
+                                isHidden = false
                             )
                         )
                     }
