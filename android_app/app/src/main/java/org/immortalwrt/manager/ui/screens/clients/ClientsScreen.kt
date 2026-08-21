@@ -1,5 +1,8 @@
 package org.immortalwrt.manager.ui.screens.clients
 
+import android.widget.Toast
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -7,12 +10,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -20,6 +22,7 @@ import org.immortalwrt.manager.domain.model.ConnectedClient
 import org.immortalwrt.manager.domain.model.ConnectionType
 import org.immortalwrt.manager.ui.theme.PrimaryBlue
 import org.immortalwrt.manager.ui.theme.SecondaryCyan
+import org.immortalwrt.manager.ui.theme.SuccessGreen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -27,6 +30,14 @@ fun ClientsScreen(
     viewModel: ClientsViewModel
 ) {
     val state by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+
+    LaunchedEffect(state.toastMessage) {
+        state.toastMessage?.let {
+            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            viewModel.clearToast()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -69,7 +80,7 @@ fun ClientsScreen(
                 FilterChip(
                     selected = state.filter == ClientFilter.ALL,
                     onClick = { viewModel.onFilterChange(ClientFilter.ALL) },
-                    label = { Text("全部") }
+                    label = { Text("全部 (${state.clients.size})") }
                 )
                 FilterChip(
                     selected = state.filter == ClientFilter.WIFI_ONLY,
@@ -104,19 +115,39 @@ fun ClientsScreen(
                     modifier = Modifier.fillMaxSize()
                 ) {
                     items(state.filteredClients) { client ->
-                        ClientItemCard(client = client)
+                        ClientItemCard(
+                            client = client,
+                            onClick = { viewModel.selectClient(client) }
+                        )
                     }
                     item { Spacer(modifier = Modifier.height(16.dp)) }
                 }
             }
         }
+
+        state.selectedClient?.let { client ->
+            ClientDetailDialog(
+                client = client,
+                isOperating = state.isOperating,
+                onDismiss = { viewModel.selectClient(null) },
+                onSaveAlias = { alias -> viewModel.updateClientAlias(client.macAddress, alias) },
+                onBindStaticDhcp = {
+                    viewModel.bindStaticDhcp(client.displayName, client.macAddress, client.ipAddress)
+                }
+            )
+        }
     }
 }
 
 @Composable
-fun ClientItemCard(client: ConnectedClient) {
+fun ClientItemCard(
+    client: ConnectedClient,
+    onClick: () -> Unit
+) {
     ElevatedCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
         shape = RoundedCornerShape(16.dp)
     ) {
         Row(
@@ -125,15 +156,11 @@ fun ClientItemCard(client: ConnectedClient) {
                 .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            val icon = when (client.connectionType) {
-                ConnectionType.WIRED_LAN -> Icons.Default.Computer
-                ConnectionType.WIFI_2G, ConnectionType.WIFI_5G, ConnectionType.WIFI_6G -> Icons.Default.Smartphone
-            }
-            val iconBg = if (client.connectionType == ConnectionType.WIRED_LAN) PrimaryBlue else SecondaryCyan
+            val (icon, iconBg) = getDeviceIconAndColor(client)
 
             Box(
                 modifier = Modifier
-                    .size(44.dp)
+                    .size(46.dp)
                     .background(iconBg.copy(alpha = 0.15f), RoundedCornerShape(12.dp)),
                 contentAlignment = Alignment.Center
             ) {
@@ -145,7 +172,7 @@ fun ClientItemCard(client: ConnectedClient) {
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = client.hostname,
+                        text = client.displayName,
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                         maxLines = 1
                     )
@@ -154,8 +181,13 @@ fun ClientItemCard(client: ConnectedClient) {
                         color = iconBg.copy(alpha = 0.12f),
                         shape = RoundedCornerShape(4.dp)
                     ) {
+                        val typeText = when (client.connectionType) {
+                            ConnectionType.WIRED_LAN -> "LAN"
+                            ConnectionType.WIFI_2G -> "2.4G"
+                            else -> "5G"
+                        }
                         Text(
-                            text = if (client.connectionType == ConnectionType.WIRED_LAN) "LAN" else "5G Wi-Fi",
+                            text = typeText,
                             color = iconBg,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
@@ -185,7 +217,102 @@ fun ClientItemCard(client: ConnectedClient) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+            } else {
+                Icon(
+                    imageVector = Icons.Default.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                )
             }
         }
     }
 }
+
+@Composable
+fun ClientDetailDialog(
+    client: ConnectedClient,
+    isOperating: Boolean,
+    onDismiss: () -> Unit,
+    onSaveAlias: (String) -> Unit,
+    onBindStaticDhcp: () -> Unit
+) {
+    var aliasText by remember { mutableStateOf(client.customAlias ?: "") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text("终端详情与管理")
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = aliasText,
+                    onValueChange = { aliasText = it },
+                    label = { Text("设备备注名称 (别名)") },
+                    placeholder = { Text(client.hostname) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("原始主机名", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(client.hostname, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("分配 IP", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(client.ipAddress, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("物理 MAC", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(client.macAddress, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                        }
+                    }
+                }
+
+                Button(
+                    onClick = onBindStaticDhcp,
+                    enabled = !isOperating && client.ipAddress.isNotBlank() && client.ipAddress != "动态分配",
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Icon(Icons.Default.PushPin, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("固定绑定此 IP (静态 DHCP)")
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onSaveAlias(aliasText) },
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("保存备注")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("关闭")
+            }
+        }
+    )
+}
+
+private fun getDeviceIconAndColor(client: ConnectedClient): Pair<androidx.compose.ui.graphics.vector.ImageVector, Color> {
+    val h = client.hostname.lowercase()
+    val m = client.macAddress.lowercase()
+    return when {
+        client.connectionType == ConnectionType.WIRED_LAN -> Icons.Default.Computer to PrimaryBlue
+        h.contains("iphone") || h.contains("ipad") || h.contains("apple") || m.startsWith("00:17:f2") -> Icons.Default.Smartphone to SecondaryCyan
+        h.contains("android") || h.contains("xiaomi") || h.contains("huawei") || h.contains("honor") || h.contains("oppo") || h.contains("vivo") -> Icons.Default.PhoneAndroid to SecondaryCyan
+        h.contains("tv") || h.contains("box") || h.contains("media") -> Icons.Default.Tv to SuccessGreen
+        else -> Icons.Default.DevicesOther to PrimaryBlue
+    }
+}
+

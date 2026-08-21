@@ -18,16 +18,22 @@ enum class ClientFilter {
 
 data class ClientsUiState(
     val isLoading: Boolean = true,
+    val isOperating: Boolean = false,
     val clients: List<ConnectedClient> = emptyList(),
+    val customAliases: Map<String, String> = emptyMap(),
+    val selectedClient: ConnectedClient? = null,
     val searchQuery: String = "",
     val filter: ClientFilter = ClientFilter.ALL,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val toastMessage: String? = null
 ) {
     val filteredClients: List<ConnectedClient>
-        get() = clients.filter { client ->
-            val matchSearch = client.hostname.contains(searchQuery, ignoreCase = true) ||
-                    client.ipAddress.contains(searchQuery, ignoreCase = true) ||
-                    client.macAddress.contains(searchQuery, ignoreCase = true)
+        get() = clients.map { client ->
+            val alias = customAliases[client.macAddress.lowercase()]
+            if (alias != null) client.copy(customAlias = alias) else client
+        }.filter { client ->
+            val searchTarget = "${client.displayName} ${client.ipAddress} ${client.macAddress}"
+            val matchSearch = searchTarget.contains(searchQuery, ignoreCase = true)
 
             val matchFilter = when (filter) {
                 ClientFilter.ALL -> true
@@ -56,6 +62,40 @@ class ClientsViewModel(
 
     fun onFilterChange(filter: ClientFilter) {
         _uiState.value = _uiState.value.copy(filter = filter)
+    }
+
+    fun selectClient(client: ConnectedClient?) {
+        _uiState.value = _uiState.value.copy(selectedClient = client)
+    }
+
+    fun updateClientAlias(mac: String, alias: String) {
+        val updated = _uiState.value.customAliases.toMutableMap()
+        if (alias.isBlank()) {
+            updated.remove(mac.lowercase())
+        } else {
+            updated[mac.lowercase()] = alias.trim()
+        }
+        _uiState.value = _uiState.value.copy(
+            customAliases = updated,
+            selectedClient = null,
+            toastMessage = "设备备注已保存"
+        )
+    }
+
+    fun bindStaticDhcp(hostname: String, mac: String, ip: String) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isOperating = true)
+            val res = routerRepository.addStaticDhcpLease(hostname, mac, ip)
+            _uiState.value = _uiState.value.copy(
+                isOperating = false,
+                selectedClient = null,
+                toastMessage = if (res.isSuccess) "已成功为 $hostname 绑定静态 IP: $ip" else "静态绑定失败"
+            )
+        }
+    }
+
+    fun clearToast() {
+        _uiState.value = _uiState.value.copy(toastMessage = null)
     }
 
     fun refresh() {
