@@ -521,7 +521,7 @@ fun GenericPluginDialog(
                         onClick = { onOpenWeb(plugin.webPort) },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.Launch, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("打开 Web 管理控制台 (端口 :${plugin.webPort})")
                     }
