@@ -15,6 +15,8 @@ import org.immortalwrt.manager.ui.screens.dashboard.DashboardScreen
 import org.immortalwrt.manager.ui.screens.dashboard.DashboardViewModel
 import org.immortalwrt.manager.ui.screens.login.LoginScreen
 import org.immortalwrt.manager.ui.screens.login.LoginViewModel
+import org.immortalwrt.manager.ui.screens.settings.SettingsScreen
+import org.immortalwrt.manager.ui.screens.settings.SettingsViewModel
 import org.immortalwrt.manager.ui.screens.tools.ToolsScreen
 import org.immortalwrt.manager.ui.screens.tools.ToolsViewModel
 import org.immortalwrt.manager.ui.screens.wireless.WirelessScreen
@@ -43,14 +45,22 @@ fun AppNavGraph(
         }
 
         composable(Screen.Main.route) {
-            MainContainerScreen()
+            MainContainerScreen(
+                onLogout = {
+                    navController.navigate(Screen.Login.route) {
+                        popUpTo(Screen.Main.route) { inclusive = true }
+                    }
+                }
+            )
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainContainerScreen() {
+fun MainContainerScreen(
+    onLogout: () -> Unit = {}
+) {
     val bottomNavController = rememberNavController()
     val app = ImmortalWrtApp.instance
 
@@ -58,12 +68,14 @@ fun MainContainerScreen() {
     val clientsViewModel = ClientsViewModel(app.routerRepository)
     val wirelessViewModel = WirelessViewModel(app.routerRepository)
     val toolsViewModel = ToolsViewModel(app.routerRepository)
+    val settingsViewModel = SettingsViewModel(app.routerRepository, app.preferencesRepository)
 
     val items = listOf(
         BottomNavItem.Dashboard,
         BottomNavItem.Clients,
         BottomNavItem.Wireless,
-        BottomNavItem.Tools
+        BottomNavItem.Tools,
+        BottomNavItem.Settings
     )
 
     Scaffold(
@@ -107,6 +119,12 @@ fun MainContainerScreen() {
             }
             composable(BottomNavItem.Tools.route) {
                 ToolsScreen(viewModel = toolsViewModel)
+            }
+            composable(BottomNavItem.Settings.route) {
+                SettingsScreen(
+                    viewModel = settingsViewModel,
+                    onLogout = onLogout
+                )
             }
         }
     }
