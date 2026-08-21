@@ -305,6 +305,22 @@ _docker_stack_fix_dockerd_vendored_checks() {
     mv "$tmp_path" "$mk_path"
 }
 
+_docker_stack_fix_dockerd_binary_daemon_copy() {
+    local mk_path="$1"
+
+    # 1. 在 Build/Prepare 中修补 hack/make/binary-daemon，禁止复制 host 上可能缺失的嵌套二进制 (解决 x86_64 宿主同架构下的 cp: cannot stat '' 错误)
+    if grep -q 'define Build/Prepare' "$mk_path"; then
+        if ! grep -Fq 'hack/make/binary-daemon' "$mk_path"; then
+            sed -i '/define Build\/Prepare/a \	[ ! -f "$$(PKG_BUILD_DIR)/hack/make/binary-daemon" ] || sed -i "s/copy_binaries/true # copy_binaries/g" "$$(PKG_BUILD_DIR)/hack/make/binary-daemon"' "$mk_path"
+        fi
+    fi
+
+    # 2. 如果 Makefile 中有直接调用 ./hack/make.sh binary 的地方，也在编译前确保修补
+    if grep -Fq './hack/make.sh binary' "$mk_path" && ! grep -Fq 'sed -i "s/copy_binaries/true/' "$mk_path"; then
+        sed -i 's|\([[:space:]]*\)\(cd \$(PKG_BUILD_DIR);\)|\1\2 [ ! -f ./hack/make/binary-daemon ] \|\| sed -i "s/copy_binaries/true # copy_binaries/g" ./hack/make/binary-daemon; |g' "$mk_path"
+    fi
+}
+
 _docker_stack_fix_dockerd_nftables_comment() {
     local config_path="$1"
 
@@ -1001,6 +1017,7 @@ _docker_stack_update_dockerd_nftables_defaults() {
 
     _docker_stack_update_dockerd_depends_block "$dockerd_makefile" || return 1
     _docker_stack_fix_dockerd_vendored_checks "$dockerd_makefile" || return 1
+    _docker_stack_fix_dockerd_binary_daemon_copy "$dockerd_makefile" || return 1
 
     _docker_stack_ensure_nftables_init_support "$dockerd_init" || return 1
     docker_stack_sync_dockerman_nftables_compat "$build_dir" "0" || return 1
