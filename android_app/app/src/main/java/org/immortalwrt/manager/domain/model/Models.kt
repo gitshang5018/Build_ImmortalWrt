@@ -31,9 +31,10 @@ data class RouterOverview(
     val wanIpv6: String = "未分配",
     val lanIp: String = "10.10.10.1",
     val cpuLoadPercentage: Float,
-    val cpuLoadAverage: String = "0.12, 0.08, 0.05",
-    val cpuTemperature: String = "45°C",
-    val wifiTemperature: String = "48°C",
+    val cpuLoadAverage: String = "0.00, 0.00, 0.00",
+    val cpuTemperature: String? = null,
+    val wifiTemperature: String? = null,
+    val hasWireless: Boolean = false,
     val memoryTotalMb: Long,
     val memoryUsedMb: Long,
     val onlineClientsCount: Int

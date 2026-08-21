@@ -95,23 +95,64 @@ class RouterRepository(private val client: UbusClient) {
             val load15 = String.format("%.2f", (sysInfo.load?.getOrNull(2) ?: 0L) / 65536.0)
             val cpuLoadAverage = "$load1, $load5, $load15"
 
-            var cpuTemp = "45°C"
-            var wifiTemp = "48°C"
-
-            val tempResp = client.callRaw("file", "exec", mapOf(
+            // 真实物理无线与硬件温控传感器探测
+            val hwDetectResp = client.callRaw("file", "exec", mapOf(
                 "command" to "/bin/sh",
-                "params" to listOf("-c", "cat /sys/class/thermal/thermal_zone*/temp /sys/class/hwmon/hwmon*/temp*_input 2>/dev/null")
+                "params" to listOf("-c", "if [ -d /sys/class/ieee80211 ] && [ \"$(ls -A /sys/class/ieee80211 2>/dev/null)\" ]; then echo 'WIFI_HW:1'; elif ls /sys/class/net/phy* /sys/class/net/wlan* 1>/dev/null 2>&1; then echo 'WIFI_HW:1'; else echo 'WIFI_HW:0'; fi; for z in /sys/class/thermal/thermal_zone*; do [ -d \"${'$'}z\" ] && echo \"ZONE:$(cat ${'$'}z/type 2>/dev/null):$(cat ${'$'}z/temp 2>/dev/null)\"; done; for h in /sys/class/hwmon/hwmon*; do if [ -d \"${'$'}h\" ]; then hn=$(cat ${'$'}h/name 2>/dev/null); for t in ${'$'}h/temp*_input; do [ -f \"${'$'}t\" ] && echo \"HWMON:${'$'}hn:$(cat ${'$'}t 2>/dev/null)\"; done; fi; done")
             ))
-            val tempOut = tempResp.getOrNull()?.get("stdout")?.asString ?: ""
-            val tempValues = tempOut.lineSequence()
-                .mapNotNull { it.trim().toLongOrNull() }
-                .map { raw -> if (raw > 1000) (raw / 1000).toInt() else raw.toInt() }
-                .filter { it in 20..115 }
-                .toList()
+            val hwOut = hwDetectResp.getOrNull()?.get("stdout")?.asString ?: ""
+            var hasWirelessHw = false
+            var cpuTemp: String? = null
+            var wifiTemp: String? = null
 
-            if (tempValues.isNotEmpty()) {
-                cpuTemp = "${tempValues[0]}°C"
-                wifiTemp = if (tempValues.size > 1) "${tempValues[1]}°C" else "${tempValues[0] + 3}°C"
+            val cpuCandidates = mutableListOf<Int>()
+            val wifiCandidates = mutableListOf<Int>()
+
+            hwOut.lineSequence().forEach { line ->
+                val trimmed = line.trim()
+                if (trimmed.startsWith("WIFI_HW:")) {
+                    hasWirelessHw = trimmed.substringAfter("WIFI_HW:") == "1"
+                } else if (trimmed.startsWith("ZONE:")) {
+                    val parts = trimmed.split(":")
+                    if (parts.size >= 3) {
+                        val type = parts[1].lowercase()
+                        val raw = parts[2].toLongOrNull()
+                        if (raw != null) {
+                            val deg = if (raw > 1000) (raw / 1000).toInt() else raw.toInt()
+                            if (deg in 15..115) {
+                                if (type.contains("wifi") || type.contains("wlan") || type.contains("radio") || type.contains("phy") || type.contains("mt79") || type.contains("ath")) {
+                                    wifiCandidates.add(deg)
+                                } else {
+                                    cpuCandidates.add(deg)
+                                }
+                            }
+                        }
+                    }
+                } else if (trimmed.startsWith("HWMON:")) {
+                    val parts = trimmed.split(":")
+                    if (parts.size >= 3) {
+                        val name = parts[1].lowercase()
+                        val raw = parts[2].toLongOrNull()
+                        if (raw != null) {
+                            val deg = if (raw > 1000) (raw / 1000).toInt() else raw.toInt()
+                            if (deg in 15..115) {
+                                if (name.contains("wifi") || name.contains("wlan") || name.contains("radio") || name.contains("phy") || name.contains("mt79") || name.contains("ath")) {
+                                    wifiCandidates.add(deg)
+                                } else {
+                                    cpuCandidates.add(deg)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (cpuCandidates.isNotEmpty()) {
+                cpuTemp = "${cpuCandidates[0]}°C"
+            }
+            // 只有在检测到物理无线网卡且有无线温度传感器时才显示 Wi-Fi 温度
+            if (hasWirelessHw && wifiCandidates.isNotEmpty()) {
+                wifiTemp = "${wifiCandidates[0]}°C"
             }
 
             val totalMemMb = sysInfo.memory.total / (1024 * 1024)
@@ -132,6 +173,7 @@ class RouterRepository(private val client: UbusClient) {
                     cpuLoadAverage = cpuLoadAverage,
                     cpuTemperature = cpuTemp,
                     wifiTemperature = wifiTemp,
+                    hasWireless = hasWirelessHw,
                     memoryTotalMb = totalMemMb,
                     memoryUsedMb = usedMemMb,
                     onlineClientsCount = clientsCount
@@ -343,18 +385,7 @@ class RouterRepository(private val client: UbusClient) {
             }
 
             val resultList = clientMap.values.toList()
-            if (resultList.isEmpty()) {
-                // 如果为空，提供保底示例便于调试体验
-                val fallbackList = listOf(
-                    ConnectedClient("Master-PC", "10.10.10.101", "3c:7c:3f:12:34:56", ConnectionType.WIRED_LAN, vendor = "Intel"),
-                    ConnectedClient("iPhone-15-Pro", "10.10.10.102", "a4:83:e7:89:ab:cd", ConnectionType.WIFI_5G, signalDbm = -45, vendor = "Apple"),
-                    ConnectedClient("Xiaomi-14-Ultra", "10.10.10.103", "64:cc:2e:45:67:89", ConnectionType.WIFI_5G, signalDbm = -52, vendor = "Xiaomi"),
-                    ConnectedClient("Smart-TV-Box", "10.10.10.104", "00:1a:7d:aa:bb:cc", ConnectionType.WIFI_2G, signalDbm = -65, vendor = "Sony")
-                )
-                Result.success(fallbackList)
-            } else {
-                Result.success(resultList)
-            }
+            Result.success(resultList)
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -427,12 +458,6 @@ class RouterRepository(private val client: UbusClient) {
                         )
                     }
                 }
-            }
-
-            if (configs.isEmpty()) {
-                configs.add(WifiInterfaceConfig("radio0", WifiBandType.BAND_2_4G, "2.4 GHz", "ImmortalWrt_2.4G", "psk2+ccmp", "12345678", "6", "HE20", true, "20", false))
-                configs.add(WifiInterfaceConfig("radio1", WifiBandType.BAND_5_2G, "5.2 GHz (5G-1)", "ImmortalWrt_5G1", "psk2+ccmp", "12345678", "44", "HE160", true, "23", false))
-                configs.add(WifiInterfaceConfig("radio2", WifiBandType.BAND_5_8G, "5.8 GHz (5G-2 电竞)", "ImmortalWrt_Gaming_5G2", "psk2+ccmp", "12345678", "149", "HE160", true, "23", false))
             }
 
             Result.success(configs)

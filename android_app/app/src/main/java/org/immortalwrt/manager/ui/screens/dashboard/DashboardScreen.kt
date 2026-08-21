@@ -197,52 +197,68 @@ fun DashboardScreen(
                     )
                 }
 
-                // 温度监控区 (CPU 温度 & Wi-Fi 温度)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(IntrinsicSize.Min),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    val cpuTempStr = state.overview?.cpuTemperature ?: "45°C"
-                    val cpuTempVal = cpuTempStr.replace("°C", "").toIntOrNull() ?: 45
-                    val cpuTempColor = when {
-                        cpuTempVal > 80 -> ErrorRed
-                        cpuTempVal > 65 -> WarningOrange
-                        else -> SuccessGreen
-                    }
-
-                    StatCard(
-                        title = "CPU 温度",
-                        value = cpuTempStr,
-                        subtitle = "处理器核心温度",
-                        icon = Icons.Default.DeviceThermostat,
-                        progress = (cpuTempVal / 100f).coerceIn(0f, 1f),
-                        progressColor = cpuTempColor,
+                // 温度监控区 (根据真实硬件存在性自适应展示)
+                if (state.overview?.cpuTemperature != null || state.overview?.wifiTemperature != null) {
+                    Row(
                         modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                    )
+                            .fillMaxWidth()
+                            .height(IntrinsicSize.Min),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        val cpuTempStr = state.overview?.cpuTemperature
+                        if (cpuTempStr != null) {
+                            val cpuTempVal = cpuTempStr.replace("°C", "").toIntOrNull() ?: 45
+                            val cpuTempColor = when {
+                                cpuTempVal > 80 -> ErrorRed
+                                cpuTempVal > 65 -> WarningOrange
+                                else -> SuccessGreen
+                            }
 
-                    val wifiTempStr = state.overview?.wifiTemperature ?: "48°C"
-                    val wifiTempVal = wifiTempStr.replace("°C", "").toIntOrNull() ?: 48
-                    val wifiTempColor = when {
-                        wifiTempVal > 80 -> ErrorRed
-                        wifiTempVal > 65 -> WarningOrange
-                        else -> PrimaryBlue
+                            StatCard(
+                                title = "CPU 温度",
+                                value = cpuTempStr,
+                                subtitle = "处理器核心温度",
+                                icon = Icons.Default.DeviceThermostat,
+                                progress = (cpuTempVal / 100f).coerceIn(0f, 1f),
+                                progressColor = cpuTempColor,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                            )
+                        }
+
+                        val wifiTempStr = state.overview?.wifiTemperature
+                        if (wifiTempStr != null) {
+                            val wifiTempVal = wifiTempStr.replace("°C", "").toIntOrNull() ?: 48
+                            val wifiTempColor = when {
+                                wifiTempVal > 80 -> ErrorRed
+                                wifiTempVal > 65 -> WarningOrange
+                                else -> PrimaryBlue
+                            }
+
+                            StatCard(
+                                title = "Wi-Fi 温度",
+                                value = wifiTempStr,
+                                subtitle = "无线射频芯片温度",
+                                icon = Icons.Default.WifiTethering,
+                                progress = (wifiTempVal / 100f).coerceIn(0f, 1f),
+                                progressColor = wifiTempColor,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                            )
+                        } else if (cpuTempStr != null) {
+                            StatCard(
+                                title = "无线硬件",
+                                value = if (state.overview?.hasWireless == true) "无温控探头" else "无无线网卡",
+                                subtitle = if (state.overview?.hasWireless == true) "未暴露温度传感器" else "有线主路由 / X86 架构",
+                                icon = Icons.Default.WifiOff,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                            )
+                        }
                     }
-
-                    StatCard(
-                        title = "Wi-Fi 温度",
-                        value = wifiTempStr,
-                        subtitle = "无线射频芯片温度",
-                        icon = Icons.Default.WifiTethering,
-                        progress = (wifiTempVal / 100f).coerceIn(0f, 1f),
-                        progressColor = wifiTempColor,
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                    )
                 }
 
                 Row(
