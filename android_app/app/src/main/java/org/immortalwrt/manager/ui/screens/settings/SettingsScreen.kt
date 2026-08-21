@@ -3,27 +3,25 @@ package org.immortalwrt.manager.ui.screens.settings
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import org.immortalwrt.manager.domain.model.FirewallRedirectRule
-import org.immortalwrt.manager.domain.model.RouterNode
 import org.immortalwrt.manager.ui.theme.ErrorRed
 import org.immortalwrt.manager.ui.theme.PrimaryBlue
-import org.immortalwrt.manager.ui.theme.SecondaryCyan
 import org.immortalwrt.manager.ui.theme.SuccessGreen
+import org.immortalwrt.manager.ui.theme.WarningOrange
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -52,9 +50,14 @@ fun SettingsScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = "设置与高级网络",
+                        text = "设置与网络配置",
                         style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                     )
+                },
+                actions = {
+                    IconButton(onClick = { viewModel.loadWebSettings() }) {
+                        Icon(Icons.Default.Refresh, contentDescription = "刷新配置")
+                    }
                 }
             )
         }
@@ -89,7 +92,6 @@ fun SettingsScreen(
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    // 当前活跃节点
                     Surface(
                         color = PrimaryBlue.copy(alpha = 0.1f),
                         shape = RoundedCornerShape(10.dp),
@@ -115,12 +117,11 @@ fun SettingsScreen(
                                 )
                             }
                             Surface(color = PrimaryBlue, shape = RoundedCornerShape(6.dp)) {
-                                Text("活跃", color = androidx.compose.ui.graphics.Color.White, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                                Text("活跃", color = Color.White, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                             }
                         }
                     }
 
-                    // 保存的其他节点列表
                     state.savedNodes.filter { it.credentials.host != state.currentCredentials.host }.forEach { node ->
                         Row(
                             modifier = Modifier
@@ -147,12 +148,114 @@ fun SettingsScreen(
                                 }
                             }
                         }
-                        Divider()
+                        HorizontalDivider()
                     }
                 }
             }
 
-            // 2. 防火墙端口转发管理
+            // 2. 局域网与 DHCP 服务 (与网页端同步)
+            Text(
+                text = "局域网 (LAN) 与 DHCP 服务",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+            )
+
+            ElevatedCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("LAN IP 与掩码", fontWeight = FontWeight.SemiBold)
+                            Text("${state.lanConfig.ipaddr} · ${state.lanConfig.netmask}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        OutlinedButton(
+                            onClick = { viewModel.openEditLanDialog() },
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text("修改", fontSize = 12.sp)
+                        }
+                    }
+
+                    HorizontalDivider()
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("DHCP 地址池与租期", fontWeight = FontWeight.SemiBold)
+                            Text("起始: .${state.dhcpConfig.start} · 数量: ${state.dhcpConfig.limit} · 租期: ${state.dhcpConfig.leasetime}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        OutlinedButton(
+                            onClick = { viewModel.openEditDhcpDialog() },
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text("修改", fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+
+            // 3. 系统主机名与管理权 (与网页端同步)
+            Text(
+                text = "系统主机名与管理权",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+            )
+
+            ElevatedCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("系统主机名与时区", fontWeight = FontWeight.SemiBold)
+                            Text("${state.systemSettings.hostname} · ${state.systemSettings.zonename} (${state.systemSettings.timezone})", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        OutlinedButton(
+                            onClick = { viewModel.openEditSystemDialog() },
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text("修改", fontSize = 12.sp)
+                        }
+                    }
+
+                    HorizontalDivider()
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("修改管理员 root 密码", fontWeight = FontWeight.SemiBold)
+                            Text("修改 LuCI 与 SSH 登录凭据", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Button(
+                            onClick = { viewModel.openChangePwdDialog() },
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text("更改密码", fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+
+            // 4. 防火墙端口转发管理
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -204,13 +307,13 @@ fun SettingsScreen(
                                     Icon(Icons.Default.DeleteOutline, contentDescription = "删除规则", tint = MaterialTheme.colorScheme.error)
                                 }
                             }
-                            Divider()
+                            HorizontalDivider()
                         }
                     }
                 }
             }
 
-            // 3. 外观与主题偏好
+            // 5. 外观与主题偏好
             Text(
                 text = "外观与系统偏好",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
@@ -246,7 +349,7 @@ fun SettingsScreen(
                         }
                     }
 
-                    Divider()
+                    HorizontalDivider()
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -262,16 +365,47 @@ fun SettingsScreen(
                             onCheckedChange = { viewModel.setDynamicColor(it) }
                         )
                     }
+                }
+            }
 
-                    Divider()
+            // 6. 系统危险控制操作区
+            Text(
+                text = "高级系统控制与维护",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = ErrorRed)
+            )
+
+            ElevatedCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("重启路由器系统", fontWeight = FontWeight.SemiBold)
+                            Text("平稳软重启整个系统并重新加载全部服务", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Button(
+                            onClick = { viewModel.openRebootDialog() },
+                            colors = ButtonDefaults.buttonColors(containerColor = ErrorRed),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("重启")
+                        }
+                    }
+
+                    HorizontalDivider()
 
                     Button(
                         onClick = { viewModel.logout() },
-                        colors = ButtonDefaults.buttonColors(containerColor = ErrorRed),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer),
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(10.dp)
                     ) {
-                        Icon(Icons.Default.Logout, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("退出登录当前路由器")
                     }
@@ -281,7 +415,7 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(20.dp))
         }
 
-        // 添加节点对话框
+        // 对话框列表
         if (state.showAddNodeDialog) {
             AddNodeDialog(
                 onDismiss = { viewModel.closeAddNodeDialog() },
@@ -291,7 +425,6 @@ fun SettingsScreen(
             )
         }
 
-        // 添加端口转发对话框
         if (state.showAddPortForwardDialog) {
             AddPortForwardDialog(
                 isOperating = state.isOperating,
@@ -301,7 +434,183 @@ fun SettingsScreen(
                 }
             )
         }
+
+        if (state.showEditLanDialog) {
+            EditLanDialog(
+                current = state.lanConfig,
+                isOperating = state.isOperating,
+                onDismiss = { viewModel.closeEditLanDialog() },
+                onSave = { ip, mask -> viewModel.updateLanConfig(ip, mask) }
+            )
+        }
+
+        if (state.showEditDhcpDialog) {
+            EditDhcpDialog(
+                current = state.dhcpConfig,
+                isOperating = state.isOperating,
+                onDismiss = { viewModel.closeEditDhcpDialog() },
+                onSave = { start, limit, lease -> viewModel.updateDhcpConfig(start, limit, lease) }
+            )
+        }
+
+        if (state.showEditSystemDialog) {
+            EditSystemDialog(
+                current = state.systemSettings,
+                isOperating = state.isOperating,
+                onDismiss = { viewModel.closeEditSystemDialog() },
+                onSave = { host, zone, tz -> viewModel.updateSystemSettings(host, zone, tz) }
+            )
+        }
+
+        if (state.showChangePwdDialog) {
+            ChangePasswordDialog(
+                isOperating = state.isOperating,
+                onDismiss = { viewModel.closeChangePwdDialog() },
+                onSave = { newPwd -> viewModel.changeAdminPassword(newPwd) }
+            )
+        }
+
+        if (state.showRebootDialog) {
+            AlertDialog(
+                onDismissRequest = { viewModel.closeRebootDialog() },
+                icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = WarningOrange) },
+                title = { Text("确认重启路由器？") },
+                text = { Text("重启过程大约需要 1~2 分钟，期间所有连接将短暂中断。") },
+                confirmButton = {
+                    Button(
+                        onClick = { viewModel.rebootRouter() },
+                        colors = ButtonDefaults.buttonColors(containerColor = ErrorRed)
+                    ) {
+                        Text("立即重启")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { viewModel.closeRebootDialog() }) {
+                        Text("取 消")
+                    }
+                }
+            )
+        }
     }
+}
+
+@Composable
+fun EditLanDialog(
+    current: org.immortalwrt.manager.domain.model.LanNetworkConfig,
+    isOperating: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (String, String) -> Unit
+) {
+    var ip by remember { mutableStateOf(current.ipaddr) }
+    var mask by remember { mutableStateOf(current.netmask) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("修改 LAN 局域网接口") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(value = ip, onValueChange = { ip = it }, label = { Text("IPv4 地址 (如 192.168.1.1)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = mask, onValueChange = { mask = it }, label = { Text("IPv4 子网掩码 (如 255.255.255.0)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Text("⚠️ 注意：修改 LAN IP 后，需要使用新 IP 重新登录应用。", color = WarningOrange, fontSize = 11.sp)
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onSave(ip, mask) }, enabled = !isOperating && ip.isNotBlank()) {
+                if (isOperating) CircularProgressIndicator(modifier = Modifier.size(16.dp)) else Text("保 存")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取 消") } }
+    )
+}
+
+@Composable
+fun EditDhcpDialog(
+    current: org.immortalwrt.manager.domain.model.DhcpServerConfig,
+    isOperating: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (Int, Int, String) -> Unit
+) {
+    var start by remember { mutableStateOf(current.start.toString()) }
+    var limit by remember { mutableStateOf(current.limit.toString()) }
+    var lease by remember { mutableStateOf(current.leasetime) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("修改 DHCP 服务配置") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(value = start, onValueChange = { start = it }, label = { Text("起始分配 IP (如 100)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = limit, onValueChange = { limit = it }, label = { Text("最大分配数量 (如 150)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = lease, onValueChange = { lease = it }, label = { Text("租期时长 (如 12h)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onSave(start.toIntOrNull() ?: 100, limit.toIntOrNull() ?: 150, lease) }, enabled = !isOperating) {
+                if (isOperating) CircularProgressIndicator(modifier = Modifier.size(16.dp)) else Text("保 存")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取 消") } }
+    )
+}
+
+@Composable
+fun EditSystemDialog(
+    current: org.immortalwrt.manager.domain.model.SystemSettings,
+    isOperating: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (String, String, String) -> Unit
+) {
+    var host by remember { mutableStateOf(current.hostname) }
+    var zone by remember { mutableStateOf(current.zonename) }
+    var tz by remember { mutableStateOf(current.timezone) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("修改系统属性") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(value = host, onValueChange = { host = it }, label = { Text("系统主机名 (Hostname)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = zone, onValueChange = { zone = it }, label = { Text("所在时区地区 (如 Asia/Shanghai)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = tz, onValueChange = { tz = it }, label = { Text("时区代码 (如 CST-8)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onSave(host, zone, tz) }, enabled = !isOperating && host.isNotBlank()) {
+                if (isOperating) CircularProgressIndicator(modifier = Modifier.size(16.dp)) else Text("保 存")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取 消") } }
+    )
+}
+
+@Composable
+fun ChangePasswordDialog(
+    isOperating: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit
+) {
+    var pwd1 by remember { mutableStateOf("") }
+    var pwd2 by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("修改 root 管理员密码") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(value = pwd1, onValueChange = { pwd1 = it }, label = { Text("新密码") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = pwd2, onValueChange = { pwd2 = it }, label = { Text("确认新密码") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                if (pwd1.isNotEmpty() && pwd2.isNotEmpty() && pwd1 != pwd2) {
+                    Text("两次输入的密码不一致", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onSave(pwd1) }, enabled = !isOperating && pwd1.isNotBlank() && pwd1 == pwd2) {
+                if (isOperating) CircularProgressIndicator(modifier = Modifier.size(16.dp)) else Text("保 存")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取 消") } }
+    )
 }
 
 @Composable
@@ -389,3 +698,4 @@ fun AddPortForwardDialog(
         }
     )
 }
+

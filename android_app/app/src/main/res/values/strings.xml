@@ -1,9 +1,10 @@
 <resources>
-    <string name="app_name">ImmortalWrt 路由管家</string>
-    <string name="nav_dashboard">仪表盘</string>
-    <string name="nav_clients">终端设备</string>
-    <string name="nav_wireless">无线Wi-Fi</string>
-    <string name="nav_tools">工具箱</string>
+    <string name="app_name">路由管家</string>
+    <string name="nav_dashboard">概览</string>
+    <string name="nav_clients">终端</string>
+    <string name="nav_wireless">无线</string>
+    <string name="nav_tools">插件与工具</string>
+    <string name="nav_settings">设置</string>
     <string name="login_title">连接路由器</string>
     <string name="login_host_hint">路由器 IP / 域名 (如 10.10.10.1)</string>
     <string name="login_port_hint">端口 (默认 80)</string>

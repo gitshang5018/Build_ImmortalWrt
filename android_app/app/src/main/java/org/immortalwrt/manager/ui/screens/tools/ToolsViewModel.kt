@@ -7,9 +7,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.immortalwrt.manager.data.repository.RouterRepository
-import org.immortalwrt.manager.domain.model.LogEntry
-import org.immortalwrt.manager.domain.model.PluginCategory
-import org.immortalwrt.manager.domain.model.PluginServiceInfo
+import org.immortalwrt.manager.domain.model.*
 
 enum class DiagnosticMode {
     PING,
@@ -23,6 +21,10 @@ data class ToolsUiState(
     val isLoadingLogs: Boolean = false,
     val plugins: List<PluginServiceInfo> = emptyList(),
     val selectedPluginCategory: PluginCategory? = null,
+    val activeConfigPlugin: PluginServiceInfo? = null,
+    val passwallConfig: PasswallConfig? = null,
+    val openclashConfig: OpenClashConfig? = null,
+    val mosdnsConfig: MosdnsConfig? = null,
     val logs: List<LogEntry> = emptyList(),
     val logFilterLevel: String = "ALL",
     val logSearchQuery: String = "",
@@ -92,6 +94,72 @@ class ToolsViewModel(
         }
     }
 
+    fun openPluginConfig(plugin: PluginServiceInfo) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isOperating = true, activeConfigPlugin = plugin)
+            when (plugin.id) {
+                "passwall" -> {
+                    val cfg = routerRepository.getPasswallConfig().getOrNull()
+                    _uiState.value = _uiState.value.copy(isOperating = false, passwallConfig = cfg)
+                }
+                "openclash" -> {
+                    val cfg = routerRepository.getOpenClashConfig().getOrNull()
+                    _uiState.value = _uiState.value.copy(isOperating = false, openclashConfig = cfg)
+                }
+                "mosdns" -> {
+                    val cfg = routerRepository.getMosdnsConfig().getOrNull()
+                    _uiState.value = _uiState.value.copy(isOperating = false, mosdnsConfig = cfg)
+                }
+                else -> {
+                    _uiState.value = _uiState.value.copy(isOperating = false)
+                }
+            }
+        }
+    }
+
+    fun closePluginConfig() {
+        _uiState.value = _uiState.value.copy(activeConfigPlugin = null)
+    }
+
+    fun savePasswallConfig(config: PasswallConfig) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isOperating = true)
+            val res = routerRepository.updatePasswallConfig(config)
+            _uiState.value = _uiState.value.copy(
+                isOperating = false,
+                activeConfigPlugin = null,
+                toastMessage = if (res.isSuccess) "PassWall 配置已更新并重启服务" else "保存失败"
+            )
+            loadPlugins()
+        }
+    }
+
+    fun saveOpenClashConfig(config: OpenClashConfig) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isOperating = true)
+            val res = routerRepository.updateOpenClashConfig(config)
+            _uiState.value = _uiState.value.copy(
+                isOperating = false,
+                activeConfigPlugin = null,
+                toastMessage = if (res.isSuccess) "OpenClash 配置已更新并重启服务" else "保存失败"
+            )
+            loadPlugins()
+        }
+    }
+
+    fun saveMosdnsConfig(config: MosdnsConfig) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isOperating = true)
+            val res = routerRepository.updateMosdnsConfig(config)
+            _uiState.value = _uiState.value.copy(
+                isOperating = false,
+                activeConfigPlugin = null,
+                toastMessage = if (res.isSuccess) "MosDNS 配置已更新并重启服务" else "保存失败"
+            )
+            loadPlugins()
+        }
+    }
+
     fun loadLogs() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoadingLogs = true)
@@ -141,3 +209,4 @@ class ToolsViewModel(
         _uiState.value = _uiState.value.copy(toastMessage = null)
     }
 }
+

@@ -1,5 +1,7 @@
 package org.immortalwrt.manager.ui.screens.tools
 
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -11,6 +13,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -22,9 +25,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import org.immortalwrt.manager.domain.model.LogEntry
-import org.immortalwrt.manager.domain.model.PluginCategory
-import org.immortalwrt.manager.domain.model.PluginServiceInfo
+import org.immortalwrt.manager.domain.model.*
 import org.immortalwrt.manager.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -34,7 +35,7 @@ fun ToolsScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
-    var selectedTab by remember { mutableIntStateOf(0) } // 0: 插件中枢, 1: 实时日志, 2: 网络诊断
+    var selectedTab by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(state.toastMessage) {
         state.toastMessage?.let {
@@ -69,7 +70,6 @@ fun ToolsScreen(
                 .padding(padding)
                 .padding(horizontal = 16.dp)
         ) {
-            // 三大功能 Tab 切换
             PrimaryTabRow(
                 selectedTabIndex = selectedTab,
                 modifier = Modifier.fillMaxWidth()
@@ -84,7 +84,7 @@ fun ToolsScreen(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
                     text = { Text("系统日志") },
-                    icon = { Icon(Icons.Default.ReceiptLong, contentDescription = null) }
+                    icon = { Icon(Icons.AutoMirrored.Filled.ReceiptLong, contentDescription = null) }
                 )
                 Tab(
                     selected = selectedTab == 2,
@@ -102,13 +102,62 @@ fun ToolsScreen(
                 2 -> DiagnosticsTabContent(state, viewModel)
             }
         }
+
+        // 插件配置弹窗
+        state.activeConfigPlugin?.let { plugin ->
+            when (plugin.id) {
+                "passwall" -> {
+                    state.passwallConfig?.let { cfg ->
+                        PasswallConfigDialog(
+                            config = cfg,
+                            isOperating = state.isOperating,
+                            onDismiss = { viewModel.closePluginConfig() },
+                            onSave = { updated -> viewModel.savePasswallConfig(updated) }
+                        )
+                    }
+                }
+                "openclash" -> {
+                    state.openclashConfig?.let { cfg ->
+                        OpenClashConfigDialog(
+                            config = cfg,
+                            isOperating = state.isOperating,
+                            onDismiss = { viewModel.closePluginConfig() },
+                            onSave = { updated -> viewModel.saveOpenClashConfig(updated) },
+                            onOpenWebUi = {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("http://10.10.10.1:9090/ui/"))
+                                context.startActivity(intent)
+                            }
+                        )
+                    }
+                }
+                "mosdns" -> {
+                    state.mosdnsConfig?.let { cfg ->
+                        MosdnsConfigDialog(
+                            config = cfg,
+                            isOperating = state.isOperating,
+                            onDismiss = { viewModel.closePluginConfig() },
+                            onSave = { updated -> viewModel.saveMosdnsConfig(updated) }
+                        )
+                    }
+                }
+                else -> {
+                    GenericPluginDialog(
+                        plugin = plugin,
+                        onDismiss = { viewModel.closePluginConfig() },
+                        onOpenWeb = { port ->
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("http://10.10.10.1:$port/"))
+                            context.startActivity(intent)
+                        }
+                    )
+                }
+            }
+        }
     }
 }
 
 @Composable
 fun PluginsTabContent(state: ToolsUiState, viewModel: ToolsViewModel) {
     Column(modifier = Modifier.fillMaxSize()) {
-        // 分类 Filter Chips
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
                 FilterChip(
@@ -141,7 +190,8 @@ fun PluginsTabContent(state: ToolsUiState, viewModel: ToolsViewModel) {
                     PluginCard(
                         plugin = plugin,
                         isOperating = state.isOperating,
-                        onAction = { action -> viewModel.controlPlugin(plugin.serviceName, action) }
+                        onAction = { action -> viewModel.controlPlugin(plugin.serviceName, action) },
+                        onConfigure = { viewModel.openPluginConfig(plugin) }
                     )
                 }
                 item { Spacer(modifier = Modifier.height(16.dp)) }
@@ -154,7 +204,8 @@ fun PluginsTabContent(state: ToolsUiState, viewModel: ToolsViewModel) {
 fun PluginCard(
     plugin: PluginServiceInfo,
     isOperating: Boolean,
-    onAction: (String) -> Unit
+    onAction: (String) -> Unit,
+    onConfigure: () -> Unit
 ) {
     ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
@@ -216,46 +267,279 @@ fun PluginCard(
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (plugin.isRunning) {
-                    OutlinedButton(
-                        onClick = { onAction("restart") },
-                        enabled = !isOperating,
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("重启服务", fontSize = 12.sp)
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Button(
-                        onClick = { onAction("stop") },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                        enabled = !isOperating,
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Text("停止", fontSize = 12.sp)
-                    }
-                } else {
-                    Button(
-                        onClick = { onAction("start") },
-                        colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen),
-                        enabled = !isOperating,
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("启动服务", fontSize = 12.sp)
+                OutlinedButton(
+                    onClick = onConfigure,
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("设置参数", fontSize = 12.sp)
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (plugin.isRunning) {
+                        OutlinedButton(
+                            onClick = { onAction("restart") },
+                            enabled = !isOperating,
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("重启", fontSize = 12.sp)
+                        }
+                        Button(
+                            onClick = { onAction("stop") },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                            enabled = !isOperating,
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text("停止", fontSize = 12.sp)
+                        }
+                    } else {
+                        Button(
+                            onClick = { onAction("start") },
+                            colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen),
+                            enabled = !isOperating,
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("启动服务", fontSize = 12.sp)
+                        }
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+fun PasswallConfigDialog(
+    config: PasswallConfig,
+    isOperating: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (PasswallConfig) -> Unit
+) {
+    var enabled by remember { mutableStateOf(config.isEnabled) }
+    var mode by remember { mutableStateOf(config.proxyMode) }
+    var dnsMode by remember { mutableStateOf(config.dnsMode) }
+    var remoteDns by remember { mutableStateOf(config.remoteDns) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("PassWall 代理配置") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("主服务总开关", fontWeight = FontWeight.SemiBold)
+                    Switch(checked = enabled, onCheckedChange = { enabled = it })
+                }
+
+                Text("TCP 代理运行模式：", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FilterChip(selected = mode == "chnroute", onClick = { mode = "chnroute" }, label = { Text("中国列表外") })
+                    FilterChip(selected = mode == "gfwlist", onClick = { mode = "gfwlist" }, label = { Text("GFW列表") })
+                    FilterChip(selected = mode == "global", onClick = { mode = "global" }, label = { Text("全局") })
+                }
+
+                OutlinedTextField(
+                    value = dnsMode,
+                    onValueChange = { dnsMode = it },
+                    label = { Text("DNS 过滤转发模式 (dns2socks/smartdns)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = remoteDns,
+                    onValueChange = { remoteDns = it },
+                    label = { Text("远端防污染 DNS (如 1.1.1.1, 8.8.8.8)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onSave(config.copy(isEnabled = enabled, proxyMode = mode, dnsMode = dnsMode, remoteDns = remoteDns)) },
+                enabled = !isOperating
+            ) {
+                if (isOperating) CircularProgressIndicator(modifier = Modifier.size(16.dp)) else Text("保存并应用")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取 消") }
+        }
+    )
+}
+
+@Composable
+fun OpenClashConfigDialog(
+    config: OpenClashConfig,
+    isOperating: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (OpenClashConfig) -> Unit,
+    onOpenWebUi: () -> Unit
+) {
+    var enabled by remember { mutableStateOf(config.isEnabled) }
+    var mode by remember { mutableStateOf(config.operationMode) }
+    var coreType by remember { mutableStateOf(config.coreType) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("OpenClash (Meta) 代理配置") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("启用 OpenClash", fontWeight = FontWeight.SemiBold)
+                    Switch(checked = enabled, onCheckedChange = { enabled = it })
+                }
+
+                Text("运行模式：", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FilterChip(selected = mode == "fake-ip", onClick = { mode = "fake-ip" }, label = { Text("Fake-IP (混合)") })
+                    FilterChip(selected = mode == "redir-host", onClick = { mode = "redir-host" }, label = { Text("Redir-Host") })
+                    FilterChip(selected = mode == "tun", onClick = { mode = "tun" }, label = { Text("TUN 模式") })
+                }
+
+                Text("内核类型：", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FilterChip(selected = coreType == "Meta", onClick = { coreType = "Meta" }, label = { Text("Mihomo (Meta)") })
+                    FilterChip(selected = coreType == "DEV", onClick = { coreType = "DEV" }, label = { Text("DEV 官方") })
+                }
+
+                Button(
+                    onClick = onOpenWebUi,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue)
+                ) {
+                    Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("打开 Clash 控制台 (WebUI)")
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onSave(config.copy(isEnabled = enabled, operationMode = mode, coreType = coreType)) },
+                enabled = !isOperating
+            ) {
+                if (isOperating) CircularProgressIndicator(modifier = Modifier.size(16.dp)) else Text("保存并生效")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取 消") }
+        }
+    )
+}
+
+@Composable
+fun MosdnsConfigDialog(
+    config: MosdnsConfig,
+    isOperating: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (MosdnsConfig) -> Unit
+) {
+    var enabled by remember { mutableStateOf(config.isEnabled) }
+    var port by remember { mutableStateOf(config.listenPort.toString()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("MosDNS 分流配置") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("启用 MosDNS", fontWeight = FontWeight.SemiBold)
+                    Switch(checked = enabled, onCheckedChange = { enabled = it })
+                }
+
+                OutlinedTextField(
+                    value = port,
+                    onValueChange = { port = it },
+                    label = { Text("本地监听端口 (默认 5335)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), shape = RoundedCornerShape(8.dp)) {
+                    Text(
+                        text = "MosDNS 会将国内域名直连国内快速 DNS，国外域名转发加密防污染 DNS。",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(10.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onSave(config.copy(isEnabled = enabled, listenPort = port.toIntOrNull() ?: 5335)) },
+                enabled = !isOperating
+            ) {
+                if (isOperating) CircularProgressIndicator(modifier = Modifier.size(16.dp)) else Text("保 存")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取 消") }
+        }
+    )
+}
+
+@Composable
+fun GenericPluginDialog(
+    plugin: PluginServiceInfo,
+    onDismiss: () -> Unit,
+    onOpenWeb: (Int) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(plugin.name) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(plugin.description, style = MaterialTheme.typography.bodyMedium)
+
+                if (plugin.webPort != null) {
+                    Button(
+                        onClick = { onOpenWeb(plugin.webPort) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.Launch, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("打开 Web 管理控制台 (端口 :${plugin.webPort})")
+                    }
+                } else {
+                    Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), shape = RoundedCornerShape(8.dp)) {
+                        Text(
+                            text = "该插件由系统守护进程托管，可通过左下角按钮启动、停止或重启服务。",
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(10.dp)
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onDismiss) { Text("关 闭") }
+        }
+    )
 }
 
 @Composable
@@ -410,3 +694,4 @@ fun DiagnosticsTabContent(state: ToolsUiState, viewModel: ToolsViewModel) {
         Spacer(modifier = Modifier.height(20.dp))
     }
 }
+

@@ -8,20 +8,27 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.immortalwrt.manager.data.repository.PreferencesRepository
 import org.immortalwrt.manager.data.repository.RouterRepository
-import org.immortalwrt.manager.domain.model.FirewallRedirectRule
-import org.immortalwrt.manager.domain.model.RouterCredentials
-import org.immortalwrt.manager.domain.model.RouterNode
+import org.immortalwrt.manager.domain.model.*
 
 data class SettingsUiState(
     val currentCredentials: RouterCredentials = RouterCredentials(),
     val savedNodes: List<RouterNode> = emptyList(),
     val portForwardRules: List<FirewallRedirectRule> = emptyList(),
+    val lanConfig: LanNetworkConfig = LanNetworkConfig(),
+    val dhcpConfig: DhcpServerConfig = DhcpServerConfig(),
+    val systemSettings: SystemSettings = SystemSettings(),
     val themeMode: Int = 0, // 0: Auto, 1: Light, 2: Dark
     val dynamicColor: Boolean = true,
     val isOperating: Boolean = false,
     val isLoadingRules: Boolean = false,
+    val isLoadingWebSettings: Boolean = false,
     val showAddNodeDialog: Boolean = false,
     val showAddPortForwardDialog: Boolean = false,
+    val showEditLanDialog: Boolean = false,
+    val showEditDhcpDialog: Boolean = false,
+    val showEditSystemDialog: Boolean = false,
+    val showChangePwdDialog: Boolean = false,
+    val showRebootDialog: Boolean = false,
     val toastMessage: String? = null,
     val loggedOut: Boolean = false
 )
@@ -56,6 +63,85 @@ class SettingsViewModel(
             }
         }
         loadPortForwardRules()
+        loadWebSettings()
+    }
+
+    fun loadWebSettings() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoadingWebSettings = true)
+            val lanRes = routerRepository.getLanConfig().getOrNull() ?: LanNetworkConfig()
+            val dhcpRes = routerRepository.getDhcpConfig().getOrNull() ?: DhcpServerConfig()
+            val sysRes = routerRepository.getSystemSettings().getOrNull() ?: SystemSettings()
+            _uiState.value = _uiState.value.copy(
+                isLoadingWebSettings = false,
+                lanConfig = lanRes,
+                dhcpConfig = dhcpRes,
+                systemSettings = sysRes
+            )
+        }
+    }
+
+    fun updateLanConfig(ipaddr: String, netmask: String) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isOperating = true)
+            val res = routerRepository.updateLanConfig(LanNetworkConfig(ipaddr, netmask))
+            _uiState.value = _uiState.value.copy(
+                isOperating = false,
+                showEditLanDialog = false,
+                toastMessage = if (res.isSuccess) "LAN 网络配置已更新并下发生效" else "修改 LAN 失败"
+            )
+            loadWebSettings()
+        }
+    }
+
+    fun updateDhcpConfig(start: Int, limit: Int, leasetime: String) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isOperating = true)
+            val res = routerRepository.updateDhcpConfig(DhcpServerConfig(start, limit, leasetime))
+            _uiState.value = _uiState.value.copy(
+                isOperating = false,
+                showEditDhcpDialog = false,
+                toastMessage = if (res.isSuccess) "DHCP 服务配置已更新" else "修改 DHCP 失败"
+            )
+            loadWebSettings()
+        }
+    }
+
+    fun updateSystemSettings(hostname: String, zonename: String, timezone: String) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isOperating = true)
+            val res = routerRepository.updateSystemSettings(SystemSettings(hostname, timezone, zonename))
+            _uiState.value = _uiState.value.copy(
+                isOperating = false,
+                showEditSystemDialog = false,
+                toastMessage = if (res.isSuccess) "系统属性已保存" else "保存失败"
+            )
+            loadWebSettings()
+        }
+    }
+
+    fun changeAdminPassword(newPassword: String) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isOperating = true)
+            val res = routerRepository.changeAdminPassword(newPassword)
+            _uiState.value = _uiState.value.copy(
+                isOperating = false,
+                showChangePwdDialog = false,
+                toastMessage = if (res.isSuccess) "路由器管理员 root 密码已成功修改" else "修改密码失败"
+            )
+        }
+    }
+
+    fun rebootRouter() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isOperating = true)
+            val res = routerRepository.rebootRouter()
+            _uiState.value = _uiState.value.copy(
+                isOperating = false,
+                showRebootDialog = false,
+                toastMessage = if (res.isSuccess) "路由器重启指令已下发，正在重启..." else "重启失败"
+            )
+        }
     }
 
     fun loadPortForwardRules() {
@@ -124,6 +210,7 @@ class SettingsViewModel(
                 toastMessage = "已切换活跃节点为 [${node.alias}]，正在连接..."
             )
             routerRepository.login(node.credentials)
+            loadWebSettings()
         }
     }
 
@@ -146,21 +233,20 @@ class SettingsViewModel(
         }
     }
 
-    fun openAddNodeDialog() {
-        _uiState.value = _uiState.value.copy(showAddNodeDialog = true)
-    }
-
-    fun closeAddNodeDialog() {
-        _uiState.value = _uiState.value.copy(showAddNodeDialog = false)
-    }
-
-    fun openAddPortForwardDialog() {
-        _uiState.value = _uiState.value.copy(showAddPortForwardDialog = true)
-    }
-
-    fun closeAddPortForwardDialog() {
-        _uiState.value = _uiState.value.copy(showAddPortForwardDialog = false)
-    }
+    fun openAddNodeDialog() { _uiState.value = _uiState.value.copy(showAddNodeDialog = true) }
+    fun closeAddNodeDialog() { _uiState.value = _uiState.value.copy(showAddNodeDialog = false) }
+    fun openAddPortForwardDialog() { _uiState.value = _uiState.value.copy(showAddPortForwardDialog = true) }
+    fun closeAddPortForwardDialog() { _uiState.value = _uiState.value.copy(showAddPortForwardDialog = false) }
+    fun openEditLanDialog() { _uiState.value = _uiState.value.copy(showEditLanDialog = true) }
+    fun closeEditLanDialog() { _uiState.value = _uiState.value.copy(showEditLanDialog = false) }
+    fun openEditDhcpDialog() { _uiState.value = _uiState.value.copy(showEditDhcpDialog = true) }
+    fun closeEditDhcpDialog() { _uiState.value = _uiState.value.copy(showEditDhcpDialog = false) }
+    fun openEditSystemDialog() { _uiState.value = _uiState.value.copy(showEditSystemDialog = true) }
+    fun closeEditSystemDialog() { _uiState.value = _uiState.value.copy(showEditSystemDialog = false) }
+    fun openChangePwdDialog() { _uiState.value = _uiState.value.copy(showChangePwdDialog = true) }
+    fun closeChangePwdDialog() { _uiState.value = _uiState.value.copy(showChangePwdDialog = false) }
+    fun openRebootDialog() { _uiState.value = _uiState.value.copy(showRebootDialog = true) }
+    fun closeRebootDialog() { _uiState.value = _uiState.value.copy(showRebootDialog = false) }
 
     fun logout() {
         viewModelScope.launch {
@@ -173,3 +259,4 @@ class SettingsViewModel(
         _uiState.value = _uiState.value.copy(toastMessage = null)
     }
 }
+

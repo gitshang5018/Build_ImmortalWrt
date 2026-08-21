@@ -29,7 +29,6 @@ fun DashboardScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
-    var showRebootDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.toastMessage) {
         state.toastMessage?.let {
@@ -44,7 +43,7 @@ fun DashboardScreen(
                 title = {
                     Column {
                         Text(
-                            text = "ImmortalWrt 仪表盘",
+                            text = "路由管家",
                             style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                         )
                         state.overview?.let {
@@ -118,7 +117,7 @@ fun DashboardScreen(
                                 )
                             }
 
-                            Divider(
+                            HorizontalDivider(
                                 modifier = Modifier
                                     .height(48.dp)
                                     .width(1.dp),
@@ -152,7 +151,7 @@ fun DashboardScreen(
 
                 // 3. 硬件资源占用与在线状态
                 Text(
-                    text = "系统资源与连接",
+                    text = "系统资源与运行状态",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                     color = MaterialTheme.colorScheme.onBackground
                 )
@@ -207,12 +206,12 @@ fun DashboardScreen(
                         title = "运行时长",
                         value = state.overview?.formattedUptime ?: "--",
                         icon = Icons.Default.AccessTime,
-                        subtitle = "网关: ${state.overview?.host ?: "10.10.10.1"}",
+                        subtitle = "网关: ${state.overview?.lanIp ?: state.overview?.host ?: "10.10.10.1"}",
                         modifier = Modifier.weight(1f)
                     )
                 }
 
-                // 4. 快捷系统控制
+                // 4. 快捷释放内存
                 ElevatedCard(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp)
@@ -224,6 +223,11 @@ fun DashboardScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Column {
+                            Text("内核缓存优化", fontWeight = FontWeight.SemiBold)
+                            Text("释放 Linux PageCache / Slab 临时缓存", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+
                         OutlinedButton(
                             onClick = { viewModel.dropCaches() },
                             enabled = !state.isOperating,
@@ -231,30 +235,19 @@ fun DashboardScreen(
                         ) {
                             Icon(Icons.Default.CleaningServices, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("释放内核缓存")
-                        }
-
-                        Button(
-                            onClick = { showRebootDialog = true },
-                            colors = ButtonDefaults.buttonColors(containerColor = ErrorRed),
-                            enabled = !state.isOperating,
-                            shape = RoundedCornerShape(10.dp)
-                        ) {
-                            Icon(Icons.Default.RestartAlt, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("重启路由")
+                            Text("释放缓存")
                         }
                     }
                 }
 
-                // 5. 固件与网络状态信息
+                // 5. 固件与双栈网络状态信息
                 ElevatedCard(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            text = "设备详情",
+                            text = "设备详情与外网双栈",
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
                         )
                         Spacer(modifier = Modifier.height(12.dp))
@@ -265,7 +258,7 @@ fun DashboardScreen(
                             Text("设备型号", color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(state.overview?.modelName ?: "--", fontWeight = FontWeight.Medium)
                         }
-                        Divider(modifier = Modifier.padding(vertical = 8.dp))
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
@@ -273,44 +266,35 @@ fun DashboardScreen(
                             Text("固件版本", color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(state.overview?.firmwareVersion ?: "--", fontWeight = FontWeight.Medium)
                         }
-                        Divider(modifier = Modifier.padding(vertical = 8.dp))
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("局域网网关", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(state.overview?.lanIp ?: "--", fontWeight = FontWeight.Medium)
+                        }
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text("外网 IPv4", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(state.overview?.wanIp ?: "未获取", fontWeight = FontWeight.Medium)
+                            Text(state.overview?.wanIpv4 ?: "未连接", fontWeight = FontWeight.Bold, color = PrimaryBlue)
+                        }
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("外网 IPv6", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(state.overview?.wanIpv6 ?: "未分配", fontWeight = FontWeight.Medium, fontSize = 12.sp)
                         }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
             }
-        }
-
-        if (showRebootDialog) {
-            AlertDialog(
-                onDismissRequest = { showRebootDialog = false },
-                icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = WarningOrange) },
-                title = { Text("确认重启路由器？") },
-                text = { Text("重启大约需要 1~2 分钟，期间所有连接将短暂中断。") },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            showRebootDialog = false
-                            viewModel.rebootRouter()
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = ErrorRed)
-                    ) {
-                        Text("立即重启")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showRebootDialog = false }) {
-                        Text("取 消")
-                    }
-                }
-            )
         }
     }
 }
