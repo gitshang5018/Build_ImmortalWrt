@@ -9,40 +9,88 @@ configure_wifi() {
 	local txpower=$4
 	local ssid=$5
 	local key=$6
-	local encryption=${7:-"psk2+ccmp"} # 新增 encryption 参数，如果为空则默认为 psk2+ccmp
-	local now_encryption=$(uci get wireless.default_radio${radio}.encryption)
+	local encryption=${7:-"psk2+ccmp"} # 如果为空则默认为 psk2+ccmp
+	local now_encryption=$(uci get wireless.default_radio${radio}.encryption 2>/dev/null)
 	if [ -n "$now_encryption" ] && [ "$now_encryption" != "none" ]; then
 		return 0
 	fi
+
+	local is_2g=0
+	if [ "$channel" -le 14 ] 2>/dev/null; then
+		is_2g=1
+	fi
+
+	local nasid="radio${radio}"
+
 	uci -q batch <<EOF
 set wireless.radio${radio}.channel="${channel}"
 set wireless.radio${radio}.htmode="${htmode}"
-set wireless.radio${radio}.mu_beamformer='1'
 set wireless.radio${radio}.country='US'
 set wireless.radio${radio}.txpower="${txpower}"
 set wireless.radio${radio}.cell_density='0'
 set wireless.radio${radio}.disabled='0'
+
+# 空口公平调度与基础参数
+set wireless.radio${radio}.airtime_fairness='1'
+set wireless.radio${radio}.short_preamble='1'
+set wireless.radio${radio}.dtim_period='2'
+
+# Wi-Fi 6 (802.11ax) 完整空口特性与波束赋形
+set wireless.radio${radio}.mu_beamformer='1'
+set wireless.radio${radio}.he_su_beamformer='1'
+set wireless.radio${radio}.he_su_beamformee='1'
+set wireless.radio${radio}.he_mu_beamformer='1'
+set wireless.radio${radio}.he_dlofdma='1'
+set wireless.radio${radio}.he_ulofdma='1'
+set wireless.radio${radio}.he_dl_mumimo='1'
+set wireless.radio${radio}.he_ul_mumimo='1'
+set wireless.radio${radio}.he_twt='1'
+
+# 基础接口配置
 set wireless.default_radio${radio}.ssid="${ssid}"
 set wireless.default_radio${radio}.encryption="${encryption}"
 set wireless.default_radio${radio}.key="${key}"
+
+# 漫游三剑客 (802.11k/v/r 快速漫游与统一漫游域)
 set wireless.default_radio${radio}.ieee80211k='1'
+set wireless.default_radio${radio}.bss_transition='1'
+set wireless.default_radio${radio}.ieee80211r='1'
+set wireless.default_radio${radio}.mobility_domain='e4a1'
+set wireless.default_radio${radio}.nasid='${nasid}'
+set wireless.default_radio${radio}.r1_key_holder='${nasid}'
+set wireless.default_radio${radio}.ft_psk_generate_local='1'
+set wireless.default_radio${radio}.ft_over_ds='1'
+
+# 管理帧保护与稳定防踢、组播转单播消除丢包
+set wireless.default_radio${radio}.ieee80211w='1'
+set wireless.default_radio${radio}.disassoc_low_ack='0'
+set wireless.default_radio${radio}.multicast_to_unicast='1'
+
+# 节能与时间通告
 set wireless.default_radio${radio}.time_advertisement='2'
 set wireless.default_radio${radio}.time_zone='CST-8'
-set wireless.default_radio${radio}.bss_transition='1'
 set wireless.default_radio${radio}.wnm_sleep_mode='1'
 set wireless.default_radio${radio}.wnm_sleep_mode_no_keys='1'
 EOF
+
+	# 2.4G 频宽防降速
+	if [ "$is_2g" -eq 1 ]; then
+		uci -q batch <<EOF
+set wireless.radio${radio}.noscan='1'
+set wireless.radio${radio}.he_coext='0'
+EOF
+	fi
 }
 
 jdc_ax1800_pro_wifi_cfg() {
-	configure_wifi 0 149 HE80 20 'JDC_AX1800PRO_5G' '12345678'
-	configure_wifi 1 1 HE20 20 'JDC_AX1800PRO' '12345678'
+	configure_wifi 0 149 HE80 23 'JDC_AX1800PRO_5G' '12345678'
+	configure_wifi 1 1 HE20 22 'JDC_AX1800PRO' '12345678'
 }
 
 jdc_ax6600_wifi_cfg() {
-	configure_wifi 0 149 HE80 22 'JDC_AX6600_5G1' '12345678'
+	configure_wifi 0 149 HE80 23 'JDC_AX6600_5G1' '12345678'
 	configure_wifi 1 1 HE20 22 'JDC_AX6600' '12345678'
-	configure_wifi 2 44 HE160 23 'JDC_AX6600_5G2' '12345678'
+	configure_wifi 2 44 HE160 25 'JDC_AX6600_5G2' '12345678'
 }
 
 redmi_ax5_wifi_cfg() {
