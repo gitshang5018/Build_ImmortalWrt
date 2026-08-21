@@ -14,7 +14,8 @@ data class WirelessUiState(
     val isSaving: Boolean = false,
     val wifiConfigs: List<WifiInterfaceConfig> = emptyList(),
     val editingConfig: WifiInterfaceConfig? = null,
-    val message: String? = null,
+    val qrDialogConfig: WifiInterfaceConfig? = null,
+    val toastMessage: String? = null,
     val errorMessage: String? = null
 )
 
@@ -56,15 +57,39 @@ class WirelessViewModel(
         _uiState.value = _uiState.value.copy(editingConfig = null)
     }
 
-    fun saveWifiConfig(radio: String, newSsid: String, newKey: String) {
+    fun openQrDialog(config: WifiInterfaceConfig) {
+        _uiState.value = _uiState.value.copy(qrDialogConfig = config)
+    }
+
+    fun closeQrDialog() {
+        _uiState.value = _uiState.value.copy(qrDialogConfig = null)
+    }
+
+    fun saveWifiConfig(
+        radio: String,
+        newSsid: String,
+        newKey: String,
+        channel: String? = null,
+        htmode: String? = null,
+        txPower: String? = null,
+        isHidden: Boolean? = null
+    ) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isSaving = true, errorMessage = null)
-            val result = routerRepository.updateWifiConfig(radio, newSsid, newKey)
+            val result = routerRepository.updateWifiConfig(
+                radio = radio,
+                newSsid = newSsid,
+                newKey = newKey,
+                channel = channel,
+                htmode = htmode,
+                txPower = txPower,
+                isHidden = isHidden
+            )
             if (result.isSuccess) {
                 _uiState.value = _uiState.value.copy(
                     isSaving = false,
                     editingConfig = null,
-                    message = "Wi-Fi 配置已更新并应用"
+                    toastMessage = "Wi-Fi 参数已成功更新并生效"
                 )
                 refresh()
             } else {
@@ -74,5 +99,9 @@ class WirelessViewModel(
                 )
             }
         }
+    }
+
+    fun clearToast() {
+        _uiState.value = _uiState.value.copy(toastMessage = null)
     }
 }
