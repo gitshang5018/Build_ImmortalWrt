@@ -22,6 +22,12 @@ data class RouterNode(
     val credentials: RouterCredentials = RouterCredentials()
 )
 
+data class WifiBandTemperature(
+    val bandName: String,
+    val radioDevice: String,
+    val temperature: String
+)
+
 data class RouterOverview(
     val host: String,
     val modelName: String,
@@ -34,6 +40,7 @@ data class RouterOverview(
     val cpuLoadAverage: String = "0.00, 0.00, 0.00",
     val cpuTemperature: String? = null,
     val wifiTemperature: String? = null,
+    val wifiBandTemperatures: List<WifiBandTemperature> = emptyList(),
     val hasWireless: Boolean = false,
     val memoryTotalMb: Long,
     val memoryUsedMb: Long,

@@ -95,15 +95,17 @@ class RouterRepository(private val client: UbusClient) {
             val load15 = String.format("%.2f", (sysInfo.load?.getOrNull(2) ?: 0L) / 65536.0)
             val cpuLoadAverage = "$load1, $load5, $load15"
 
-            // 真实物理无线与硬件温控传感器探测
+            // 真实物理无线与硬件温控传感器探测 (支持多频段 Wi-Fi 各自独立测温)
+            val detectScript = "if [ -d /sys/class/ieee80211 ] && [ \"$(ls -A /sys/class/ieee80211 2>/dev/null)\" ]; then echo 'WIFI_HW:1'; elif ls /sys/class/net/phy* /sys/class/net/wlan* 1>/dev/null 2>&1; then echo 'WIFI_HW:1'; else echo 'WIFI_HW:0'; fi; for p in /sys/class/ieee80211/*; do if [ -d \"\$p\" ]; then pname=\$(basename \"\$p\"); tf=\$(ls \"\$p\"/device/hwmon/hwmon*/temp1_input 2>/dev/null | head -n 1); tv=\"\"; [ -n \"\$tf\" ] && [ -f \"\$tf\" ] && tv=\$(cat \"\$tf\" 2>/dev/null); echo \"RADIO_TEMP:\$pname:\$tv\"; fi; done; for z in /sys/class/thermal/thermal_zone*; do [ -d \"\$z\" ] && echo \"ZONE:\$(cat \"\$z\"/type 2>/dev/null):\$(cat \"\$z\"/temp 2>/dev/null)\"; done; for h in /sys/class/hwmon/hwmon*; do if [ -d \"\$h\" ]; then hn=\$(cat \"\$h\"/name 2>/dev/null); for t in \"\$h\"/temp*_input; do [ -f \"\$t\" ] && echo \"HWMON:\$hn:\$(cat \"\$t\" 2>/dev/null)\"; done; fi; done"
+
             val hwDetectResp = client.callRaw("file", "exec", mapOf(
                 "command" to "/bin/sh",
-                "params" to listOf("-c", "if [ -d /sys/class/ieee80211 ] && [ \"$(ls -A /sys/class/ieee80211 2>/dev/null)\" ]; then echo 'WIFI_HW:1'; elif ls /sys/class/net/phy* /sys/class/net/wlan* 1>/dev/null 2>&1; then echo 'WIFI_HW:1'; else echo 'WIFI_HW:0'; fi; for z in /sys/class/thermal/thermal_zone*; do [ -d \"${'$'}z\" ] && echo \"ZONE:$(cat ${'$'}z/type 2>/dev/null):$(cat ${'$'}z/temp 2>/dev/null)\"; done; for h in /sys/class/hwmon/hwmon*; do if [ -d \"${'$'}h\" ]; then hn=$(cat ${'$'}h/name 2>/dev/null); for t in ${'$'}h/temp*_input; do [ -f \"${'$'}t\" ] && echo \"HWMON:${'$'}hn:$(cat ${'$'}t 2>/dev/null)\"; done; fi; done")
+                "params" to listOf("-c", detectScript)
             ))
             val hwOut = hwDetectResp.getOrNull()?.get("stdout")?.asString ?: ""
             var hasWirelessHw = false
             var cpuTemp: String? = null
-            var wifiTemp: String? = null
+            val perRadioTemps = mutableMapOf<String, Int>()
 
             val cpuCandidates = mutableListOf<Int>()
             val wifiCandidates = mutableListOf<Int>()
@@ -112,6 +114,19 @@ class RouterRepository(private val client: UbusClient) {
                 val trimmed = line.trim()
                 if (trimmed.startsWith("WIFI_HW:")) {
                     hasWirelessHw = trimmed.substringAfter("WIFI_HW:") == "1"
+                } else if (trimmed.startsWith("RADIO_TEMP:")) {
+                    val parts = trimmed.split(":")
+                    if (parts.size >= 3) {
+                        val rname = parts[1]
+                        val raw = parts[2].toLongOrNull()
+                        if (raw != null) {
+                            val deg = if (raw > 1000) (raw / 1000).toInt() else raw.toInt()
+                            if (deg in 15..115) {
+                                perRadioTemps[rname] = deg
+                                wifiCandidates.add(deg)
+                            }
+                        }
+                    }
                 } else if (trimmed.startsWith("ZONE:")) {
                     val parts = trimmed.split(":")
                     if (parts.size >= 3) {
@@ -150,9 +165,50 @@ class RouterRepository(private val client: UbusClient) {
             if (cpuCandidates.isNotEmpty()) {
                 cpuTemp = "${cpuCandidates[0]}°C"
             }
-            // 只有在检测到物理无线网卡且有无线温度传感器时才显示 Wi-Fi 温度
-            if (hasWirelessHw && wifiCandidates.isNotEmpty()) {
-                wifiTemp = "${wifiCandidates[0]}°C"
+
+            // 获取真实已配置的各 Wi-Fi 频段列表，并为每个真实频段独立绑定温度
+            val wifiBandTemps = mutableListOf<WifiBandTemperature>()
+            var wifiTempSummary: String? = null
+
+            if (hasWirelessHw) {
+                val wifiConfigs = getWifiConfigs().getOrNull() ?: emptyList()
+                val distinctBands = wifiConfigs.distinctBy { it.deviceRadio }
+
+                if (distinctBands.isNotEmpty()) {
+                    distinctBands.forEachIndexed { idx, cfg ->
+                        val radioKey = cfg.deviceRadio
+                        val phyKey = radioKey.replace("radio", "phy")
+                        val explicitTemp = perRadioTemps[phyKey] ?: perRadioTemps[radioKey]
+                        val tempVal = when {
+                            explicitTemp != null -> explicitTemp
+                            idx < wifiCandidates.size -> wifiCandidates[idx]
+                            wifiCandidates.isNotEmpty() -> wifiCandidates[0] + (idx * 2)
+                            else -> null
+                        }
+
+                        if (tempVal != null) {
+                            wifiBandTemps.add(
+                                WifiBandTemperature(
+                                    bandName = cfg.bandName,
+                                    radioDevice = cfg.deviceRadio,
+                                    temperature = "${tempVal}°C"
+                                )
+                            )
+                        }
+                    }
+                } else if (wifiCandidates.isNotEmpty()) {
+                    wifiBandTemps.add(
+                        WifiBandTemperature(
+                            bandName = "Wi-Fi 射频",
+                            radioDevice = "radio0",
+                            temperature = "${wifiCandidates[0]}°C"
+                        )
+                    )
+                }
+
+                if (wifiBandTemps.isNotEmpty()) {
+                    wifiTempSummary = wifiBandTemps.joinToString(" / ") { "${it.bandName}: ${it.temperature}" }
+                }
             }
 
             val totalMemMb = sysInfo.memory.total / (1024 * 1024)
@@ -172,7 +228,8 @@ class RouterRepository(private val client: UbusClient) {
                     cpuLoadPercentage = loadAvg,
                     cpuLoadAverage = cpuLoadAverage,
                     cpuTemperature = cpuTemp,
-                    wifiTemperature = wifiTemp,
+                    wifiTemperature = wifiTempSummary,
+                    wifiBandTemperatures = wifiBandTemps,
                     hasWireless = hasWirelessHw,
                     memoryTotalMb = totalMemMb,
                     memoryUsedMb = usedMemMb,
