@@ -4,6 +4,7 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -12,12 +13,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import org.immortalwrt.manager.domain.model.WifiBandTemperature
 import org.immortalwrt.manager.ui.components.StatCard
 import org.immortalwrt.manager.ui.components.TrafficWaveformChart
 import org.immortalwrt.manager.ui.theme.*
@@ -197,159 +200,43 @@ fun DashboardScreen(
                     )
                 }
 
-                // 硬件温度监控区 (有几个 Wi-Fi 频段就展示几个独立 Wi-Fi 温度)
+                // 硬件温度监控区 (CPU 温度卡片 与 Wi-Fi 多频段统一温控卡片)
                 val cpuTempStr = state.overview?.cpuTemperature
                 val wifiBandTemps = state.overview?.wifiBandTemperatures ?: emptyList()
+                val hasWireless = state.overview?.hasWireless ?: false
 
-                if (cpuTempStr != null || wifiBandTemps.isNotEmpty()) {
-                    if (wifiBandTemps.isEmpty()) {
-                        // 0 个无线频段 (有线主路由 / X86 软路由)
-                        if (cpuTempStr != null) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(IntrinsicSize.Min),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                val cpuTempVal = cpuTempStr.replace("°C", "").toIntOrNull() ?: 45
-                                val cpuTempColor = when {
-                                    cpuTempVal > 80 -> ErrorRed
-                                    cpuTempVal > 65 -> WarningOrange
-                                    else -> SuccessGreen
-                                }
-
-                                StatCard(
-                                    title = "CPU 温度",
-                                    value = cpuTempStr,
-                                    subtitle = "处理器核心温度",
-                                    icon = Icons.Default.DeviceThermostat,
-                                    progress = (cpuTempVal / 100f).coerceIn(0f, 1f),
-                                    progressColor = cpuTempColor,
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .fillMaxHeight()
-                                )
-
-                                StatCard(
-                                    title = "无线硬件",
-                                    value = if (state.overview?.hasWireless == true) "无温控探头" else "无无线网卡",
-                                    subtitle = if (state.overview?.hasWireless == true) "未暴露温度传感器" else "有线主路由 / X86 架构",
-                                    icon = Icons.Default.WifiOff,
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .fillMaxHeight()
-                                )
-                            }
-                        }
-                    } else if (wifiBandTemps.size == 1) {
-                        // 1 个无线频段：CPU 温度 与该频段 Wi-Fi 温度并排
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(IntrinsicSize.Min),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            if (cpuTempStr != null) {
-                                val cpuTempVal = cpuTempStr.replace("°C", "").toIntOrNull() ?: 45
-                                val cpuTempColor = when {
-                                    cpuTempVal > 80 -> ErrorRed
-                                    cpuTempVal > 65 -> WarningOrange
-                                    else -> SuccessGreen
-                                }
-
-                                StatCard(
-                                    title = "CPU 温度",
-                                    value = cpuTempStr,
-                                    subtitle = "处理器核心温度",
-                                    icon = Icons.Default.DeviceThermostat,
-                                    progress = (cpuTempVal / 100f).coerceIn(0f, 1f),
-                                    progressColor = cpuTempColor,
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .fillMaxHeight()
-                                )
-                            }
-
-                            val singleBand = wifiBandTemps[0]
-                            val wTempVal = singleBand.temperature.replace("°C", "").toIntOrNull() ?: 48
-                            val wTempColor = when {
-                                wTempVal > 80 -> ErrorRed
-                                wTempVal > 65 -> WarningOrange
-                                else -> PrimaryBlue
-                            }
-
-                            StatCard(
-                                title = "${singleBand.bandName} 温度",
-                                value = singleBand.temperature,
-                                subtitle = "${singleBand.radioDevice} 射频芯片",
-                                icon = Icons.Default.WifiTethering,
-                                progress = (wTempVal / 100f).coerceIn(0f, 1f),
-                                progressColor = wTempColor,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight()
-                            )
-                        }
-                    } else {
-                        // 2个 / 3个 / 多个无线频段：为每一个频段独立生成温度卡片
-                        val cardList = mutableListOf<@Composable (Modifier) -> Unit>()
-                        if (cpuTempStr != null) {
-                            val cpuTempVal = cpuTempStr.replace("°C", "").toIntOrNull() ?: 45
-                            val cpuTempColor = when {
-                                cpuTempVal > 80 -> ErrorRed
-                                cpuTempVal > 65 -> WarningOrange
-                                else -> SuccessGreen
-                            }
-                            cardList.add { mod ->
-                                StatCard(
-                                    title = "CPU 温度",
-                                    value = cpuTempStr,
-                                    subtitle = "处理器核心温度",
-                                    icon = Icons.Default.DeviceThermostat,
-                                    progress = (cpuTempVal / 100f).coerceIn(0f, 1f),
-                                    progressColor = cpuTempColor,
-                                    modifier = mod
-                                )
-                            }
-                        }
-
-                        wifiBandTemps.forEachIndexed { index, band ->
-                            val wTempVal = band.temperature.replace("°C", "").toIntOrNull() ?: 48
-                            val wTempColor = when {
-                                wTempVal > 80 -> ErrorRed
-                                wTempVal > 65 -> WarningOrange
-                                index % 2 == 0 -> PrimaryBlue
-                                else -> SecondaryCyan
-                            }
-                            cardList.add { mod ->
-                                StatCard(
-                                    title = "${band.bandName} 温度",
-                                    value = band.temperature,
-                                    subtitle = "${band.radioDevice} 射频芯片",
-                                    icon = Icons.Default.WifiTethering,
-                                    progress = (wTempVal / 100f).coerceIn(0f, 1f),
-                                    progressColor = wTempColor,
-                                    modifier = mod
-                                )
-                            }
-                        }
-
-                        cardList.chunked(2).forEach { rowPair ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(IntrinsicSize.Min),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                rowPair[0](Modifier.weight(1f).fillMaxHeight())
-                                if (rowPair.size > 1) {
-                                    rowPair[1](Modifier.weight(1f).fillMaxHeight())
-                                } else {
-                                    Spacer(modifier = Modifier.weight(1f))
-                                }
-                            }
-                        }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Min),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    val cpuTempVal = cpuTempStr?.replace("°C", "")?.toIntOrNull() ?: 45
+                    val cpuTempColor = when {
+                        cpuTempVal > 80 -> ErrorRed
+                        cpuTempVal > 65 -> WarningOrange
+                        else -> SuccessGreen
                     }
+
+                    StatCard(
+                        title = "CPU 温度",
+                        value = cpuTempStr ?: "无传感器",
+                        subtitle = if (cpuTempStr != null) "处理器核心温度" else "未暴露硬件温控",
+                        icon = Icons.Default.DeviceThermostat,
+                        progress = if (cpuTempStr != null) (cpuTempVal / 100f).coerceIn(0f, 1f) else null,
+                        progressColor = cpuTempColor,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                    )
+
+                    WifiMultiBandTempCard(
+                        wifiBandTemps = wifiBandTemps,
+                        hasWireless = hasWireless,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                    )
                 }
 
                 Row(
@@ -466,3 +353,159 @@ fun DashboardScreen(
         }
     }
 }
+
+@Composable
+fun WifiMultiBandTempCard(
+    wifiBandTemps: List<WifiBandTemperature>,
+    hasWireless: Boolean,
+    modifier: Modifier = Modifier
+) {
+    ElevatedCard(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth()
+                .fillMaxHeight(),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Wi-Fi 温度",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(SecondaryCyan.copy(alpha = 0.1f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (hasWireless) Icons.Default.WifiTethering else Icons.Default.WifiOff,
+                            contentDescription = null,
+                            tint = SecondaryCyan,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+
+                if (!hasWireless || wifiBandTemps.isEmpty()) {
+                    Text(
+                        text = if (!hasWireless) "无无线网卡" else "无温控探头",
+                        style = MaterialTheme.typography.headlineMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = if (!hasWireless) "有线主路由 / X86 架构" else "未暴露温度传感器",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else if (wifiBandTemps.size == 1) {
+                    val single = wifiBandTemps[0]
+                    val deg = single.temperature.replace("°C", "").toIntOrNull() ?: 45
+                    val tColor = when {
+                        deg > 80 -> ErrorRed
+                        deg > 65 -> WarningOrange
+                        else -> PrimaryBlue
+                    }
+                    Text(
+                        text = single.temperature,
+                        style = MaterialTheme.typography.headlineMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 22.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LinearProgressIndicator(
+                        progress = { (deg / 100f).coerceIn(0f, 1f) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp)),
+                        color = tColor,
+                        trackColor = tColor.copy(alpha = 0.2f),
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = single.bandName,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    // 多频段 Wi-Fi (双频 / 3频)：在单张卡片内整齐排列各频段名称与实时温度
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        wifiBandTemps.forEach { item ->
+                            val deg = item.temperature.replace("°C", "").toIntOrNull() ?: 45
+                            val tColor = when {
+                                deg > 80 -> ErrorRed
+                                deg > 65 -> WarningOrange
+                                else -> PrimaryBlue
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(6.dp)
+                                            .clip(CircleShape)
+                                            .background(tColor)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = item.bandName.replace(" (5G-2 电竞)", " (5G-2)").replace(" (5G-1)", " (5G-1)"),
+                                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                                Surface(
+                                    color = tColor.copy(alpha = 0.12f),
+                                    shape = RoundedCornerShape(6.dp)
+                                ) {
+                                    Text(
+                                        text = item.temperature,
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            color = tColor
+                                        ),
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (wifiBandTemps.size > 1) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "${wifiBandTemps.size} 频无线射频温控",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
