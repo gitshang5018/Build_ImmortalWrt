@@ -76,7 +76,10 @@ data class ConnectedClient(
     val customAlias: String? = null,
     val isBlocked: Boolean = false,
     val rxRateMbps: Float = 0f,
-    val txRateMbps: Float = 0f
+    val txRateMbps: Float = 0f,
+    val ipv6Address: String? = null,
+    val vendor: String? = null,
+    val isStaticLease: Boolean = false
 ) {
     val displayName: String get() = customAlias?.takeIf { it.isNotBlank() } ?: hostname
 }
@@ -139,7 +142,15 @@ data class PluginServiceInfo(
     val hasDetailConfig: Boolean = true
 )
 
-// 常用插件专属详细配置模型
+// 节点与插件详细配置
+data class PasswallNode(
+    val id: String,
+    val remarks: String,
+    val type: String = "xray",
+    val address: String = "",
+    val port: String = ""
+)
+
 data class PasswallConfig(
     val isEnabled: Boolean = true,
     val proxyMode: String = "chnroute", // chnroute, gfwlist, global, returnhome
@@ -147,7 +158,8 @@ data class PasswallConfig(
     val udpNode: String = "与TCP相同",
     val dnsMode: String = "dns2socks", // dns2socks, pdnsd, smartdns, xray_doh
     val remoteDns: String = "1.1.1.1",
-    val chinadnsNg: Boolean = true
+    val chinadnsNg: Boolean = true,
+    val nodes: List<PasswallNode> = emptyList()
 )
 
 data class OpenClashConfig(
@@ -181,25 +193,43 @@ data class GenericUciConfig(
     val options: Map<String, String> = emptyMap()
 )
 
-// 网页端 (LuCI) 对齐的系统设置模型
+// 网页端 (LuCI) 对齐的 WAN/LAN/DHCP/系统设置模型
+data class WanNetworkConfig(
+    val proto: String = "dhcp", // pppoe, dhcp, static
+    val username: String = "",
+    val password: String = "",
+    val ipaddr: String = "",
+    val netmask: String = "255.255.255.0",
+    val gateway: String = "",
+    val dns: String = "",
+    val ipv6: Boolean = true
+)
+
 data class LanNetworkConfig(
     val ipaddr: String = "10.10.10.1",
     val netmask: String = "255.255.255.0",
     val gateway: String = "",
-    val dns: String = ""
+    val dns: String = "",
+    val ipv6AssignmentLength: String = "64"
 )
 
 data class DhcpServerConfig(
+    val isEnabled: Boolean = true,
     val start: Int = 100,
     val limit: Int = 150,
     val leasetime: String = "12h",
-    val dnsServers: String = "" // 自定义宣告 DNS
+    val dnsServers: String = "" // 自定义宣告 DNS 如 6,10.10.10.1
 )
 
 data class SystemSettings(
     val hostname: String = "ImmortalWrt",
     val timezone: String = "CST-8",
     val zonename: String = "Asia/Shanghai"
+)
+
+data class FirewallAdvancedSettings(
+    val fullconeNat: Boolean = true,
+    val synFlood: Boolean = true
 )
 
 data class FirewallRedirectRule(
@@ -224,4 +254,5 @@ data class LogEntry(
     val level: String,
     val message: String
 )
+
 

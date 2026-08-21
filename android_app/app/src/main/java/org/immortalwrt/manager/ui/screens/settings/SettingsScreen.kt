@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import org.immortalwrt.manager.domain.model.*
 import org.immortalwrt.manager.ui.theme.ErrorRed
 import org.immortalwrt.manager.ui.theme.PrimaryBlue
 import org.immortalwrt.manager.ui.theme.SuccessGreen
@@ -70,7 +71,308 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 1. 多路由器节点管理
+            // 1. WAN 外网连接与拨号 (与网页端同步)
+            Text(
+                text = "WAN 外网接入与拨号",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+            )
+
+            ElevatedCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            val protoLabel = when (state.wanConfig.proto) {
+                                "pppoe" -> "PPPoE 宽带拨号"
+                                "static" -> "静态 IP (Static)"
+                                else -> "DHCP 动态获取 (客户端)"
+                            }
+                            Text("协议类型：$protoLabel", fontWeight = FontWeight.SemiBold)
+                            if (state.wanConfig.proto == "pppoe") {
+                                Text("拨号账号: ${state.wanConfig.username.ifBlank { "（未设置）" }}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            } else if (state.wanConfig.proto == "static") {
+                                Text("静态 IP: ${state.wanConfig.ipaddr} · 网关: ${state.wanConfig.gateway}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            OutlinedButton(
+                                onClick = { viewModel.reconnectWan() },
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(2.dp))
+                                Text("重拨", fontSize = 12.sp)
+                            }
+                            Button(
+                                onClick = { viewModel.openEditWanDialog() },
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Text("修改", fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 2. 局域网 (LAN) 与 IPv6 设置 (与网页端同步)
+            Text(
+                text = "局域网 (LAN) 与 IPv6 设置",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+            )
+
+            ElevatedCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("LAN IP 与掩码", fontWeight = FontWeight.SemiBold)
+                            Text("${state.lanConfig.ipaddr} · ${state.lanConfig.netmask}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        OutlinedButton(
+                            onClick = { viewModel.openEditLanDialog() },
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text("修改", fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+
+            // 3. DHCP 服务与静态租约绑定 (与网页端同步)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "DHCP 服务与静态租约绑定",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                )
+                TextButton(onClick = { viewModel.openAddStaticLeaseDialog() }) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("新增绑定")
+                }
+            }
+
+            ElevatedCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("DHCP 地址池与租期", fontWeight = FontWeight.SemiBold)
+                            Text("起始: .${state.dhcpConfig.start} · 数量: ${state.dhcpConfig.limit} · 租期: ${state.dhcpConfig.leasetime}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        OutlinedButton(
+                            onClick = { viewModel.openEditDhcpDialog() },
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text("修改", fontSize = 12.sp)
+                        }
+                    }
+
+                    if (state.staticLeases.isNotEmpty()) {
+                        HorizontalDivider()
+                        Text("静态 IP 绑定列表 (${state.staticLeases.size})：", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                        state.staticLeases.forEach { lease ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text(lease.hostname, fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                                    Text("${lease.ip} · ${lease.mac}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                IconButton(onClick = { viewModel.deleteStaticDhcpLease(lease.id) }) {
+                                    Icon(Icons.Default.DeleteOutline, contentDescription = "删除绑定", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 4. 防火墙、FullCone NAT 与端口转发
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "防火墙与端口转发",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                )
+                TextButton(onClick = { viewModel.openAddPortForwardDialog() }) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("新增规则")
+                }
+            }
+
+            ElevatedCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("FullCone NAT (全锥形 NAT)", fontWeight = FontWeight.SemiBold)
+                            Text("游戏联机 / P2P 极速加速必备", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(
+                            checked = state.firewallAdvanced.fullconeNat,
+                            onCheckedChange = {
+                                viewModel.updateFirewallAdvanced(state.firewallAdvanced.copy(fullconeNat = it))
+                            }
+                        )
+                    }
+
+                    HorizontalDivider()
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("SYN-flood 攻击防御", fontWeight = FontWeight.SemiBold)
+                            Text("防范海量握手包洪水攻击", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(
+                            checked = state.firewallAdvanced.synFlood,
+                            onCheckedChange = {
+                                viewModel.updateFirewallAdvanced(state.firewallAdvanced.copy(synFlood = it))
+                            }
+                        )
+                    }
+
+                    if (state.portForwardRules.isNotEmpty()) {
+                        HorizontalDivider()
+                        Text("端口转发规则列表：", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                        state.portForwardRules.forEach { rule ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text(rule.name, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                                    Text(
+                                        text = "WAN [${rule.proto.uppercase()} :${rule.srcPort}] ➔ ${rule.destIp}:${rule.destPort}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                IconButton(onClick = { viewModel.deletePortForwardRule(rule.id) }) {
+                                    Icon(Icons.Default.DeleteOutline, contentDescription = "删除规则", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 5. 系统管理、时间同步与 root 密码 (与网页端同步)
+            Text(
+                text = "系统主机名与管理维护",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+            )
+
+            ElevatedCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("系统主机名与时区", fontWeight = FontWeight.SemiBold)
+                            Text("${state.systemSettings.hostname} · ${state.systemSettings.zonename} (${state.systemSettings.timezone})", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        OutlinedButton(
+                            onClick = { viewModel.openEditSystemDialog() },
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text("修改", fontSize = 12.sp)
+                        }
+                    }
+
+                    HorizontalDivider()
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("系统时间对齐", fontWeight = FontWeight.SemiBold)
+                            Text("将路由器时钟与手机当前时间一键同步", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        OutlinedButton(
+                            onClick = { viewModel.syncSystemTime() },
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Icon(Icons.Default.Schedule, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Text("同步时间", fontSize = 12.sp)
+                        }
+                    }
+
+                    HorizontalDivider()
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("修改管理员 root 密码", fontWeight = FontWeight.SemiBold)
+                            Text("在线安全修改 LuCI 与 SSH 密码", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Button(
+                            onClick = { viewModel.openChangePwdDialog() },
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text("更改密码", fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+
+            // 6. 多路由器节点管理
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -153,167 +455,7 @@ fun SettingsScreen(
                 }
             }
 
-            // 2. 局域网与 DHCP 服务 (与网页端同步)
-            Text(
-                text = "局域网 (LAN) 与 DHCP 服务",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-            )
-
-            ElevatedCard(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("LAN IP 与掩码", fontWeight = FontWeight.SemiBold)
-                            Text("${state.lanConfig.ipaddr} · ${state.lanConfig.netmask}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        OutlinedButton(
-                            onClick = { viewModel.openEditLanDialog() },
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                        ) {
-                            Text("修改", fontSize = 12.sp)
-                        }
-                    }
-
-                    HorizontalDivider()
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("DHCP 地址池与租期", fontWeight = FontWeight.SemiBold)
-                            Text("起始: .${state.dhcpConfig.start} · 数量: ${state.dhcpConfig.limit} · 租期: ${state.dhcpConfig.leasetime}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        OutlinedButton(
-                            onClick = { viewModel.openEditDhcpDialog() },
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                        ) {
-                            Text("修改", fontSize = 12.sp)
-                        }
-                    }
-                }
-            }
-
-            // 3. 系统主机名与管理权 (与网页端同步)
-            Text(
-                text = "系统主机名与管理权",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-            )
-
-            ElevatedCard(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("系统主机名与时区", fontWeight = FontWeight.SemiBold)
-                            Text("${state.systemSettings.hostname} · ${state.systemSettings.zonename} (${state.systemSettings.timezone})", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        OutlinedButton(
-                            onClick = { viewModel.openEditSystemDialog() },
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                        ) {
-                            Text("修改", fontSize = 12.sp)
-                        }
-                    }
-
-                    HorizontalDivider()
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("修改管理员 root 密码", fontWeight = FontWeight.SemiBold)
-                            Text("修改 LuCI 与 SSH 登录凭据", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Button(
-                            onClick = { viewModel.openChangePwdDialog() },
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                        ) {
-                            Text("更改密码", fontSize = 12.sp)
-                        }
-                    }
-                }
-            }
-
-            // 4. 防火墙端口转发管理
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "防火墙端口转发 (Port Forwarding)",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                )
-                TextButton(onClick = { viewModel.openAddPortForwardDialog() }) {
-                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("新增规则")
-                }
-            }
-
-            ElevatedCard(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (state.isLoadingRules) {
-                        Box(modifier = Modifier.fillMaxWidth().height(60.dp), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                        }
-                    } else if (state.portForwardRules.isEmpty()) {
-                        Text("暂无配置的端口转发规则", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    } else {
-                        state.portForwardRules.forEach { rule ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column {
-                                    Text(rule.name, fontWeight = FontWeight.SemiBold)
-                                    Text(
-                                        text = "WAN [${rule.proto.uppercase()} :${rule.srcPort}] ➔ ${rule.destIp}:${rule.destPort}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                IconButton(
-                                    onClick = { viewModel.deletePortForwardRule(rule.id) },
-                                    enabled = !state.isOperating
-                                ) {
-                                    Icon(Icons.Default.DeleteOutline, contentDescription = "删除规则", tint = MaterialTheme.colorScheme.error)
-                                }
-                            }
-                            HorizontalDivider()
-                        }
-                    }
-                }
-            }
-
-            // 5. 外观与主题偏好
+            // 7. 外观与主题偏好
             Text(
                 text = "外观与系统偏好",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
@@ -331,21 +473,9 @@ fun SettingsScreen(
                     ) {
                         Text("深色主题模式", fontWeight = FontWeight.Medium)
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            FilterChip(
-                                selected = state.themeMode == 0,
-                                onClick = { viewModel.setThemeMode(0) },
-                                label = { Text("跟随系统") }
-                            )
-                            FilterChip(
-                                selected = state.themeMode == 1,
-                                onClick = { viewModel.setThemeMode(1) },
-                                label = { Text("浅色") }
-                            )
-                            FilterChip(
-                                selected = state.themeMode == 2,
-                                onClick = { viewModel.setThemeMode(2) },
-                                label = { Text("深色") }
-                            )
+                            FilterChip(selected = state.themeMode == 0, onClick = { viewModel.setThemeMode(0) }, label = { Text("系统") })
+                            FilterChip(selected = state.themeMode == 1, onClick = { viewModel.setThemeMode(1) }, label = { Text("浅色") })
+                            FilterChip(selected = state.themeMode == 2, onClick = { viewModel.setThemeMode(2) }, label = { Text("深色") })
                         }
                     }
 
@@ -368,7 +498,7 @@ fun SettingsScreen(
                 }
             }
 
-            // 6. 系统危险控制操作区
+            // 8. 系统危险控制操作区
             Text(
                 text = "高级系统控制与维护",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = ErrorRed)
@@ -416,11 +546,30 @@ fun SettingsScreen(
         }
 
         // 对话框列表
+        if (state.showEditWanDialog) {
+            EditWanDialog(
+                current = state.wanConfig,
+                isOperating = state.isOperating,
+                onDismiss = { viewModel.closeEditWanDialog() },
+                onSave = { updated -> viewModel.updateWanConfig(updated) }
+            )
+        }
+
         if (state.showAddNodeDialog) {
             AddNodeDialog(
                 onDismiss = { viewModel.closeAddNodeDialog() },
                 onSave = { alias, host, port, user, pwd, https ->
                     viewModel.saveNewNode(alias, host, port, user, pwd, https)
+                }
+            )
+        }
+
+        if (state.showAddStaticLeaseDialog) {
+            AddStaticLeaseDialog(
+                isOperating = state.isOperating,
+                onDismiss = { viewModel.closeAddStaticLeaseDialog() },
+                onSave = { host, mac, ip ->
+                    viewModel.addStaticDhcpLease(host, mac, ip)
                 }
             )
         }
@@ -495,8 +644,94 @@ fun SettingsScreen(
 }
 
 @Composable
+fun EditWanDialog(
+    current: WanNetworkConfig,
+    isOperating: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (WanNetworkConfig) -> Unit
+) {
+    var proto by remember { mutableStateOf(current.proto) }
+    var username by remember { mutableStateOf(current.username) }
+    var password by remember { mutableStateOf(current.password) }
+    var ipaddr by remember { mutableStateOf(current.ipaddr) }
+    var netmask by remember { mutableStateOf(current.netmask) }
+    var gateway by remember { mutableStateOf(current.gateway) }
+    var dns by remember { mutableStateOf(current.dns) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("配置 WAN 外网连接") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("接入协议类型：", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FilterChip(selected = proto == "dhcp", onClick = { proto = "dhcp" }, label = { Text("DHCP 动态") })
+                    FilterChip(selected = proto == "pppoe", onClick = { proto = "pppoe" }, label = { Text("PPPoE 拨号") })
+                    FilterChip(selected = proto == "static", onClick = { proto = "static" }, label = { Text("静态 IP") })
+                }
+
+                if (proto == "pppoe") {
+                    OutlinedTextField(value = username, onValueChange = { username = it }, label = { Text("宽带账号 (PAP/CHAP)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("宽带密码") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                } else if (proto == "static") {
+                    OutlinedTextField(value = ipaddr, onValueChange = { ipaddr = it }, label = { Text("静态 IPv4 地址") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = netmask, onValueChange = { netmask = it }, label = { Text("子网掩码") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = gateway, onValueChange = { gateway = it }, label = { Text("默认网关") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = dns, onValueChange = { dns = it }, label = { Text("自定义 DNS (空格分隔)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                } else {
+                    Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), shape = RoundedCornerShape(8.dp)) {
+                        Text("DHCP 模式将由上级光猫或上级路由自动分配 IP 地址与 DNS 服务器。", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(10.dp))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onSave(current.copy(proto = proto, username = username, password = password, ipaddr = ipaddr, netmask = netmask, gateway = gateway, dns = dns)) },
+                enabled = !isOperating
+            ) {
+                if (isOperating) CircularProgressIndicator(modifier = Modifier.size(16.dp)) else Text("保存并连接")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取 消") } }
+    )
+}
+
+@Composable
+fun AddStaticLeaseDialog(
+    isOperating: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (String, String, String) -> Unit
+) {
+    var host by remember { mutableStateOf("") }
+    var mac by remember { mutableStateOf("") }
+    var ip by remember { mutableStateOf("10.10.10.") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("新增静态 DHCP 绑定") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(value = host, onValueChange = { host = it }, label = { Text("主机名/备注名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = mac, onValueChange = { mac = it }, label = { Text("物理 MAC 地址 (AA:BB:CC:DD:EE:FF)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = ip, onValueChange = { ip = it }, label = { Text("固定分配 IP 地址") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onSave(host.ifBlank { "StaticHost" }, mac.trim(), ip.trim()) },
+                enabled = !isOperating && mac.isNotBlank() && ip.isNotBlank()
+            ) {
+                if (isOperating) CircularProgressIndicator(modifier = Modifier.size(16.dp)) else Text("保 存")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取 消") } }
+    )
+}
+
+@Composable
 fun EditLanDialog(
-    current: org.immortalwrt.manager.domain.model.LanNetworkConfig,
+    current: LanNetworkConfig,
     isOperating: Boolean,
     onDismiss: () -> Unit,
     onSave: (String, String) -> Unit
@@ -525,7 +760,7 @@ fun EditLanDialog(
 
 @Composable
 fun EditDhcpDialog(
-    current: org.immortalwrt.manager.domain.model.DhcpServerConfig,
+    current: DhcpServerConfig,
     isOperating: Boolean,
     onDismiss: () -> Unit,
     onSave: (Int, Int, String) -> Unit
@@ -555,7 +790,7 @@ fun EditDhcpDialog(
 
 @Composable
 fun EditSystemDialog(
-    current: org.immortalwrt.manager.domain.model.SystemSettings,
+    current: SystemSettings,
     isOperating: Boolean,
     onDismiss: () -> Unit,
     onSave: (String, String, String) -> Unit

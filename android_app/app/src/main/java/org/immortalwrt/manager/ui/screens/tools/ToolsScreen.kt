@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -112,7 +113,12 @@ fun ToolsScreen(
                             config = cfg,
                             isOperating = state.isOperating,
                             onDismiss = { viewModel.closePluginConfig() },
-                            onSave = { updated -> viewModel.savePasswallConfig(updated) }
+                            onSave = { updated -> viewModel.savePasswallConfig(updated) },
+                            onUpdateRules = { viewModel.triggerPasswallRuleUpdate() },
+                            onOpenUci = {
+                                viewModel.closePluginConfig()
+                                viewModel.openUciEditor("passwall")
+                            }
                         )
                     }
                 }
@@ -147,10 +153,27 @@ fun ToolsScreen(
                         onOpenWeb = { port ->
                             val intent = Intent(Intent.ACTION_VIEW, Uri.parse("http://10.10.10.1:$port/"))
                             context.startActivity(intent)
+                        },
+                        onOpenUci = {
+                            viewModel.closePluginConfig()
+                            viewModel.openUciEditor(plugin.serviceName)
                         }
                     )
                 }
             }
+        }
+
+        // 通用 UCI 高级编辑器弹窗
+        state.uciEditingPluginName?.let { configName ->
+            GenericUciDialog(
+                configName = configName,
+                optionsMap = state.uciOptionsMap,
+                isOperating = state.isOperating,
+                onDismiss = { viewModel.closeUciEditor() },
+                onSaveOption = { fullKey, value ->
+                    viewModel.saveUciOption(configName, fullKey, value)
+                }
+            )
         }
     }
 }
@@ -325,18 +348,25 @@ fun PasswallConfigDialog(
     config: PasswallConfig,
     isOperating: Boolean,
     onDismiss: () -> Unit,
-    onSave: (PasswallConfig) -> Unit
+    onSave: (PasswallConfig) -> Unit,
+    onUpdateRules: () -> Unit,
+    onOpenUci: () -> Unit
 ) {
     var enabled by remember { mutableStateOf(config.isEnabled) }
     var mode by remember { mutableStateOf(config.proxyMode) }
+    var tcpNode by remember { mutableStateOf(config.tcpNode) }
+    var udpNode by remember { mutableStateOf(config.udpNode) }
     var dnsMode by remember { mutableStateOf(config.dnsMode) }
     var remoteDns by remember { mutableStateOf(config.remoteDns) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("PassWall 代理配置") },
+        title = { Text("PassWall 深度代理配置") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -344,6 +374,27 @@ fun PasswallConfigDialog(
                 ) {
                     Text("主服务总开关", fontWeight = FontWeight.SemiBold)
                     Switch(checked = enabled, onCheckedChange = { enabled = it })
+                }
+
+                Text("TCP 代理主节点：", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                if (config.nodes.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        config.nodes.take(4).forEach { node ->
+                            FilterChip(
+                                selected = tcpNode == node.id || tcpNode == node.remarks,
+                                onClick = { tcpNode = node.id },
+                                label = { Text("${node.remarks} (${node.type})") }
+                            )
+                        }
+                    }
+                } else {
+                    OutlinedTextField(
+                        value = tcpNode,
+                        onValueChange = { tcpNode = it },
+                        label = { Text("TCP 节点 ID 或备注") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
 
                 Text("TCP 代理运行模式：", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -356,7 +407,7 @@ fun PasswallConfigDialog(
                 OutlinedTextField(
                     value = dnsMode,
                     onValueChange = { dnsMode = it },
-                    label = { Text("DNS 过滤转发模式 (dns2socks/smartdns)") },
+                    label = { Text("DNS 模式 (dns2socks / smartdns)") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -368,11 +419,36 @@ fun PasswallConfigDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onUpdateRules,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(Icons.Default.CloudSync, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("更新规则库", fontSize = 11.sp)
+                    }
+
+                    OutlinedButton(
+                        onClick = onOpenUci,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("全量 UCI", fontSize = 11.sp)
+                    }
+                }
             }
         },
         confirmButton = {
             Button(
-                onClick = { onSave(config.copy(isEnabled = enabled, proxyMode = mode, dnsMode = dnsMode, remoteDns = remoteDns)) },
+                onClick = { onSave(config.copy(isEnabled = enabled, proxyMode = mode, tcpNode = tcpNode, udpNode = udpNode, dnsMode = dnsMode, remoteDns = remoteDns)) },
                 enabled = !isOperating
             ) {
                 if (isOperating) CircularProgressIndicator(modifier = Modifier.size(16.dp)) else Text("保存并应用")
@@ -380,6 +456,117 @@ fun PasswallConfigDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("取 消") }
+        }
+    )
+}
+
+@Composable
+fun GenericUciDialog(
+    configName: String,
+    optionsMap: Map<String, String>,
+    isOperating: Boolean,
+    onDismiss: () -> Unit,
+    onSaveOption: (String, String) -> Unit
+) {
+    var searchQuery by remember { mutableStateOf("") }
+    var editingKey by remember { mutableStateOf<String?>(null) }
+    var editingVal by remember { mutableStateOf("") }
+
+    val filteredList = remember(optionsMap, searchQuery) {
+        optionsMap.entries.filter { (k, v) ->
+            searchQuery.isBlank() || k.contains(searchQuery, ignoreCase = true) || v.contains(searchQuery, ignoreCase = true)
+        }.sortedBy { it.key }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("UCI 高级配置: $configName") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("搜索 UCI 参数键名/键值...") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                if (editingKey != null) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("编辑: $editingKey", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                            OutlinedTextField(
+                                value = editingVal,
+                                onValueChange = { editingVal = it },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                                TextButton(onClick = { editingKey = null }) { Text("取消") }
+                                Button(
+                                    onClick = {
+                                        editingKey?.let { k -> onSaveOption(k, editingVal) }
+                                        editingKey = null
+                                    },
+                                    enabled = !isOperating
+                                ) {
+                                    Text("提交 UCI")
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (filteredList.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
+                        Text("未查询到匹配的 UCI 参数", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                } else {
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        items(filteredList) { (k, v) ->
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        editingKey = k
+                                        editingVal = v
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(k, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = PrimaryBlue)
+                                        Text(v.ifBlank { "（空值）" }, style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    Icon(Icons.Default.Edit, contentDescription = "编辑", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onDismiss) { Text("完成") }
         }
     )
 }
@@ -507,7 +694,8 @@ fun MosdnsConfigDialog(
 fun GenericPluginDialog(
     plugin: PluginServiceInfo,
     onDismiss: () -> Unit,
-    onOpenWeb: (Int) -> Unit
+    onOpenWeb: (Int) -> Unit,
+    onOpenUci: () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -525,14 +713,16 @@ fun GenericPluginDialog(
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("打开 Web 管理控制台 (端口 :${plugin.webPort})")
                     }
-                } else {
-                    Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), shape = RoundedCornerShape(8.dp)) {
-                        Text(
-                            text = "该插件由系统守护进程托管，可通过左下角按钮启动、停止或重启服务。",
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(10.dp)
-                        )
-                    }
+                }
+
+                OutlinedButton(
+                    onClick = onOpenUci,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("查看/编辑全部 UCI 参数 (网页端同步)")
                 }
             }
         },

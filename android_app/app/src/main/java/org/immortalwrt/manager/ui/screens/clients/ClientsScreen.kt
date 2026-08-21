@@ -23,6 +23,7 @@ import org.immortalwrt.manager.domain.model.ConnectionType
 import org.immortalwrt.manager.ui.theme.PrimaryBlue
 import org.immortalwrt.manager.ui.theme.SecondaryCyan
 import org.immortalwrt.manager.ui.theme.SuccessGreen
+import org.immortalwrt.manager.ui.theme.WarningOrange
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -62,11 +63,10 @@ fun ClientsScreen(
                 .padding(padding)
                 .padding(horizontal = 16.dp)
         ) {
-            // 搜索框
             OutlinedTextField(
                 value = state.searchQuery,
                 onValueChange = { viewModel.onSearchQueryChange(it) },
-                placeholder = { Text("搜索设备名称 / IP / MAC") },
+                placeholder = { Text("搜索设备名称 / IP / MAC / 厂商") },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                 singleLine = true,
                 shape = RoundedCornerShape(12.dp),
@@ -75,7 +75,6 @@ fun ClientsScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // 过滤标签
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(
                     selected = state.filter == ClientFilter.ALL,
@@ -152,7 +151,7 @@ fun ClientItemCard(
     ) {
         Row(
             modifier = Modifier
-                .padding(16.dp)
+                .padding(14.dp)
                 .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -184,15 +183,32 @@ fun ClientItemCard(
                         val typeText = when (client.connectionType) {
                             ConnectionType.WIRED_LAN -> "LAN"
                             ConnectionType.WIFI_2G -> "2.4G"
-                            else -> "5G"
+                            ConnectionType.WIFI_5G -> "5G"
+                            ConnectionType.WIFI_6G -> "6G"
                         }
                         Text(
                             text = typeText,
                             color = iconBg,
-                            fontSize = 11.sp,
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
                         )
+                    }
+
+                    if (client.isStaticLease) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Surface(
+                            color = SuccessGreen.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text(
+                                text = "静态",
+                                color = SuccessGreen,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                            )
+                        }
                     }
                 }
                 Spacer(modifier = Modifier.height(4.dp))
@@ -201,6 +217,13 @@ fun ClientItemCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                client.vendor?.let { v ->
+                    Text(
+                        text = "厂商: $v",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
 
             if (client.connectionType != ConnectionType.WIRED_LAN) {
@@ -241,7 +264,7 @@ fun ClientDetailDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text("终端详情与管理")
+            Text("终端详情与绑定")
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -266,25 +289,39 @@ fun ClientDetailDialog(
                         }
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("分配 IP", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(client.ipAddress, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                            Text(client.ipAddress, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = PrimaryBlue)
+                        }
+                        client.ipv6Address?.let { ip6 ->
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("IPv6 地址", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(ip6, style = MaterialTheme.typography.bodySmall, fontSize = 11.sp)
+                            }
                         }
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("物理 MAC", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(client.macAddress, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
                         }
+                        client.vendor?.let { v ->
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("设备制造商", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(v, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
                     }
                 }
 
-                Button(
-                    onClick = onBindStaticDhcp,
-                    enabled = !isOperating && client.ipAddress.isNotBlank() && client.ipAddress != "动态分配",
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Icon(Icons.Default.PushPin, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("固定绑定此 IP (静态 DHCP)")
+                if (!client.isStaticLease) {
+                    Button(
+                        onClick = onBindStaticDhcp,
+                        enabled = !isOperating && client.ipAddress.isNotBlank() && client.ipAddress != "动态分配",
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(Icons.Default.PushPin, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("固定绑定此 IP (静态 DHCP)")
+                    }
                 }
             }
         },
@@ -307,12 +344,15 @@ fun ClientDetailDialog(
 private fun getDeviceIconAndColor(client: ConnectedClient): Pair<androidx.compose.ui.graphics.vector.ImageVector, Color> {
     val h = client.hostname.lowercase()
     val m = client.macAddress.lowercase()
+    val v = client.vendor?.lowercase() ?: ""
     return when {
         client.connectionType == ConnectionType.WIRED_LAN -> Icons.Default.Computer to PrimaryBlue
-        h.contains("iphone") || h.contains("ipad") || h.contains("apple") || m.startsWith("00:17:f2") -> Icons.Default.Smartphone to SecondaryCyan
-        h.contains("android") || h.contains("xiaomi") || h.contains("huawei") || h.contains("honor") || h.contains("oppo") || h.contains("vivo") -> Icons.Default.PhoneAndroid to SecondaryCyan
-        h.contains("tv") || h.contains("box") || h.contains("media") -> Icons.Default.Tv to SuccessGreen
+        h.contains("iphone") || h.contains("ipad") || v.contains("apple") -> Icons.Default.Smartphone to SecondaryCyan
+        h.contains("android") || v.contains("xiaomi") || v.contains("huawei") || v.contains("honor") || v.contains("oppo") || v.contains("vivo") -> Icons.Default.PhoneAndroid to SecondaryCyan
+        h.contains("tv") || h.contains("box") || h.contains("media") || v.contains("sony") -> Icons.Default.Tv to SuccessGreen
+        v.contains("espressif") || v.contains("iot") -> Icons.Default.Sensors to WarningOrange
         else -> Icons.Default.DevicesOther to PrimaryBlue
     }
 }
+
 

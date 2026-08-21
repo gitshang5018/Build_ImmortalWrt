@@ -25,6 +25,8 @@ data class ToolsUiState(
     val passwallConfig: PasswallConfig? = null,
     val openclashConfig: OpenClashConfig? = null,
     val mosdnsConfig: MosdnsConfig? = null,
+    val uciEditingPluginName: String? = null,
+    val uciOptionsMap: Map<String, String> = emptyMap(),
     val logs: List<LogEntry> = emptyList(),
     val logFilterLevel: String = "ALL",
     val logSearchQuery: String = "",
@@ -134,6 +136,17 @@ class ToolsViewModel(
         }
     }
 
+    fun triggerPasswallRuleUpdate() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isOperating = true)
+            val res = routerRepository.updatePasswallRules()
+            _uiState.value = _uiState.value.copy(
+                isOperating = false,
+                toastMessage = "PassWall 规则更新已启动: ${res.getOrNull()?.take(30)}"
+            )
+        }
+    }
+
     fun saveOpenClashConfig(config: OpenClashConfig) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isOperating = true)
@@ -157,6 +170,39 @@ class ToolsViewModel(
                 toastMessage = if (res.isSuccess) "MosDNS 配置已更新并重启服务" else "保存失败"
             )
             loadPlugins()
+        }
+    }
+
+    fun openUciEditor(configName: String) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isOperating = true, uciEditingPluginName = configName)
+            val map = routerRepository.getGenericUciOptions(configName).getOrNull() ?: emptyMap()
+            _uiState.value = _uiState.value.copy(isOperating = false, uciOptionsMap = map)
+        }
+    }
+
+    fun closeUciEditor() {
+        _uiState.value = _uiState.value.copy(uciEditingPluginName = null, uciOptionsMap = emptyMap())
+    }
+
+    fun saveUciOption(configName: String, fullKey: String, value: String) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isOperating = true)
+            val parts = fullKey.split(".", limit = 2)
+            if (parts.size == 2) {
+                val sec = parts[0]
+                val opt = parts[1]
+                val res = routerRepository.setGenericUciOption(configName, sec, opt, value)
+                val newMap = _uiState.value.uciOptionsMap.toMutableMap()
+                newMap[fullKey] = value
+                _uiState.value = _uiState.value.copy(
+                    isOperating = false,
+                    uciOptionsMap = newMap,
+                    toastMessage = if (res.isSuccess) "参数 $fullKey 已保存并提交 UCI" else "保存失败"
+                )
+            } else {
+                _uiState.value = _uiState.value.copy(isOperating = false)
+            }
         }
     }
 
@@ -209,4 +255,5 @@ class ToolsViewModel(
         _uiState.value = _uiState.value.copy(toastMessage = null)
     }
 }
+
 
