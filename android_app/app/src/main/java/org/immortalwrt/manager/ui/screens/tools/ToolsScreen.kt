@@ -3,7 +3,11 @@ package org.immortalwrt.manager.ui.screens.tools
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -18,10 +22,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import org.immortalwrt.manager.ui.theme.ErrorRed
-import org.immortalwrt.manager.ui.theme.PrimaryBlue
-import org.immortalwrt.manager.ui.theme.SuccessGreen
-import org.immortalwrt.manager.ui.theme.WarningOrange
+import org.immortalwrt.manager.domain.model.LogEntry
+import org.immortalwrt.manager.domain.model.PluginCategory
+import org.immortalwrt.manager.domain.model.PluginServiceInfo
+import org.immortalwrt.manager.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -30,7 +34,7 @@ fun ToolsScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
-    var showRebootDialog by remember { mutableStateOf(false) }
+    var selectedTab by remember { mutableIntStateOf(0) } // 0: 插件中枢, 1: 实时日志, 2: 网络诊断
 
     LaunchedEffect(state.toastMessage) {
         state.toastMessage?.let {
@@ -44,9 +48,17 @@ fun ToolsScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = "系统与网络工具箱",
+                        text = "插件中枢与系统工具",
                         style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                     )
+                },
+                actions = {
+                    IconButton(onClick = {
+                        viewModel.loadPlugins()
+                        viewModel.loadLogs()
+                    }) {
+                        Icon(Icons.Default.Refresh, contentDescription = "刷新")
+                    }
                 }
             )
         }
@@ -56,168 +68,345 @@ fun ToolsScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .padding(horizontal = 16.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 1. 系统控制快捷动作
-            Text(
-                text = "快捷系统控制",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
-            )
-
-            ElevatedCard(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp)
+            // 三大功能 Tab 切换
+            PrimaryTabRow(
+                selectedTabIndex = selectedTab,
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    // 一键清理内存
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .background(SuccessGreen.copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(Icons.Default.CleaningServices, contentDescription = null, tint = SuccessGreen)
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text("释放内核缓存", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold))
-                                Text("清理 PageCache / Slab 内存", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                        Button(
-                            onClick = { viewModel.dropCaches() },
-                            enabled = !state.isOperating,
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("清 理")
-                        }
-                    }
-
-                    Divider(modifier = Modifier.padding(vertical = 12.dp))
-
-                    // 一键重启
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .background(ErrorRed.copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(Icons.Default.RestartAlt, contentDescription = null, tint = ErrorRed)
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text("重启路由器", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold))
-                                Text("平稳软重启整个系统", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                        Button(
-                            onClick = { showRebootDialog = true },
-                            colors = ButtonDefaults.buttonColors(containerColor = ErrorRed),
-                            enabled = !state.isOperating,
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("重 启")
-                        }
-                    }
-                }
+                Tab(
+                    selected = selectedTab == 0,
+                    onClick = { selectedTab = 0 },
+                    text = { Text("常用插件 (${state.plugins.size})") },
+                    icon = { Icon(Icons.Default.Extension, contentDescription = null) }
+                )
+                Tab(
+                    selected = selectedTab == 1,
+                    onClick = { selectedTab = 1 },
+                    text = { Text("系统日志") },
+                    icon = { Icon(Icons.Default.ReceiptLong, contentDescription = null) }
+                )
+                Tab(
+                    selected = selectedTab == 2,
+                    onClick = { selectedTab = 2 },
+                    text = { Text("网络诊断") },
+                    icon = { Icon(Icons.Default.Speed, contentDescription = null) }
+                )
             }
 
-            // 2. 网络 Ping 诊断工具
-            Text(
-                text = "网络延迟诊断 (Ping)",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
-            )
+            Spacer(modifier = Modifier.height(12.dp))
 
-            ElevatedCard(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp)
+            when (selectedTab) {
+                0 -> PluginsTabContent(state, viewModel)
+                1 -> SystemLogsTabContent(state, viewModel)
+                2 -> DiagnosticsTabContent(state, viewModel)
+            }
+        }
+    }
+}
+
+@Composable
+fun PluginsTabContent(state: ToolsUiState, viewModel: ToolsViewModel) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        // 分类 Filter Chips
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item {
+                FilterChip(
+                    selected = state.selectedPluginCategory == null,
+                    onClick = { viewModel.selectPluginCategory(null) },
+                    label = { Text("全部插件") }
+                )
+            }
+            items(PluginCategory.entries) { cat ->
+                FilterChip(
+                    selected = state.selectedPluginCategory == cat,
+                    onClick = { viewModel.selectPluginCategory(cat) },
+                    label = { Text(cat.title) }
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        if (state.isLoadingPlugins) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+        } else {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxSize()
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                items(state.filteredPlugins) { plugin ->
+                    PluginCard(
+                        plugin = plugin,
+                        isOperating = state.isOperating,
+                        onAction = { action -> viewModel.controlPlugin(plugin.serviceName, action) }
+                    )
+                }
+                item { Spacer(modifier = Modifier.height(16.dp)) }
+            }
+        }
+    }
+}
+
+@Composable
+fun PluginCard(
+    plugin: PluginServiceInfo,
+    isOperating: Boolean,
+    onAction: (String) -> Unit
+) {
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .background(if (plugin.isRunning) SuccessGreen else Color.Gray, CircleShape)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = plugin.name,
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(4.dp)
                     ) {
-                        OutlinedTextField(
-                            value = state.pingTarget,
-                            onValueChange = { viewModel.onPingTargetChange(it) },
-                            label = { Text("目标 IP / 域名") },
-                            singleLine = true,
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.weight(1f)
+                        Text(
+                            text = plugin.category.title,
+                            fontSize = 10.sp,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Button(
-                            onClick = { viewModel.runPing() },
-                            enabled = !state.isPinging,
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.height(54.dp)
-                        ) {
-                            if (state.isPinging) {
-                                CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
-                            } else {
-                                Text("测 试")
-                            }
-                        }
                     }
+                }
 
-                    if (state.pingResult != null) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Surface(
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = state.pingResult!!,
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 12.sp,
-                                modifier = Modifier.padding(12.dp)
-                            )
-                        }
-                    }
+                Surface(
+                    color = if (plugin.isRunning) SuccessGreen.copy(alpha = 0.15f) else Color.Gray.copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(6.dp)
+                ) {
+                    Text(
+                        text = if (plugin.isRunning) "运行中" else "已停止",
+                        color = if (plugin.isRunning) SuccessGreen else Color.Gray,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                    )
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
-        }
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = plugin.description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
 
-        // 重启二次确认对话框
-        if (showRebootDialog) {
-            AlertDialog(
-                onDismissRequest = { showRebootDialog = false },
-                icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = WarningOrange) },
-                title = { Text("确认重启路由器？") },
-                text = { Text("重启过程大约需要 1~2 分钟，期间所有终端的 Wi-Fi 与内网连接将短暂中断。") },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            showRebootDialog = false
-                            viewModel.rebootRouter()
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = ErrorRed)
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (plugin.isRunning) {
+                    OutlinedButton(
+                        onClick = { onAction("restart") },
+                        enabled = !isOperating,
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                     ) {
-                        Text("立即重启")
+                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("重启服务", fontSize = 12.sp)
                     }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showRebootDialog = false }) {
-                        Text("取 消")
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = { onAction("stop") },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                        enabled = !isOperating,
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Text("停止", fontSize = 12.sp)
+                    }
+                } else {
+                    Button(
+                        onClick = { onAction("start") },
+                        colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen),
+                        enabled = !isOperating,
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("启动服务", fontSize = 12.sp)
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun SystemLogsTabContent(state: ToolsUiState, viewModel: ToolsViewModel) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        OutlinedTextField(
+            value = state.logSearchQuery,
+            onValueChange = { viewModel.onLogSearchChange(it) },
+            placeholder = { Text("搜索日志关键字 (如 crash, auth, wan)") },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+            singleLine = true,
+            shape = RoundedCornerShape(10.dp),
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = state.logFilterLevel == "ALL",
+                onClick = { viewModel.onLogFilterLevelChange("ALL") },
+                label = { Text("全部日志") }
+            )
+            FilterChip(
+                selected = state.logFilterLevel == "WARN",
+                onClick = { viewModel.onLogFilterLevelChange("WARN") },
+                label = { Text("仅警告与错误") }
+            )
+            FilterChip(
+                selected = state.logFilterLevel == "ERR",
+                onClick = { viewModel.onLogFilterLevelChange("ERR") },
+                label = { Text("仅错误") }
             )
         }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        if (state.isLoadingLogs) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+        } else {
+            Surface(
+                color = Color(0xFF1E1E1E),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    items(state.filteredLogs) { log ->
+                        val logColor = when {
+                            log.level.contains("err", ignoreCase = true) -> Color(0xFFFF5252)
+                            log.level.contains("warn", ignoreCase = true) -> Color(0xFFFFD700)
+                            else -> Color(0xFFD4D4D4)
+                        }
+                        Text(
+                            text = "[${log.timestamp}] [${log.level.uppercase()}] ${log.message}",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp,
+                            color = logColor,
+                            lineHeight = 15.sp
+                        )
+                    }
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+    }
+}
+
+@Composable
+fun DiagnosticsTabContent(state: ToolsUiState, viewModel: ToolsViewModel) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = state.diagMode == DiagnosticMode.PING,
+                onClick = { viewModel.onDiagModeChange(DiagnosticMode.PING) },
+                label = { Text("Ping 时延测试") }
+            )
+            FilterChip(
+                selected = state.diagMode == DiagnosticMode.NSLOOKUP,
+                onClick = { viewModel.onDiagModeChange(DiagnosticMode.NSLOOKUP) },
+                label = { Text("DNS 解析探测") }
+            )
+            FilterChip(
+                selected = state.diagMode == DiagnosticMode.TRACEROUTE,
+                onClick = { viewModel.onDiagModeChange(DiagnosticMode.TRACEROUTE) },
+                label = { Text("Traceroute 追踪") }
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value = state.diagTarget,
+                onValueChange = { viewModel.onDiagTargetChange(it) },
+                label = { Text(if (state.diagMode == DiagnosticMode.NSLOOKUP) "输入待解析域名 (如 baidu.com)" else "输入目标 IP / 域名") },
+                singleLine = true,
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.weight(1f)
+            )
+
+            Button(
+                onClick = { viewModel.runDiagnostics() },
+                enabled = !state.isDiagnosing,
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.height(54.dp)
+            ) {
+                if (state.isDiagnosing) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
+                } else {
+                    Text("执 行")
+                }
+            }
+        }
+
+        if (state.diagResult != null) {
+            Text(
+                text = "诊断输出回显：",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+            )
+
+            Surface(
+                color = Color(0xFF1E1E1E),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = state.diagResult!!,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp,
+                    color = Color(0xFF81C784),
+                    modifier = Modifier.padding(14.dp)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
     }
 }

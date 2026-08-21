@@ -2,24 +2,52 @@ package org.immortalwrt.manager.ui.screens.tools
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.immortalwrt.manager.data.repository.RouterRepository
-import java.io.BufferedReader
-import java.io.InputStreamReader
+import org.immortalwrt.manager.domain.model.LogEntry
+import org.immortalwrt.manager.domain.model.PluginCategory
+import org.immortalwrt.manager.domain.model.PluginServiceInfo
+
+enum class DiagnosticMode {
+    PING,
+    NSLOOKUP,
+    TRACEROUTE
+}
 
 data class ToolsUiState(
     val isOperating: Boolean = false,
-    val pingTarget: String = "223.5.5.5",
-    val isPinging: Boolean = false,
-    val pingResult: String? = null,
+    val isLoadingPlugins: Boolean = true,
+    val isLoadingLogs: Boolean = false,
+    val plugins: List<PluginServiceInfo> = emptyList(),
+    val selectedPluginCategory: PluginCategory? = null,
+    val logs: List<LogEntry> = emptyList(),
+    val logFilterLevel: String = "ALL",
+    val logSearchQuery: String = "",
+    val diagTarget: String = "223.5.5.5",
+    val diagMode: DiagnosticMode = DiagnosticMode.PING,
+    val isDiagnosing: Boolean = false,
+    val diagResult: String? = null,
     val toastMessage: String? = null,
     val errorMessage: String? = null
-)
+) {
+    val filteredPlugins: List<PluginServiceInfo>
+        get() = if (selectedPluginCategory == null) plugins else plugins.filter { it.category == selectedPluginCategory }
+
+    val filteredLogs: List<LogEntry>
+        get() = logs.filter { entry ->
+            val matchLevel = when (logFilterLevel) {
+                "ALL" -> true
+                "ERR" -> entry.level.contains("err", ignoreCase = true)
+                "WARN" -> entry.level.contains("warn", ignoreCase = true) || entry.level.contains("err", ignoreCase = true)
+                else -> true
+            }
+            val matchSearch = logSearchQuery.isBlank() || entry.message.contains(logSearchQuery, ignoreCase = true)
+            matchLevel && matchSearch
+        }
+}
 
 class ToolsViewModel(
     private val routerRepository: RouterRepository
@@ -28,68 +56,84 @@ class ToolsViewModel(
     private val _uiState = MutableStateFlow(ToolsUiState())
     val uiState: StateFlow<ToolsUiState> = _uiState.asStateFlow()
 
-    fun onPingTargetChange(target: String) {
-        _uiState.value = _uiState.value.copy(pingTarget = target)
+    init {
+        loadPlugins()
+        loadLogs()
     }
 
-    fun rebootRouter() {
+    fun loadPlugins() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isOperating = true, errorMessage = null)
-            val result = routerRepository.rebootRouter()
-            if (result.isSuccess) {
+            _uiState.value = _uiState.value.copy(isLoadingPlugins = true)
+            val res = routerRepository.getPluginServices()
+            if (res.isSuccess) {
                 _uiState.value = _uiState.value.copy(
-                    isOperating = false,
-                    toastMessage = "重启指令已发送，路由器正在重启..."
+                    isLoadingPlugins = false,
+                    plugins = res.getOrNull() ?: emptyList()
                 )
             } else {
-                _uiState.value = _uiState.value.copy(
-                    isOperating = false,
-                    errorMessage = result.exceptionOrNull()?.message ?: "重启失败"
-                )
+                _uiState.value = _uiState.value.copy(isLoadingPlugins = false)
             }
         }
     }
 
-    fun dropCaches() {
+    fun selectPluginCategory(cat: PluginCategory?) {
+        _uiState.value = _uiState.value.copy(selectedPluginCategory = cat)
+    }
+
+    fun controlPlugin(serviceName: String, action: String) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isOperating = true, errorMessage = null)
-            val result = routerRepository.dropCaches()
-            if (result.isSuccess) {
-                _uiState.value = _uiState.value.copy(
-                    isOperating = false,
-                    toastMessage = "内存缓存清理完成"
-                )
-            } else {
-                _uiState.value = _uiState.value.copy(
-                    isOperating = false,
-                    errorMessage = result.exceptionOrNull()?.message ?: "清理失败"
-                )
-            }
+            _uiState.value = _uiState.value.copy(isOperating = true)
+            val res = routerRepository.controlPluginService(serviceName, action)
+            _uiState.value = _uiState.value.copy(
+                isOperating = false,
+                toastMessage = if (res.isSuccess) "服务 $serviceName 指令 [$action] 已下发" else "指令下发失败"
+            )
+            loadPlugins()
         }
     }
 
-    fun runPing() {
-        val target = _uiState.value.pingTarget.trim()
-        if (target.isEmpty()) return
+    fun loadLogs() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoadingLogs = true)
+            val res = routerRepository.getSystemLogs()
+            _uiState.value = _uiState.value.copy(
+                isLoadingLogs = false,
+                logs = res.getOrNull() ?: emptyList()
+            )
+        }
+    }
+
+    fun onLogFilterLevelChange(lvl: String) {
+        _uiState.value = _uiState.value.copy(logFilterLevel = lvl)
+    }
+
+    fun onLogSearchChange(query: String) {
+        _uiState.value = _uiState.value.copy(logSearchQuery = query)
+    }
+
+    fun onDiagTargetChange(target: String) {
+        _uiState.value = _uiState.value.copy(diagTarget = target)
+    }
+
+    fun onDiagModeChange(mode: DiagnosticMode) {
+        _uiState.value = _uiState.value.copy(diagMode = mode)
+    }
+
+    fun runDiagnostics() {
+        val target = _uiState.value.diagTarget.trim()
+        if (target.isBlank()) return
 
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isPinging = true, pingResult = "正在测试网络延迟...")
-            val resultText = withContext(Dispatchers.IO) {
-                try {
-                    val process = Runtime.getRuntime().exec("ping -c 4 $target")
-                    val reader = BufferedReader(InputStreamReader(process.inputStream))
-                    val output = StringBuilder()
-                    var line: String?
-                    while (reader.readLine().also { line = it } != null) {
-                        output.append(line).append("\n")
-                    }
-                    process.waitFor()
-                    output.toString().ifEmpty { "Ping 执行完成，无回显" }
-                } catch (e: Exception) {
-                    "Ping 测试异常: ${e.message}"
-                }
+            _uiState.value = _uiState.value.copy(isDiagnosing = true, diagResult = "正在执行网络诊断，请稍候...")
+            val result = when (_uiState.value.diagMode) {
+                DiagnosticMode.PING -> routerRepository.runPing(target)
+                DiagnosticMode.NSLOOKUP -> routerRepository.runNslookup(target)
+                DiagnosticMode.TRACEROUTE -> routerRepository.runTraceroute(target)
             }
-            _uiState.value = _uiState.value.copy(isPinging = false, pingResult = resultText)
+            _uiState.value = _uiState.value.copy(
+                isDiagnosing = false,
+                diagResult = result.getOrNull() ?: "执行失败: ${result.exceptionOrNull()?.message}"
+            )
         }
     }
 
