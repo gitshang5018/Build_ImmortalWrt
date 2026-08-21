@@ -542,6 +542,46 @@ fun SettingsScreen(
                 }
             }
 
+            // 9. 关于与软件版本
+            Text(
+                text = "关于软件",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+            )
+
+            ElevatedCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("应用名称", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("路由管家 (ImmortalWrt Manager)", fontWeight = FontWeight.SemiBold)
+                    }
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("客户端版本", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("v1.2.0 (Build 120)", fontWeight = FontWeight.Bold, color = PrimaryBlue)
+                    }
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("适配平台", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("ImmortalWrt / OpenWrt 全系列", fontWeight = FontWeight.Medium)
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(20.dp))
         }
 
