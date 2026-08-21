@@ -94,20 +94,10 @@ jobs:
         with:
           path: |
             ./action_build/.ccache
-            ./action_build/staging_dir
+            ./action_build/dl
           key: ubuntu-24.04-${{ hashFiles('**/repo_flag') }}-${{ env.BUILD_DATE }}
           restore-keys: |
             ubuntu-24.04-${{ hashFiles('**/repo_flag') }}-
-
-      - name: 刷新缓存时间戳
-        run: |
-          echo "::group::正在更新 stamp 依赖文件时间戳"
-          if [ -d "./action_build/staging_dir" ]; then
-            find "./action_build/staging_dir" -type d -name "stamp" -not -path "*target*" | while read -r dir; do
-                find "$dir" -type f -exec touch {} +
-            done
-          fi
-          echo "::endgroup::"
 
       - name: 硬件与环境信息 (编译前)
         run: |
@@ -130,7 +120,7 @@ jobs:
           echo "GITHUB_WORKSPACE=${GITHUB_WORKSPACE}"
           du -sh "${GITHUB_WORKSPACE}" 2>/dev/null || true
           du -sh ./action_build/.ccache 2>/dev/null || true
-          du -sh ./action_build/staging_dir 2>/dev/null || true
+          du -sh ./action_build/dl 2>/dev/null || true
           du -sh ./firmware 2>/dev/null || true
           echo "::endgroup::"
 
@@ -139,8 +129,7 @@ jobs:
 
       - name: 提取内核版本
         run: |
-          # 获取内核版本并写入环境变量
-          K_VER=$(grep -oP "^kernel.*" ./firmware/*.manifest | grep -oP "[4-6]\.[0-9]{1,3}\.[0-9]{1,3}" | head -n 1)
+          K_VER=$(grep -oP "^kernel.*" ./firmware/*.manifest | grep -oP "[0-9]+\.[0-9]+(\.[0-9]+)?" | head -n 1)
           echo "KVER=$K_VER" >> $GITHUB_ENV
 
       - name: 清理过期缓存
@@ -153,7 +142,7 @@ jobs:
           # 输出缓存状态
           echo "======== 缓存状态 ========"
           echo "ccache 占用: $(du -sh ./action_build/.ccache 2>/dev/null | cut -f 1 || echo "0")"
-          echo "staging 占用: $(du -sh ./action_build/staging_dir 2>/dev/null | cut -f 1 || echo "0")"
+          echo "dl 占用: $(du -sh ./action_build/dl 2>/dev/null | cut -f 1 || echo "0")"
           echo "::endgroup::"
 
       - name: 硬件与环境信息 (编译后)
@@ -175,7 +164,7 @@ jobs:
           echo "----------------------------------------------------"
           echo "[编译产物大小]"
           du -sh ./action_build/.ccache 2>/dev/null || true
-          du -sh ./action_build/staging_dir 2>/dev/null || true
+          du -sh ./action_build/dl 2>/dev/null || true
           du -sh ./firmware 2>/dev/null || true
           echo "固件文件总数: $(ls -1 ./firmware 2>/dev/null | wc -l)"
           echo "::endgroup::"
