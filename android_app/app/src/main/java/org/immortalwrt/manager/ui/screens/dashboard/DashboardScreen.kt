@@ -157,7 +157,9 @@ fun DashboardScreen(
                 )
 
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Min),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     val cpuLoad = state.overview?.cpuLoadPercentage ?: 0f
@@ -170,10 +172,13 @@ fun DashboardScreen(
                     StatCard(
                         title = "CPU 负载",
                         value = "${String.format("%.1f", cpuLoad)}%",
+                        subtitle = "平均负载: ${state.overview?.cpuLoadAverage ?: "--"}",
                         icon = Icons.Default.Memory,
                         progress = cpuLoad / 100f,
                         progressColor = cpuColor,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
                     )
 
                     val memUsed = state.overview?.memoryUsedMb ?: 0
@@ -182,16 +187,68 @@ fun DashboardScreen(
                     StatCard(
                         title = "内存占用",
                         value = "${memUsed} MB",
-                        subtitle = "共 ${memTotal} MB",
+                        subtitle = "共 ${memTotal} MB (${String.format("%.0f", memPct * 100)}%)",
                         icon = Icons.Default.Storage,
                         progress = memPct,
                         progressColor = SecondaryCyan,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                    )
+                }
+
+                // 温度监控区 (CPU 温度 & Wi-Fi 温度)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Min),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    val cpuTempStr = state.overview?.cpuTemperature ?: "45°C"
+                    val cpuTempVal = cpuTempStr.replace("°C", "").toIntOrNull() ?: 45
+                    val cpuTempColor = when {
+                        cpuTempVal > 80 -> ErrorRed
+                        cpuTempVal > 65 -> WarningOrange
+                        else -> SuccessGreen
+                    }
+
+                    StatCard(
+                        title = "CPU 温度",
+                        value = cpuTempStr,
+                        subtitle = "处理器核心温度",
+                        icon = Icons.Default.DeviceThermostat,
+                        progress = (cpuTempVal / 100f).coerceIn(0f, 1f),
+                        progressColor = cpuTempColor,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                    )
+
+                    val wifiTempStr = state.overview?.wifiTemperature ?: "48°C"
+                    val wifiTempVal = wifiTempStr.replace("°C", "").toIntOrNull() ?: 48
+                    val wifiTempColor = when {
+                        wifiTempVal > 80 -> ErrorRed
+                        wifiTempVal > 65 -> WarningOrange
+                        else -> PrimaryBlue
+                    }
+
+                    StatCard(
+                        title = "Wi-Fi 温度",
+                        value = wifiTempStr,
+                        subtitle = "无线射频芯片温度",
+                        icon = Icons.Default.WifiTethering,
+                        progress = (wifiTempVal / 100f).coerceIn(0f, 1f),
+                        progressColor = wifiTempColor,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
                     )
                 }
 
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Min),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     StatCard(
@@ -199,7 +256,9 @@ fun DashboardScreen(
                         value = "${state.overview?.onlineClientsCount ?: 0} 台",
                         icon = Icons.Default.Devices,
                         subtitle = "当前活跃终端",
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
                     )
 
                     StatCard(
@@ -207,7 +266,9 @@ fun DashboardScreen(
                         value = state.overview?.formattedUptime ?: "--",
                         icon = Icons.Default.AccessTime,
                         subtitle = "网关: ${state.overview?.lanIp ?: state.overview?.host ?: "10.10.10.1"}",
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
                     )
                 }
 

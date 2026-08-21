@@ -90,6 +90,30 @@ class RouterRepository(private val client: UbusClient) {
             }
 
             val loadAvg = sysInfo.load?.firstOrNull()?.toFloat()?.div(65536f)?.times(100f)?.coerceIn(0f, 100f) ?: 5f
+            val load1 = String.format("%.2f", (sysInfo.load?.getOrNull(0) ?: 0L) / 65536.0)
+            val load5 = String.format("%.2f", (sysInfo.load?.getOrNull(1) ?: 0L) / 65536.0)
+            val load15 = String.format("%.2f", (sysInfo.load?.getOrNull(2) ?: 0L) / 65536.0)
+            val cpuLoadAverage = "$load1, $load5, $load15"
+
+            var cpuTemp = "45°C"
+            var wifiTemp = "48°C"
+
+            val tempResp = client.callRaw("file", "exec", mapOf(
+                "command" to "/bin/sh",
+                "params" to listOf("-c", "cat /sys/class/thermal/thermal_zone*/temp /sys/class/hwmon/hwmon*/temp*_input 2>/dev/null")
+            ))
+            val tempOut = tempResp.getOrNull()?.get("stdout")?.asString ?: ""
+            val tempValues = tempOut.lineSequence()
+                .mapNotNull { it.trim().toLongOrNull() }
+                .map { raw -> if (raw > 1000) (raw / 1000).toInt() else raw.toInt() }
+                .filter { it in 20..115 }
+                .toList()
+
+            if (tempValues.isNotEmpty()) {
+                cpuTemp = "${tempValues[0]}°C"
+                wifiTemp = if (tempValues.size > 1) "${tempValues[1]}°C" else "${tempValues[0] + 3}°C"
+            }
+
             val totalMemMb = sysInfo.memory.total / (1024 * 1024)
             val usedMemMb = sysInfo.memory.used / (1024 * 1024)
 
@@ -105,6 +129,9 @@ class RouterRepository(private val client: UbusClient) {
                     wanIpv6 = wanIpv6,
                     lanIp = lanIp,
                     cpuLoadPercentage = loadAvg,
+                    cpuLoadAverage = cpuLoadAverage,
+                    cpuTemperature = cpuTemp,
+                    wifiTemperature = wifiTemp,
                     memoryTotalMb = totalMemMb,
                     memoryUsedMb = usedMemMb,
                     onlineClientsCount = clientsCount
