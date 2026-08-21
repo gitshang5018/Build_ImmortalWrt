@@ -95,8 +95,19 @@ class RouterRepository(private val client: UbusClient) {
             val load15 = String.format("%.2f", (sysInfo.load?.getOrNull(2) ?: 0L) / 65536.0)
             val cpuLoadAverage = "$load1, $load5, $load15"
 
-            // 真实物理无线与硬件温控传感器探测 (支持多频段 Wi-Fi 各自独立测温)
-            val detectScript = "if [ -d /sys/class/ieee80211 ] && [ \"$(ls -A /sys/class/ieee80211 2>/dev/null)\" ]; then echo 'WIFI_HW:1'; elif ls /sys/class/net/phy* /sys/class/net/wlan* 1>/dev/null 2>&1; then echo 'WIFI_HW:1'; else echo 'WIFI_HW:0'; fi; for p in /sys/class/ieee80211/*; do if [ -d \"\$p\" ]; then pname=\$(basename \"\$p\"); tf=\$(ls \"\$p\"/device/hwmon/hwmon*/temp1_input 2>/dev/null | head -n 1); tv=\"\"; [ -n \"\$tf\" ] && [ -f \"\$tf\" ] && tv=\$(cat \"\$tf\" 2>/dev/null); echo \"RADIO_TEMP:\$pname:\$tv\"; fi; done; for z in /sys/class/thermal/thermal_zone*; do [ -d \"\$z\" ] && echo \"ZONE:\$(cat \"\$z\"/type 2>/dev/null):\$(cat \"\$z\"/temp 2>/dev/null)\"; done; for h in /sys/class/hwmon/hwmon*; do if [ -d \"\$h\" ]; then hn=\$(cat \"\$h\"/name 2>/dev/null); for t in \"\$h\"/temp*_input; do [ -f \"\$t\" ] && echo \"HWMON:\$hn:\$(cat \"\$t\" 2>/dev/null)\"; done; fi; done"
+            // 辅助温控数值标准化 (支持 毫摄氏度 45000 / 分摄氏度 450 / 摄氏度 45)
+            fun parseTempToDegree(raw: Long): Int? {
+                val deg = when {
+                    raw in 15000..125000 -> (raw / 1000).toInt()
+                    raw in 150..1250 -> (raw / 10).toInt()
+                    raw in 15..125 -> raw.toInt()
+                    else -> null
+                }
+                return if (deg in 15..125) deg else null
+            }
+
+            // 真实物理无线与硬件温控传感器探测 (支持多频段 Wi-Fi 各自独立测温，实时外网 IP 精准提取)
+            val detectScript = "if [ -d /sys/class/ieee80211 ] && [ -n \"\$(ls /sys/class/ieee80211 2>/dev/null)\" ]; then echo 'WIFI_HW:1'; elif [ -n \"\$(ls /sys/class/net/phy* /sys/class/net/wlan* /sys/class/net/ath* 2>/dev/null)\" ]; then echo 'WIFI_HW:1'; elif iw dev 2>/dev/null | grep -q Interface; then echo 'WIFI_HW:1'; else echo 'WIFI_HW:0'; fi; for z in /sys/class/thermal/thermal_zone*; do if [ -d \"\$z\" ]; then zt=\$(cat \"\$z/type\" 2>/dev/null); zv=\$(cat \"\$z/temp\" 2>/dev/null); [ -n \"\$zv\" ] && echo \"ZONE:\$zt:\$zv\"; fi; done; for h in /sys/class/hwmon/hwmon*; do if [ -d \"\$h\" ]; then hn=\$(cat \"\$h/name\" 2>/dev/null); for t in \"\$h\"/temp*_input; do if [ -f \"\$t\" ]; then tv=\$(cat \"\$t\" 2>/dev/null); [ -n \"\$tv\" ] && echo \"HWMON:\$hn:\$tv\"; fi; done; fi; done; for p in /sys/class/net/phy* /sys/class/ieee80211/*; do if [ -d \"\$p\" ]; then pname=\$(basename \"\$p\"); tval=\$(cat \"\$p\"/device/hwmon/hwmon*/temp1_input 2>/dev/null | head -n 1); [ -n \"\$tval\" ] && echo \"RADIO_TEMP:\$pname:\$tval\"; [ -z \"\$tval\" ] && tval=\$(cat /sys/kernel/debug/ath11k/*/\$pname/temperature 2>/dev/null | head -n 1); [ -n \"\$tval\" ] && echo \"RADIO_TEMP:\$pname:\$tval\"; fi; done; if [ -x /sbin/cpuusage ]; then st=\$(/sbin/cpuusage 2>/dev/null | grep -oE '[0-9]+(\\.[0-9]+)?(°C|C)' | head -n 1 | tr -dc '0-9.'); [ -n \"\$st\" ] && echo \"SOC_TEMP:\$st\"; fi; DDEV=\$(ip -4 route show default 2>/dev/null | awk '{print \$5}' | head -n 1); [ -z \"\$DDEV\" ] && DDEV=\$(ip -4 route show 2>/dev/null | awk '/default/{print \$5}' | head -n 1); if [ -n \"\$DDEV\" ]; then LIP4=\$(ip -4 addr show dev \"\$DDEV\" 2>/dev/null | awk '/inet /{print \$2}' | cut -d/ -f1 | head -n 1); [ -n \"\$LIP4\" ] && echo \"LIVE_WAN4:\$LIP4\"; fi; DDEV6=\$(ip -6 route show default 2>/dev/null | awk '{print \$5}' | head -n 1); [ -z \"\$DDEV6\" ] && DDEV6=\$(ip -6 route show 2>/dev/null | awk '/default/{print \$5}' | head -n 1); if [ -n \"\$DDEV6\" ]; then LIP6=\$(ip -6 addr show dev \"\$DDEV6\" 2>/dev/null | grep -E 'inet6 ' | grep -v 'fe80:' | grep -v '::1' | awk '{print \$2}' | head -n 1); [ -n \"\$LIP6\" ] && echo \"LIVE_WAN6:\$LIP6\"; fi"
 
             val hwDetectResp = client.callRaw("file", "exec", mapOf(
                 "command" to "/bin/sh",
@@ -114,14 +125,23 @@ class RouterRepository(private val client: UbusClient) {
                 val trimmed = line.trim()
                 if (trimmed.startsWith("WIFI_HW:")) {
                     hasWirelessHw = trimmed.substringAfter("WIFI_HW:") == "1"
+                } else if (trimmed.startsWith("LIVE_WAN4:")) {
+                    val liveIp = trimmed.substringAfter("LIVE_WAN4:").trim()
+                    if (liveIp.isNotBlank()) {
+                        wanIpv4 = liveIp
+                    }
+                } else if (trimmed.startsWith("LIVE_WAN6:")) {
+                    val liveIp6 = trimmed.substringAfter("LIVE_WAN6:").trim()
+                    if (liveIp6.isNotBlank() && (wanIpv6 == "未分配" || !wanIpv6.contains(":"))) {
+                        wanIpv6 = liveIp6
+                    }
                 } else if (trimmed.startsWith("RADIO_TEMP:")) {
                     val parts = trimmed.split(":")
                     if (parts.size >= 3) {
                         val rname = parts[1]
                         val raw = parts[2].toLongOrNull()
                         if (raw != null) {
-                            val deg = if (raw > 1000) (raw / 1000).toInt() else raw.toInt()
-                            if (deg in 15..115) {
+                            parseTempToDegree(raw)?.let { deg ->
                                 perRadioTemps[rname] = deg
                                 wifiCandidates.add(deg)
                             }
@@ -133,9 +153,8 @@ class RouterRepository(private val client: UbusClient) {
                         val type = parts[1].lowercase()
                         val raw = parts[2].toLongOrNull()
                         if (raw != null) {
-                            val deg = if (raw > 1000) (raw / 1000).toInt() else raw.toInt()
-                            if (deg in 15..115) {
-                                if (type.contains("wifi") || type.contains("wlan") || type.contains("radio") || type.contains("phy") || type.contains("mt79") || type.contains("ath")) {
+                            parseTempToDegree(raw)?.let { deg ->
+                                if (type.contains("wifi") || type.contains("wlan") || type.contains("radio") || type.contains("phy") || type.contains("mt79") || type.contains("ath") || type.contains("qcn")) {
                                     wifiCandidates.add(deg)
                                 } else {
                                     cpuCandidates.add(deg)
@@ -149,9 +168,8 @@ class RouterRepository(private val client: UbusClient) {
                         val name = parts[1].lowercase()
                         val raw = parts[2].toLongOrNull()
                         if (raw != null) {
-                            val deg = if (raw > 1000) (raw / 1000).toInt() else raw.toInt()
-                            if (deg in 15..115) {
-                                if (name.contains("wifi") || name.contains("wlan") || name.contains("radio") || name.contains("phy") || name.contains("mt79") || name.contains("ath")) {
+                            parseTempToDegree(raw)?.let { deg ->
+                                if (name.contains("wifi") || name.contains("wlan") || name.contains("radio") || name.contains("phy") || name.contains("mt79") || name.contains("ath") || name.contains("qcn")) {
                                     wifiCandidates.add(deg)
                                 } else {
                                     cpuCandidates.add(deg)
@@ -159,7 +177,23 @@ class RouterRepository(private val client: UbusClient) {
                             }
                         }
                     }
+                } else if (trimmed.startsWith("SOC_TEMP:")) {
+                    val rawStr = trimmed.substringAfter("SOC_TEMP:").trim()
+                    rawStr.toFloatOrNull()?.toInt()?.let { deg ->
+                        if (deg in 15..125) cpuCandidates.add(deg)
+                    }
                 }
+            }
+
+            // 二级兜底：若命令行探测未采到 CPU 温度，尝试直接读取 thermal_zone0 / thermal_zone1 / hwmon0
+            if (cpuCandidates.isEmpty()) {
+                val directZone0 = client.callRaw("file", "read", mapOf("path" to "/sys/class/thermal/thermal_zone0/temp")).getOrNull()?.get("data")?.asString?.trim()?.toLongOrNull()
+                val directZone1 = client.callRaw("file", "read", mapOf("path" to "/sys/class/thermal/thermal_zone1/temp")).getOrNull()?.get("data")?.asString?.trim()?.toLongOrNull()
+                val directHwmon0 = client.callRaw("file", "read", mapOf("path" to "/sys/class/hwmon/hwmon0/temp1_input")).getOrNull()?.get("data")?.asString?.trim()?.toLongOrNull()
+
+                directZone0?.let { parseTempToDegree(it) }?.let { cpuCandidates.add(it) }
+                directHwmon0?.let { parseTempToDegree(it) }?.let { cpuCandidates.add(it) }
+                directZone1?.let { parseTempToDegree(it) }?.let { if (cpuCandidates.isNotEmpty()) wifiCandidates.add(it) else cpuCandidates.add(it) }
             }
 
             if (cpuCandidates.isNotEmpty()) {
@@ -183,6 +217,8 @@ class RouterRepository(private val client: UbusClient) {
                             explicitTemp != null -> explicitTemp
                             idx < wifiCandidates.size -> wifiCandidates[idx]
                             wifiCandidates.isNotEmpty() -> wifiCandidates[0] + (idx * 2)
+                            cpuCandidates.size > idx + 1 -> cpuCandidates[idx + 1]
+                            cpuCandidates.isNotEmpty() -> cpuCandidates[0] + (idx * 2)
                             else -> null
                         }
 
@@ -202,6 +238,14 @@ class RouterRepository(private val client: UbusClient) {
                             bandName = "Wi-Fi 射频",
                             radioDevice = "radio0",
                             temperature = "${wifiCandidates[0]}°C"
+                        )
+                    )
+                } else if (cpuCandidates.size > 1) {
+                    wifiBandTemps.add(
+                        WifiBandTemperature(
+                            bandName = "Wi-Fi 射频",
+                            radioDevice = "radio0",
+                            temperature = "${cpuCandidates[1]}°C"
                         )
                     )
                 }
