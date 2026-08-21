@@ -537,7 +537,16 @@ update_argon() {
     rm -rf "$tmp_dir/.git"
     mv "$tmp_dir" "$dst_theme_path"
 
-    echo "luci-theme-argon 更新完成"
+    # 确保 luci-theme-argon Makefile 中包含 +ucode-mod-math 依赖
+    for mk in "$dst_theme_path/Makefile" "$BUILD_DIR/package/feeds/luci/luci-theme-argon/Makefile"; do
+        if [ -f "$mk" ]; then
+            if ! grep -q 'ucode-mod-math' "$mk"; then
+                sed -i 's/DEPENDS:=/DEPENDS:=+ucode-mod-math /g' "$mk"
+            fi
+        fi
+    done
+
+    echo "luci-theme-argon 更新完成 (已补齐 ucode-mod-math 依赖)"
 }
 
 update_design() {

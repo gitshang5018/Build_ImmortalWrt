@@ -159,17 +159,17 @@ apply_hash_fixes() {
 update_ath11k_fw() {
     local makefile="$BUILD_DIR/package/firmware/ath11k-firmware/Makefile"
     local new_mk="$BASE_PATH/patches/ath11k_fw.mk"
-    local url="https://raw.githubusercontent.com/VIKINGYFY/immortalwrt/refs/heads/main/package/firmware/ath11k-firmware/Makefile"
+    local url="https://raw.githubusercontent.com/immortalwrt/immortalwrt/refs/heads/master/package/firmware/ath11k-firmware/Makefile"
 
     if [ -d "$(dirname "$makefile")" ]; then
-        echo "正在更新 ath11k-firmware Makefile..."
+        echo "正在同步官方完整 ath11k-firmware Makefile (支持 IPQ6018 与 QCN9074 WiFi 6)..."
         if ! curl -fsSL -o "$new_mk" "$url"; then
-            echo "错误：从 $url 下载 ath11k-firmware Makefile 失败" >&2
-            exit 1
+            echo "警告：从 $url 下载 ath11k-firmware Makefile 失败，保留已有配置" >&2
+            return 0
         fi
         if [ ! -s "$new_mk" ]; then
-            echo "错误：下载的 ath11k-firmware Makefile 为空文件" >&2
-            exit 1
+            echo "警告：下载的 ath11k-firmware Makefile 为空文件，保留已有配置" >&2
+            return 0
         fi
         mv -f "$new_mk" "$makefile"
     fi
