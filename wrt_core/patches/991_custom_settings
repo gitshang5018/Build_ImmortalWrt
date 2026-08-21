@@ -1,27 +1,145 @@
 #!/bin/sh
 
-# 检查当前nf_conntrack_max值是否小于65536，若更小则修改
-current_value=$(sysctl -n net.netfilter.nf_conntrack_max)
-if [ "$current_value" -lt 65535 ]; then
-    # 从sysctl.conf删除旧的nf_conntrack_max配置以避免重复
-    sed -i '/nf_conntrack_max/d' /etc/sysctl.conf
-    # 写入新配置，设置最大连接数为65535
-    echo "net.netfilter.nf_conntrack_max = 65535" >>/etc/sysctl.conf
-    # 应用配置并立即生效
-    sysctl -p
+# 环境变量与路径初始化 (支持单元测试与生产环境)
+SYSCTL_CONF="${SYSCTL_CONF:-/etc/sysctl.conf}"
+MEMINFO_FILE="${MEMINFO_FILE:-/proc/meminfo}"
+TARGET_ETC="${TARGET_ETC:-/etc}"
+
+touch "$SYSCTL_CONF" 2>/dev/null
+
+set_sysctl() {
+    local key="$1"
+    local value="$2"
+    local escaped_key
+    escaped_key=$(printf '%s' "$key" | sed 's/\./\\./g')
+    sed -i "/^${escaped_key}[[:space:]]*=/d" "$SYSCTL_CONF" 2>/dev/null
+    echo "${key} = ${value}" >> "$SYSCTL_CONF"
+}
+
+# 解除 dropbear 访问限制
+if command -v uci >/dev/null 2>&1; then
+    if uci show dropbear 2>/dev/null | grep -q "DirectInterface"; then
+        uci delete dropbear.main.DirectInterface 2>/dev/null
+        uci commit dropbear 2>/dev/null
+        /etc/init.d/dropbear restart 2>/dev/null
+    fi
 fi
 
-# 解除dropbear访问限制
-if uci show dropbear | grep -q "DirectInterface"; then
-    uci delete dropbear.main.DirectInterface
-    uci commit dropbear
-    /etc/init.d/dropbear restart
+# 获取物理内存大小 (单位: kB)
+mem_total_kb=524288
+if [ -f "$MEMINFO_FILE" ]; then
+    mem_total_kb=$(awk '/MemTotal:/ {print $2}' "$MEMINFO_FILE" 2>/dev/null)
+fi
+mem_total_kb=${mem_total_kb:-524288}
+
+# 根据内存大小智能分级 (低内存 <300MB, 中内存 300MB~1.5GB, 大内存 >1.5GB)
+if [ "$mem_total_kb" -lt 300000 ]; then
+    # === 低内存档 (< 300MB, 如歌华链 128MB / 竞斗云 128MB) ===
+    conntrack_max=32768
+    tcp_mem="16384 32768 65536"
+    tcp_rmem="4096 32768 1048576"
+    tcp_wmem="4096 32768 1048576"
+    somaxconn=1024
+    netdev_backlog=1024
+    vfs_cache_pressure=150
+    dirty_ratio=10
+    dirty_bg_ratio=5
+    dnsmasq_cachesize=2500
+    dnsmasq_min_ttl=120
+    go_memlimit="48MiB"
+    go_gc=30
+elif [ "$mem_total_kb" -gt 1500000 ]; then
+    # === 大内存档 (> 1.5GB, 如通用 X86_64 / 软路由 2GB~16GB+) ===
+    conntrack_max=262144
+    tcp_mem="262144 524288 1048576"
+    tcp_rmem="4096 131072 16777216"
+    tcp_wmem="4096 131072 16777216"
+    somaxconn=8192
+    netdev_backlog=8192
+    vfs_cache_pressure=100
+    dirty_ratio=20
+    dirty_bg_ratio=5
+    dnsmasq_cachesize=15000
+    dnsmasq_min_ttl=600
+    go_memlimit="512MiB"
+    go_gc=80
+else
+    # === 中内存档 (300MB ~ 1.5GB, 如京东云 AX1800 Pro 512MB / AX6600 1GB) ===
+    conntrack_max=65535
+    tcp_mem="65536 131072 262144"
+    tcp_rmem="4096 87380 4194304"
+    tcp_wmem="4096 65536 4194304"
+    somaxconn=4096
+    netdev_backlog=4096
+    vfs_cache_pressure=120
+    dirty_ratio=15
+    dirty_bg_ratio=5
+    dnsmasq_cachesize=10000
+    dnsmasq_min_ttl=300
+    go_memlimit="128MiB"
+    go_gc=50
 fi
 
-# 修复 AX1800/AX6600 等设备 TCP: out of memory 问题
-if ! grep -q "net.ipv4.tcp_mem" /etc/sysctl.conf; then
-    echo "net.ipv4.tcp_mem = 786432 1048576 26777216" >>/etc/sysctl.conf
-    echo "net.ipv4.tcp_rmem = 4096 4096 16777216" >>/etc/sysctl.conf
-    echo "net.ipv4.tcp_wmem = 4096 4096 16777216" >>/etc/sysctl.conf
-    sysctl -p
+# 应用自适应 Conntrack 与内存策略
+set_sysctl "net.netfilter.nf_conntrack_max" "$conntrack_max"
+set_sysctl "vm.vfs_cache_pressure" "$vfs_cache_pressure"
+set_sysctl "vm.dirty_ratio" "$dirty_ratio"
+set_sysctl "vm.dirty_background_ratio" "$dirty_bg_ratio"
+
+# 应用自适应 TCP 缓冲区
+set_sysctl "net.ipv4.tcp_mem" "$tcp_mem"
+set_sysctl "net.ipv4.tcp_rmem" "$tcp_rmem"
+set_sysctl "net.ipv4.tcp_wmem" "$tcp_wmem"
+
+# 降低网络延迟与长连接加速
+set_sysctl "net.ipv4.tcp_fastopen" "3"
+set_sysctl "net.ipv4.tcp_slow_start_after_idle" "0"
+set_sysctl "net.ipv4.tcp_tw_reuse" "1"
+
+# 提升套接字队列与 NAPI 吞吐调度
+set_sysctl "net.core.somaxconn" "$somaxconn"
+set_sysctl "net.core.netdev_max_backlog" "$netdev_backlog"
+set_sysctl "net.core.netdev_budget" "600"
+set_sysctl "net.core.netdev_budget_usecs" "4000"
+
+# 启用 BBR 拥塞控制算法与 FQ 队列调度
+modprobe tcp_bbr 2>/dev/null
+modprobe sch_fq 2>/dev/null
+set_sysctl "net.core.default_qdisc" "fq"
+set_sysctl "net.ipv4.tcp_congestion_control" "bbr"
+
+if command -v sysctl >/dev/null 2>&1; then
+    sysctl -p "$SYSCTL_CONF" >/dev/null 2>&1
+fi
+
+# Dnsmasq 缓存池自适应配置
+if [ -f /etc/config/dhcp ] && command -v uci >/dev/null 2>&1; then
+    uci -q batch <<EOF
+set dhcp.@dnsmasq[0].cachesize='${dnsmasq_cachesize}'
+set dhcp.@dnsmasq[0].min_cache_ttl='${dnsmasq_min_ttl}'
+commit dhcp
+EOF
+fi
+
+# 全局注入 Go 语言常驻进程内存限制 (PassWall/MosDNS/Xray/Sing-box/Lucky)
+# 1. 写入 /etc/environment (全局 procd 守护进程环境变量)
+env_file="$TARGET_ETC/environment"
+touch "$env_file" 2>/dev/null
+sed -i '/GOMEMLIMIT/d; /GOGC/d' "$env_file" 2>/dev/null
+echo "GOMEMLIMIT=${go_memlimit}" >> "$env_file"
+echo "GOGC=${go_gc}" >> "$env_file"
+
+# 2. 写入 /etc/profile.d/gomem.sh (Shell 交互终端)
+mkdir -p "$TARGET_ETC/profile.d" 2>/dev/null
+cat <<EOF > "$TARGET_ETC/profile.d/gomem.sh"
+export GOMEMLIMIT=${go_memlimit}
+export GOGC=${go_gc}
+EOF
+
+# 3. 兼容写入 /etc/profile
+profile_file="$TARGET_ETC/profile"
+if [ -f "$profile_file" ]; then
+    sed -i '/GOMEMLIMIT/d; /GOGC/d' "$profile_file"
+    echo "export GOMEMLIMIT=${go_memlimit}" >> "$profile_file"
+    echo "export GOGC=${go_gc}" >> "$profile_file"
 fi
