@@ -159,10 +159,10 @@ apply_hash_fixes() {
 update_ath11k_fw() {
     local makefile="$BUILD_DIR/package/firmware/ath11k-firmware/Makefile"
     local new_mk="$BASE_PATH/patches/ath11k_fw.mk"
-    local url="https://raw.githubusercontent.com/VIKINGYFY/immortalwrt/refs/heads/main/package/firmware/ath11k-firmware/Makefile"
+    local url="https://raw.githubusercontent.com/VIKINGYFY/immortalwrt/4b85d5d6dd278016559238bbe5543f80d4983da1/package/firmware/ath11k-firmware/Makefile"
 
     if [ -d "$(dirname "$makefile")" ]; then
-        echo "正在同步官方完整 ath11k-firmware Makefile (支持 IPQ6018 与 QCN9074 WiFi 6)..."
+        echo "正在同步 ath11k-firmware Makefile (ddwrt 版固件: IPQ6018/QCN9074)..."
         if ! curl -fsSL -o "$new_mk" "$url"; then
             echo "警告：从 $url 下载 ath11k-firmware Makefile 失败，保留已有配置" >&2
             return 0
@@ -172,6 +172,12 @@ update_ath11k_fw() {
             return 0
         fi
         mv -f "$new_mk" "$makefile"
+
+        # 同步 target.mk 默认固件包名 (官方版 -> ddwrt 版，与上面 ddwrt Makefile 保持一致)
+        local target_mk="$BUILD_DIR/target/linux/qualcommax/ipq60xx/target.mk"
+        if [ -f "$target_mk" ]; then
+            sed -i 's/ath11k-firmware-ipq6018$/ath11k-firmware-ipq6018-ddwrt/' "$target_mk"
+        fi
     fi
 }
 
@@ -719,7 +725,7 @@ fix_kmod_nf_ipt_file_clash() {
 }
 
 fix_ath11k_nss_timer_api() {
-    local patch_dir="$BUILD_DIR/package/kernel/mac80211/patches"
+    local patch_dir="$BUILD_DIR/package/kernel/mac80211/patches/nss/ath11k"
     if [ -d "$patch_dir" ]; then
         echo "正在修复 ath11k nss.c 在高版本内核的定时器 API 兼容性..."
         find "$patch_dir" -type f -name "*.patch" -exec sed -i 's/from_timer(/timer_container_of(/g' {} +
