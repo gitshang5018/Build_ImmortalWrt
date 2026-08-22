@@ -425,64 +425,123 @@ class RouterRepository(private val client: UbusClient) {
     suspend fun getConnectedClients(): Result<List<ConnectedClient>> {
         return try {
             val clientMap = mutableMapOf<String, ConnectedClient>() // Key: MAC (lowercase)
+            val hostnameMap = mutableMapOf<String, String>() // MAC -> Hostname
 
-            // 1. 读取 /tmp/dhcp.leases 或 /var/dhcp.leases
-            val leasesResp = client.callRaw("file", "exec", mapOf(
-                "command" to "/bin/sh",
-                "params" to listOf("-c", "cat /tmp/dhcp.leases 2>/dev/null || cat /var/dhcp.leases 2>/dev/null")
-            ))
-            val leasesText = leasesResp.getOrNull()?.get("stdout")?.asString ?: ""
-            leasesText.lineSequence().forEach { line ->
-                val parts = line.trim().split(Regex("\\s+"))
-                if (parts.size >= 4) {
-                    val mac = parts[1].lowercase()
-                    val ip = parts[2]
-                    val rawHost = parts[3]
-                    val host = if (rawHost == "*" || rawHost.isBlank()) resolveVendorByMac(mac) else rawHost
-                    if (mac.length == 17 && ip.contains(".")) {
-                        clientMap[mac] = ConnectedClient(
-                            hostname = host,
-                            ipAddress = ip,
-                            macAddress = mac,
+            // 源 1：LuCI 标准 RPC 接口获取全局主机提示库 (luci-rpc / luci getHostHints)
+            try {
+                val hostHintsResp = client.callRaw("luci-rpc", "getHostHints").getOrNull()
+                    ?: client.callRaw("luci", "getHostHints").getOrNull()
+                hostHintsResp?.keySet()?.forEach { macKey ->
+                    val mLower = macKey.lowercase()
+                    val hObj = hostHintsResp.getAsJsonObject(macKey)
+                    val hName = hObj?.get("name")?.asString?.trim()
+                    if (!hName.isNullOrBlank() && hName != "*" && hName != "?") {
+                        hostnameMap[mLower] = hName
+                    }
+                    val ipArr = hObj?.getAsJsonArray("ipaddrs")
+                    val ipStr = ipArr?.firstOrNull()?.asString
+                    if (mLower.length == 17 && !ipStr.isNullOrBlank() && ipStr.contains(".")) {
+                        clientMap[mLower] = ConnectedClient(
+                            hostname = hName ?: resolveVendorByMac(mLower),
+                            ipAddress = ipStr,
+                            macAddress = mLower,
                             connectionType = ConnectionType.WIRED_LAN,
-                            vendor = resolveVendorByMac(mac)
+                            vendor = resolveVendorByMac(mLower)
                         )
                     }
                 }
-            }
+            } catch (_: Exception) {}
 
-            // 2. 读取 /proc/net/arp
-            val arpResp = client.callRaw("file", "exec", mapOf(
-                "command" to "/bin/sh",
-                "params" to listOf("-c", "cat /proc/net/arp")
-            ))
-            val arpText = arpResp.getOrNull()?.get("stdout")?.asString ?: ""
-            arpText.lineSequence().drop(1).forEach { line ->
-                val parts = line.trim().split(Regex("\\s+"))
-                if (parts.size >= 6) {
-                    val ip = parts[0]
-                    val mac = parts[3].lowercase()
-                    val flags = parts[2]
-                    if (mac.length == 17 && mac != "00:00:00:00:00:00" && flags != "0x0") {
-                        val existing = clientMap[mac]
-                        if (existing != null) {
-                            if (existing.ipAddress.isBlank() || existing.ipAddress == "动态分配") {
-                                clientMap[mac] = existing.copy(ipAddress = ip)
-                            }
-                        } else {
+            // 源 2：LuCI / DHCP ubus 服务获取活跃租约 (luci-rpc getDHCPLeases / dhcp ipv4leases)
+            try {
+                val dhcpLeasesResp = client.callRaw("luci-rpc", "getDHCPLeases").getOrNull()
+                    ?: client.callRaw("luci", "getDHCPLeases").getOrNull()
+                val leaseArr = dhcpLeasesResp?.getAsJsonArray("dhcp_leases")
+                    ?: dhcpLeasesResp?.getAsJsonArray("lease")
+                leaseArr?.forEach { el ->
+                    val obj = el.asJsonObject
+                    val mac = obj.get("mac")?.asString?.lowercase() ?: obj.get("macaddr")?.asString?.lowercase() ?: ""
+                    val ip = obj.get("ip")?.asString ?: obj.get("ipaddr")?.asString ?: ""
+                    val rawHost = obj.get("hostname")?.asString?.trim() ?: ""
+                    if (mac.length == 17) {
+                        if (rawHost.isNotBlank() && rawHost != "*" && rawHost != "?") {
+                            hostnameMap[mac] = rawHost
+                        }
+                        if (ip.isNotBlank() && ip.contains(".")) {
+                            val existing = clientMap[mac]
+                            val finalHost = hostnameMap[mac] ?: (if (rawHost.isNotBlank() && rawHost != "*") rawHost else existing?.hostname ?: resolveVendorByMac(mac))
                             clientMap[mac] = ConnectedClient(
-                                hostname = "${resolveVendorByMac(mac)} (${mac.takeLast(5)})",
+                                hostname = finalHost,
                                 ipAddress = ip,
                                 macAddress = mac,
-                                connectionType = ConnectionType.WIRED_LAN,
+                                connectionType = existing?.connectionType ?: ConnectionType.WIRED_LAN,
                                 vendor = resolveVendorByMac(mac)
                             )
                         }
                     }
                 }
-            }
+            } catch (_: Exception) {}
 
-            // 3. 执行 ip neigh show 捕获 IPv4 与 IPv6 活跃终端
+            // 源 3：直接读取 Linux /tmp/dhcp.leases 文件 (不依赖 shell 执行权限)
+            try {
+                val fLeases = client.callRaw("file", "read", mapOf("path" to "/tmp/dhcp.leases")).getOrNull()?.get("data")?.asString
+                    ?: client.callRaw("file", "read", mapOf("path" to "/var/dhcp.leases")).getOrNull()?.get("data")?.asString
+                    ?: ""
+                fLeases.lineSequence().forEach { line ->
+                    val parts = line.trim().split(Regex("\\s+"))
+                    if (parts.size >= 4) {
+                        val mac = parts[1].lowercase()
+                        val ip = parts[2]
+                        val rawHost = parts[3].trim()
+                        if (rawHost.isNotBlank() && rawHost != "*" && rawHost != "?") {
+                            hostnameMap[mac] = rawHost
+                        }
+                        if (mac.length == 17 && ip.contains(".")) {
+                            val existing = clientMap[mac]
+                            val finalHost = hostnameMap[mac] ?: (if (rawHost.isNotBlank() && rawHost != "*") rawHost else existing?.hostname ?: resolveVendorByMac(mac))
+                            clientMap[mac] = ConnectedClient(
+                                hostname = finalHost,
+                                ipAddress = ip,
+                                macAddress = mac,
+                                connectionType = existing?.connectionType ?: ConnectionType.WIRED_LAN,
+                                vendor = resolveVendorByMac(mac)
+                            )
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+
+            // 源 4：读取 /proc/net/arp
+            try {
+                val arpText = client.callRaw("file", "read", mapOf("path" to "/proc/net/arp")).getOrNull()?.get("data")?.asString ?: ""
+                arpText.lineSequence().drop(1).forEach { line ->
+                    val parts = line.trim().split(Regex("\\s+"))
+                    if (parts.size >= 6) {
+                        val ip = parts[0]
+                        val mac = parts[3].lowercase()
+                        val flags = parts[2]
+                        if (mac.length == 17 && mac != "00:00:00:00:00:00" && flags != "0x0") {
+                            val existing = clientMap[mac]
+                            val finalHost = hostnameMap[mac] ?: existing?.hostname ?: "${resolveVendorByMac(mac)} (${mac.takeLast(5)})"
+                            if (existing != null) {
+                                if (existing.ipAddress.isBlank() || existing.ipAddress == "动态分配") {
+                                    clientMap[mac] = existing.copy(ipAddress = ip, hostname = finalHost)
+                                }
+                            } else {
+                                clientMap[mac] = ConnectedClient(
+                                    hostname = finalHost,
+                                    ipAddress = ip,
+                                    macAddress = mac,
+                                    connectionType = ConnectionType.WIRED_LAN,
+                                    vendor = resolveVendorByMac(mac)
+                                )
+                            }
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+
+            // 源 5：执行 ip neigh show 捕获 IPv4 与 IPv6 活跃终端
             val neighResp = client.callRaw("file", "exec", mapOf(
                 "command" to "/bin/sh",
                 "params" to listOf("-c", "ip -4 neigh show; ip -6 neigh show")
@@ -497,15 +556,16 @@ class RouterRepository(private val client: UbusClient) {
                     if (mac.length == 17 && mac != "00:00:00:00:00:00") {
                         val existing = clientMap[mac]
                         val isIpv6 = ip.contains(":")
+                        val finalHost = hostnameMap[mac] ?: existing?.hostname ?: "${resolveVendorByMac(mac)} (${mac.takeLast(5)})"
                         if (existing != null) {
                             if (isIpv6 && existing.ipv6Address.isNullOrBlank()) {
-                                clientMap[mac] = existing.copy(ipv6Address = ip)
+                                clientMap[mac] = existing.copy(ipv6Address = ip, hostname = finalHost)
                             } else if (!isIpv6 && (existing.ipAddress.isBlank() || existing.ipAddress == "动态分配")) {
-                                clientMap[mac] = existing.copy(ipAddress = ip)
+                                clientMap[mac] = existing.copy(ipAddress = ip, hostname = finalHost)
                             }
                         } else {
                             clientMap[mac] = ConnectedClient(
-                                hostname = "${resolveVendorByMac(mac)} (${mac.takeLast(5)})",
+                                hostname = finalHost,
                                 ipAddress = if (isIpv6) "动态分配" else ip,
                                 macAddress = mac,
                                 connectionType = ConnectionType.WIRED_LAN,
@@ -517,19 +577,24 @@ class RouterRepository(private val client: UbusClient) {
                 }
             }
 
-            // 4. 读取 UCI 静态绑定标记 isStaticLease
+            // 源 6：读取 UCI 静态绑定标记 isStaticLease 与自定义命名
             val staticLeases = getStaticDhcpLeases().getOrNull() ?: emptyList()
             staticLeases.forEach { sLease ->
                 val sMac = sLease.mac.lowercase()
                 val existing = clientMap[sMac]
+                val sHost = sLease.hostname.trim()
+                if (sHost.isNotBlank()) {
+                    hostnameMap[sMac] = sHost
+                }
+                val finalHost = hostnameMap[sMac] ?: existing?.hostname ?: sHost.ifBlank { "静态设备 (${sMac.takeLast(5)})" }
                 if (existing != null) {
                     clientMap[sMac] = existing.copy(
-                        hostname = if (sLease.hostname.isNotBlank()) sLease.hostname else existing.hostname,
+                        hostname = finalHost,
                         isStaticLease = true
                     )
                 } else if (sLease.ip.isNotBlank()) {
                     clientMap[sMac] = ConnectedClient(
-                        hostname = sLease.hostname.ifBlank { "静态设备 (${sMac.takeLast(5)})" },
+                        hostname = finalHost,
                         ipAddress = sLease.ip,
                         macAddress = sMac,
                         connectionType = ConnectionType.WIRED_LAN,
@@ -636,8 +701,9 @@ class RouterRepository(private val client: UbusClient) {
                             chInt in 1..14 -> WifiBandType.BAND_2_4G
                             chInt in 36..64 -> WifiBandType.BAND_5_2G
                             chInt in 100..177 -> WifiBandType.BAND_5_8G
-                            device.contains("2") -> WifiBandType.BAND_5_8G
-                            device.contains("1") -> WifiBandType.BAND_5_2G
+                            device == "radio2" || device.contains("2") -> WifiBandType.BAND_5_2G
+                            device == "radio0" || device.contains("0") -> WifiBandType.BAND_5_8G
+                            device == "radio1" || device.contains("1") -> WifiBandType.BAND_2_4G
                             else -> WifiBandType.BAND_2_4G
                         }
 
@@ -675,8 +741,9 @@ class RouterRepository(private val client: UbusClient) {
                             chInt in 1..14 -> WifiBandType.BAND_2_4G
                             chInt in 36..64 -> WifiBandType.BAND_5_2G
                             chInt in 100..177 -> WifiBandType.BAND_5_8G
-                            sectionKey.contains("2") -> WifiBandType.BAND_5_8G
-                            sectionKey.contains("1") -> WifiBandType.BAND_5_2G
+                            sectionKey == "radio2" || sectionKey.contains("2") -> WifiBandType.BAND_5_2G
+                            sectionKey == "radio0" || sectionKey.contains("0") -> WifiBandType.BAND_5_8G
+                            sectionKey == "radio1" || sectionKey.contains("1") -> WifiBandType.BAND_2_4G
                             else -> WifiBandType.BAND_2_4G
                         }
 
