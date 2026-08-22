@@ -65,7 +65,9 @@ bash "$TMP_DIR/test_run.sh"
 
 echo "=== 检查 AX6600 Athena 三频输出 ==="
 grep -q "set wireless.radio0.channel=\"44\"" "$UCI_OUT" || { echo "FAIL: Athena radio0 5.2G 应分配低频信道 (如 44)"; exit 1; }
+grep -q "set wireless.radio0.htmode=\"HE160\"" "$UCI_OUT" || { echo "FAIL: Athena radio0 5.2G 应开启 HE160 (4x4 4804Mbps)"; exit 1; }
 grep -q "set wireless.radio1.channel=\"1\"" "$UCI_OUT" || { echo "FAIL: Athena radio1 2.4G 应分配信道 1"; exit 1; }
 grep -q "set wireless.radio2.channel=\"149\"" "$UCI_OUT" || { echo "FAIL: Athena radio2 5.8G 应分配高频信道 (如 149)"; exit 1; }
+grep -q "set wireless.radio2.htmode=\"HE80\"" "$UCI_OUT" || { echo "FAIL: Athena radio2 5.8G 应配置 HE80 (2x2 1201Mbps)"; exit 1; }
 
 echo "PASS: test_wifi_uci (全机型信道与兼容性测试通过)"
