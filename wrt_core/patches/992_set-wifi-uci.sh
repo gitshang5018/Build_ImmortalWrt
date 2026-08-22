@@ -59,12 +59,12 @@ jdc_ax1800_pro_wifi_cfg() {
 }
 
 jdc_ax6600_wifi_cfg() {
-	# Radio0: QCN9024/9074 5.2GHz 电竞高频宽独立网卡 (4x4 160MHz 4804Mbps, 36~64 信道)
-	configure_wifi 0 44 HE160 25 'JDC_AX6600_5G1' '12345678'
-	# Radio1: IPQ6018/QCN5022 2.4GHz 频段 (2x2 574Mbps, 1~13 信道)
+	# Radio0: IPQ6018/QCN5052 AHB 5.8GHz 频段 (2x2 80MHz 1201Mbps, 149~165 信道)
+	configure_wifi 0 149 HE80 23 'JDC_AX6600_5G1' '12345678'
+	# Radio1: IPQ6018/QCN5022 AHB 2.4GHz 频段 (2x2 574Mbps, 1~13 信道)
 	configure_wifi 1 1 HE20 22 'JDC_AX6600' '12345678'
-	# Radio2: IPQ6018/QCN5052 5.8GHz 频段 (2x2 80MHz 1201Mbps, 149~165 信道)
-	configure_wifi 2 149 HE80 23 'JDC_AX6600_5G2' '12345678'
+	# Radio2: QCN9024/9074 PCIe 5.2GHz 电竞独立网卡 (4x4 160MHz 4804Mbps, 36~64 信道)
+	configure_wifi 2 44 HE160 25 'JDC_AX6600_5G2' '12345678'
 }
 
 redmi_ax5_wifi_cfg() {
