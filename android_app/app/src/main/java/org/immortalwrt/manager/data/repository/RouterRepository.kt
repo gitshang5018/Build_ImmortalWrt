@@ -175,125 +175,107 @@ class RouterRepository(private val client: UbusClient) {
             var hasWirelessHw = false
             var cpuTemp: String? = null
 
-            // 源 1：直接执行官方独立 /sbin/cpuusage 提取实时 CPU、HWE 与 ECM
-            try {
-                val cpuUsageResp = client.callRaw("file", "exec", mapOf("command" to "/sbin/cpuusage"))
-                val cpuUsageOut = cpuUsageResp.getOrNull()?.get("stdout")?.asString?.trim()
-                if (!cpuUsageOut.isNullOrBlank()) {
-                    parseCpuUsageString(cpuUsageOut)
-                }
-            } catch (_: Exception) {}
+            // 唯一数据源：通过 /bin/sh -c 一次性执行所有硬件探测命令
+            // 关键：rpcd file.exec 必须用 /bin/sh 包装，直接执行 shell 脚本会静默失败
+            val probeScript = buildString {
+                // 1. CPU 即时负载 + HWE 硬件加速 + ECM 连接跟踪
+                append("[ -x /sbin/cpuusage ] && echo \"CPUUSAGE:\$(/sbin/cpuusage 2>/dev/null)\"; ")
+                // 2. 官方标准温控 (CPU + WiFi)
+                append("[ -x /sbin/tempinfo ] && echo \"TEMPINFO:\$(/sbin/tempinfo 2>/dev/null)\"; ")
+                // 3. Wi-Fi 硬件存在性
+                append("[ -d /sys/class/ieee80211 ] && echo WIFI_HW:1 || echo WIFI_HW:0; ")
+                // 4. 逐射频芯片温度直读
+                append("for p in 0 1 2; do [ -d /sys/class/ieee80211/phy\$p ] && { ")
+                append("tv=\$(cat /sys/class/ieee80211/phy\$p/hwmon*/temp1_input 2>/dev/null | head -1); ")
+                append("[ -z \"\$tv\" ] && tv=\$(cat /sys/class/ieee80211/phy\$p/device/hwmon/hwmon*/temp1_input 2>/dev/null | head -1); ")
+                append("[ -n \"\$tv\" ] && echo \"RADIO_TEMP:phy\$p:\$tv\"; }; done; ")
+                // 5. thermal_zone 温度
+                append("for z in /sys/class/thermal/thermal_zone*; do [ -d \"\$z\" ] && { ")
+                append("zt=\$(cat \"\$z/type\" 2>/dev/null); zv=\$(cat \"\$z/temp\" 2>/dev/null); ")
+                append("[ -n \"\$zv\" ] && echo \"ZONE:\$zt:\$zv\"; }; done; ")
+                // 6. 公网 IPv4
+                append("D=\$(ip -4 r s default 2>/dev/null|awk '{print \$5}'|head -1); ")
+                append("[ -n \"\$D\" ] && echo \"LIVE_WAN4:\$(ip -4 a s dev \$D 2>/dev/null|awk '/inet /{print \$2}'|cut -d/ -f1|head -1)\"; ")
+                // 7. 公网 IPv6
+                append("D6=\$(ip -6 r s default 2>/dev/null|awk '{print \$5}'|head -1); ")
+                append("[ -n \"\$D6\" ] && echo \"LIVE_WAN6:\$(ip -6 a s dev \$D6 2>/dev/null|grep 'inet6 '|grep -v fe80:|grep -v ::1|awk '{print \$2}'|head -1)\"; ")
+                // 8. 真实公网 IP
+                append("P=\$(wget -qO- -T2 http://4.ipw.cn 2>/dev/null||curl -sm2 https://api.ipify.org 2>/dev/null); [ -n \"\$P\" ] && echo \"PUB_WAN4:\$P\"")
+            }
 
-            // 源 2：直接执行官方独立 /sbin/tempinfo 提取标准硬件温度
             try {
-                val tempInfoResp = client.callRaw("file", "exec", mapOf("command" to "/sbin/tempinfo"))
-                val tempInfoOut = tempInfoResp.getOrNull()?.get("stdout")?.asString?.trim()
-                if (!tempInfoOut.isNullOrBlank()) {
-                    val (cDeg, wDegs) = extractTemperaturesFromText(tempInfoOut)
-                    cDeg?.let { cpuCandidates.add(it) }
-                    wifiCandidates.addAll(wDegs)
-                }
-            } catch (_: Exception) {}
+                val probeResp = client.callRaw("file", "exec", mapOf(
+                    "command" to "/bin/sh",
+                    "params" to listOf("-c", probeScript)
+                ))
+                val probeOut = probeResp.getOrNull()?.get("stdout")?.asString ?: ""
 
-            // 源 3：通过 LuCI RPC 标准接口读取温控与 CPU 状态 (luci.getCPUInfo / luci.getSystemInfo)
-            try {
-                val luciCpu = client.callRaw("luci", "getCPUInfo").getOrNull()
-                    ?: client.callRaw("luci", "getSystemInfo").getOrNull()
-                if (luciCpu != null) {
-                    val tVal = luciCpu.get("temperature")?.asString
-                        ?: luciCpu.get("temp")?.asString
-                        ?: luciCpu.get("cputemp")?.asString
-                        ?: luciCpu.get("cpuinfo")?.asString
-                    if (!tVal.isNullOrBlank() && cpuCandidates.isEmpty()) {
-                        val (cDeg, wDegs) = extractTemperaturesFromText(tVal)
-                        cDeg?.let { cpuCandidates.add(it) }
-                        wifiCandidates.addAll(wDegs)
-                    }
-                    val cpuUsageVal = luciCpu.get("cpuusage")?.asString ?: luciCpu.get("usage")?.asString
-                    if (!cpuUsageVal.isNullOrBlank() && fullCpuUsageText == null) {
-                        parseCpuUsageString(cpuUsageVal)
-                    }
-                }
-            } catch (_: Exception) {}
-
-            // 源 4：直接直读 NSS 硬件加速与 ECM 节点 (不依赖 exec 执行权限)
-            if (hweUsage == null) {
-                try {
-                    val nssText = client.callRaw("file", "read", mapOf("path" to "/sys/kernel/debug/qca-nss-drv/stats/cpu_load_ubi")).getOrNull()?.get("data")?.asString
-                    if (!nssText.isNullOrBlank()) {
-                        val lines = nssText.lines()
-                        if (lines.size >= 6) {
-                            val nssVal = lines[5].trim().split(Regex("\\s+")).getOrNull(1)?.trim()
-                            if (!nssVal.isNullOrBlank()) {
-                                hweUsage = if (nssVal.endsWith("%")) nssVal else "$nssVal%"
+                probeOut.lineSequence().forEach { line ->
+                    val trimmed = line.trim()
+                    when {
+                        trimmed.startsWith("CPUUSAGE:") -> {
+                            val usageStr = trimmed.substringAfter("CPUUSAGE:").trim()
+                            if (usageStr.isNotBlank()) parseCpuUsageString(usageStr)
+                        }
+                        trimmed.startsWith("TEMPINFO:") -> {
+                            val tinfo = trimmed.substringAfter("TEMPINFO:").trim()
+                            if (tinfo.isNotBlank()) {
+                                val (cDeg, wDegs) = extractTemperaturesFromText(tinfo)
+                                cDeg?.let { cpuCandidates.add(it) }
+                                wifiCandidates.addAll(wDegs)
+                            }
+                        }
+                        trimmed.startsWith("WIFI_HW:") -> {
+                            hasWirelessHw = trimmed.substringAfter("WIFI_HW:") == "1"
+                        }
+                        trimmed.startsWith("RADIO_TEMP:") -> {
+                            val parts = trimmed.split(":")
+                            if (parts.size >= 3) {
+                                val rname = parts[1]
+                                parts[2].toLongOrNull()?.let { raw ->
+                                    parseTempToDegree(raw)?.let { deg ->
+                                        perRadioTemps[rname] = deg
+                                        perRadioTemps[rname.replace("phy", "radio")] = deg
+                                        wifiCandidates.add(deg)
+                                    }
+                                }
+                            }
+                        }
+                        trimmed.startsWith("ZONE:") -> {
+                            val parts = trimmed.split(":")
+                            if (parts.size >= 3) {
+                                val type = parts[1].lowercase()
+                                parts[2].toLongOrNull()?.let { raw ->
+                                    parseTempToDegree(raw)?.let { deg ->
+                                        if (type.contains("wifi") || type.contains("wlan") || type.contains("phy") || type.contains("ath") || type.contains("qcn")) {
+                                            wifiCandidates.add(deg)
+                                        } else {
+                                            cpuCandidates.add(deg)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        trimmed.startsWith("PUB_WAN4:") -> {
+                            val pubIp = trimmed.substringAfter("PUB_WAN4:").trim()
+                            if (pubIp.isNotBlank() && !pubIp.startsWith("127.") && !pubIp.startsWith("192.168.") && !pubIp.startsWith("10.") && !pubIp.startsWith("100.")) {
+                                wanIpv4 = pubIp
+                            }
+                        }
+                        trimmed.startsWith("LIVE_WAN4:") && wanIpv4 == "未连接" -> {
+                            val liveIp = trimmed.substringAfter("LIVE_WAN4:").trim()
+                            if (liveIp.isNotBlank() && liveIp != "127.0.0.1" && !liveIp.startsWith("169.254")) {
+                                wanIpv4 = liveIp
+                            }
+                        }
+                        trimmed.startsWith("LIVE_WAN6:") -> {
+                            val liveIp6 = trimmed.substringAfter("LIVE_WAN6:").trim()
+                            if (liveIp6.isNotBlank() && (wanIpv6 == "未分配" || !wanIpv6.contains(":"))) {
+                                wanIpv6 = liveIp6
                             }
                         }
                     }
-                } catch (_: Exception) {}
-            }
-            if (ecmStats == null) {
-                try {
-                    val ecmText = client.callRaw("file", "read", mapOf("path" to "/sys/kernel/debug/ecm/ecm_db/connection_count_simple")).getOrNull()?.get("data")?.asString?.trim()
-                    if (!ecmText.isNullOrBlank()) {
-                        ecmStats = ecmText
-                    }
-                } catch (_: Exception) {}
-            }
-
-            // 源 5：直接批量直读 Linux 标准 thermal_zone 与 hwmon sysfs (支持 x86/ARM/Qualcomm 全平台)
-            for (idx in 0..7) {
-                try {
-                    val zType = client.callRaw("file", "read", mapOf("path" to "/sys/class/thermal/thermal_zone$idx/type")).getOrNull()?.get("data")?.asString?.trim()?.lowercase() ?: ""
-                    val zTemp = client.callRaw("file", "read", mapOf("path" to "/sys/class/thermal/thermal_zone$idx/temp")).getOrNull()?.get("data")?.asString?.trim()?.toLongOrNull()
-                    zTemp?.let { parseTempToDegree(it) }?.let { deg ->
-                        if (zType.contains("wifi") || zType.contains("wlan") || zType.contains("radio") || zType.contains("ath") || zType.contains("qcn")) {
-                            wifiCandidates.add(deg)
-                        } else {
-                            cpuCandidates.add(deg)
-                        }
-                    }
-                } catch (_: Exception) {}
-            }
-
-            for (idx in 0..5) {
-                try {
-                    val hName = client.callRaw("file", "read", mapOf("path" to "/sys/class/hwmon/hwmon$idx/name")).getOrNull()?.get("data")?.asString?.trim()?.lowercase() ?: ""
-                    val hTemp = client.callRaw("file", "read", mapOf("path" to "/sys/class/hwmon/hwmon$idx/temp1_input")).getOrNull()?.get("data")?.asString?.trim()?.toLongOrNull()
-                    hTemp?.let { parseTempToDegree(it) }?.let { deg ->
-                        if (hName.contains("wifi") || hName.contains("wlan") || hName.contains("radio") || hName.contains("ath") || hName.contains("qcn")) {
-                            wifiCandidates.add(deg)
-                        } else {
-                            cpuCandidates.add(deg)
-                        }
-                    }
-                } catch (_: Exception) {}
-            }
-
-            // 源 6：直接直读各物理 Wi-Fi 芯片 (phy0, phy1, phy2) 的硬件温度
-            for (p in 0..2) {
-                try {
-                    var rTemp: Long? = null
-                    for (hIdx in 0..2) {
-                        val t1 = client.callRaw("file", "read", mapOf("path" to "/sys/class/ieee80211/phy$p/hwmon$hIdx/temp1_input")).getOrNull()?.get("data")?.asString?.trim()?.toLongOrNull()
-                        if (t1 != null) { rTemp = t1; break }
-                        val t2 = client.callRaw("file", "read", mapOf("path" to "/sys/class/ieee80211/phy$p/device/hwmon/hwmon$hIdx/temp1_input")).getOrNull()?.get("data")?.asString?.trim()?.toLongOrNull()
-                        if (t2 != null) { rTemp = t2; break }
-                    }
-                    if (rTemp == null) {
-                        rTemp = client.callRaw("file", "read", mapOf("path" to "/sys/class/ieee80211/phy$p/hwmon/temp1_input")).getOrNull()?.get("data")?.asString?.trim()?.toLongOrNull()
-                    }
-                    rTemp?.let { parseTempToDegree(it) }?.let { deg ->
-                        perRadioTemps["radio$p"] = deg
-                        perRadioTemps["phy$p"] = deg
-                        wifiCandidates.add(deg)
-                    }
-                } catch (_: Exception) {}
-            }
-
-            // 源 7：探测 Wi-Fi 硬件存在性与真实公网 IP
-            try {
-                val phyCheck = client.callRaw("file", "read", mapOf("path" to "/sys/class/ieee80211")).isSuccess
-                if (phyCheck) hasWirelessHw = true
+                }
             } catch (_: Exception) {}
 
             // 若无线配置存在，则标记 hasWirelessHw 为 true
