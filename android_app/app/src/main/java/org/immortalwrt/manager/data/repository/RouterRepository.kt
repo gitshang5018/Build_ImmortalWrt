@@ -352,6 +352,7 @@ class RouterRepository(private val client: UbusClient) {
 
             val totalMemMb = sysInfo.memory.total / (1024 * 1024)
             val usedMemMb = sysInfo.memory.used / (1024 * 1024)
+            val availMemMb = sysInfo.memory.realAvailable / (1024 * 1024)
 
             val clientsCount = getConnectedClients().getOrNull()?.size ?: 0
 
@@ -372,6 +373,7 @@ class RouterRepository(private val client: UbusClient) {
                     hasWireless = hasWirelessHw,
                     memoryTotalMb = totalMemMb,
                     memoryUsedMb = usedMemMb,
+                    memoryAvailableMb = availMemMb,
                     onlineClientsCount = clientsCount
                 )
             )

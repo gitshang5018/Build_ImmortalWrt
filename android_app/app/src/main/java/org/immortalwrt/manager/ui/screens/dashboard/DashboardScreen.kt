@@ -186,11 +186,12 @@ fun DashboardScreen(
 
                     val memUsed = state.overview?.memoryUsedMb ?: 0
                     val memTotal = state.overview?.memoryTotalMb ?: 1
-                    val memPct = (memUsed.toFloat() / memTotal.toFloat())
+                    val memAvail = state.overview?.memoryAvailableMb ?: (memTotal - memUsed)
+                    val memPct = (memUsed.toFloat() / memTotal.toFloat()).coerceIn(0f, 1f)
                     StatCard(
                         title = "内存占用",
                         value = "${memUsed} MB",
-                        subtitle = "共 ${memTotal} MB (${String.format("%.0f", memPct * 100)}%)",
+                        subtitle = "可用 ${memAvail} MB / 共 ${memTotal} MB (${String.format("%.0f", memPct * 100)}%)",
                         icon = Icons.Default.Storage,
                         progress = memPct,
                         progressColor = SecondaryCyan,

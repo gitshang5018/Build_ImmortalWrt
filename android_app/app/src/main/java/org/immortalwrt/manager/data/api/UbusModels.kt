@@ -68,11 +68,25 @@ data class MemoryInfo(
     @SerializedName("free") val free: Long,
     @SerializedName("shared") val shared: Long?,
     @SerializedName("buffered") val buffered: Long?,
-    @SerializedName("cached") val cached: Long?
+    @SerializedName("cached") val cached: Long?,
+    @SerializedName("available") val available: Long?
 ) {
-    val used: Long get() = total - free
+    // 真实可用内存 (与 LuCI 网页端对齐：优先使用 available，无则使用 free + buffered + cached)
+    val realAvailable: Long
+        get() = if (available != null && available > 0) {
+            available
+        } else {
+            val buff = buffered ?: 0L
+            val cach = cached ?: 0L
+            free + buff + cach
+        }
+
+    // 真实已使用内存 (与 LuCI 网页端对齐：总内存 - 真实可用内存)
+    val used: Long
+        get() = (total - realAvailable).coerceAtLeast(0L)
+
     val usedPercentage: Float
-        get() = if (total > 0) ((total - free).toFloat() / total.toFloat()) * 100f else 0f
+        get() = if (total > 0) (used.toFloat() / total.toFloat()) * 100f else 0f
 }
 
 data class SwapInfo(

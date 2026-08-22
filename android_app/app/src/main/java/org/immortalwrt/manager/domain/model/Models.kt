@@ -44,6 +44,7 @@ data class RouterOverview(
     val hasWireless: Boolean = false,
     val memoryTotalMb: Long,
     val memoryUsedMb: Long,
+    val memoryAvailableMb: Long = 0L,
     val onlineClientsCount: Int
 ) {
     val formattedUptime: String
