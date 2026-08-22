@@ -99,6 +99,30 @@ class RouterRepository(private val client: UbusClient) {
             val load15 = String.format("%.2f", (sysInfo.load?.getOrNull(2) ?: 0L) / 65536.0)
             val cpuLoadAverage = "$load1, $load5, $load15"
 
+            var realCpuLoadPct: Float = loadAvg
+            var fullCpuUsageText: String? = null
+            var hweUsage: String? = null
+            var ecmStats: String? = null
+
+            // 解析来自 /sbin/cpuusage 的精确 CPU 负载、HWE 硬件加速与 ECM 状态
+            fun parseCpuUsageString(str: String) {
+                fullCpuUsageText = str.trim()
+                val cpuMatch = Regex("""CPU:\s*([0-9]+(?:\.[0-9]+)?)\s*%""", RegexOption.IGNORE_CASE).find(str)
+                if (cpuMatch != null) {
+                    cpuMatch.groupValues[1].toFloatOrNull()?.let {
+                        realCpuLoadPct = it
+                    }
+                }
+                val hweMatch = Regex("""HWE:\s*([0-9]+(?:\.[0-9]+)?%?)""", RegexOption.IGNORE_CASE).find(str)
+                if (hweMatch != null) {
+                    hweUsage = hweMatch.groupValues[1].let { if (it.endsWith("%")) it else "$it%" }
+                }
+                val ecmMatch = Regex("""ECM:\s*(.+)$""", RegexOption.IGNORE_CASE).find(str)
+                if (ecmMatch != null) {
+                    ecmStats = ecmMatch.groupValues[1].trim()
+                }
+            }
+
             // 智能温控字符串全模式解析提取 (如 "CPU: 48.0C, WiFi: 51.0C 53.0C" 或 "48.5°C" 或 "CPU: 45°C")
             fun extractTemperaturesFromText(text: String): Pair<Int?, List<Int>> {
                 var cpu: Int? = null
@@ -151,7 +175,7 @@ class RouterRepository(private val client: UbusClient) {
             var hasWirelessHw = false
             var cpuTemp: String? = null
 
-            // 源 1：尝试通过 LuCI RPC 标准接口读取温控 (luci.getCPUInfo / luci.getSystemInfo)
+            // 源 1：尝试通过 LuCI RPC 标准接口读取温控与 CPU 状态 (luci.getCPUInfo / luci.getSystemInfo)
             try {
                 val luciCpu = client.callRaw("luci", "getCPUInfo").getOrNull()
                     ?: client.callRaw("luci", "getSystemInfo").getOrNull()
@@ -164,6 +188,10 @@ class RouterRepository(private val client: UbusClient) {
                         val (cDeg, wDegs) = extractTemperaturesFromText(tVal)
                         cDeg?.let { cpuCandidates.add(it) }
                         wifiCandidates.addAll(wDegs)
+                    }
+                    val cpuUsageVal = luciCpu.get("cpuusage")?.asString ?: luciCpu.get("usage")?.asString
+                    if (!cpuUsageVal.isNullOrBlank()) {
+                        parseCpuUsageString(cpuUsageVal)
                     }
                 }
             } catch (_: Exception) {}
@@ -185,8 +213,8 @@ class RouterRepository(private val client: UbusClient) {
                 } catch (_: Exception) {}
             }
 
-            // 源 3：通过 shell 探针全盘扫描温度与公网 IP
-            val detectScript = "if [ -d /sys/class/ieee80211 ] && [ -n \"\$(ls /sys/class/ieee80211 2>/dev/null)\" ]; then echo 'WIFI_HW:1'; elif [ -n \"\$(ls /sys/class/net/phy* /sys/class/net/wlan* /sys/class/net/ath* 2>/dev/null)\" ]; then echo 'WIFI_HW:1'; elif iw dev 2>/dev/null | grep -q Interface; then echo 'WIFI_HW:1'; else echo 'WIFI_HW:0'; fi; for z in /sys/class/thermal/thermal_zone*; do if [ -d \"\$z\" ]; then zt=\$(cat \"\$z/type\" 2>/dev/null); zv=\$(cat \"\$z/temp\" 2>/dev/null); [ -n \"\$zv\" ] && echo \"ZONE:\$zt:\$zv\"; fi; done; for h in /sys/class/hwmon/hwmon*; do if [ -d \"\$h\" ]; then hn=\$(cat \"\$h/name\" 2>/dev/null); for t in \"\$h\"/temp*_input; do if [ -f \"\$t\" ]; then tv=\$(cat \"\$t\" 2>/dev/null); [ -n \"\$tv\" ] && echo \"HWMON:\$hn:\$tv\"; fi; done; fi; done; for p in /sys/class/net/phy* /sys/class/ieee80211/*; do if [ -d \"\$p\" ]; then pname=\$(basename \"\$p\"); tval=\$(cat \"\$p\"/device/hwmon/hwmon*/temp1_input 2>/dev/null | head -n 1); [ -n \"\$tval\" ] && echo \"RADIO_TEMP:\$pname:\$tval\"; [ -z \"\$tval\" ] && tval=\$(cat /sys/kernel/debug/ath11k/*/\$pname/temperature 2>/dev/null | head -n 1); [ -n \"\$tval\" ] && echo \"RADIO_TEMP:\$pname:\$tval\"; fi; done; if [ -x /sbin/tempinfo ]; then tinfo=\$(/sbin/tempinfo 2>/dev/null); [ -n \"\$tinfo\" ] && echo \"TEMPINFO:\$tinfo\"; elif [ -x /sbin/cpuusage ]; then st=\$(/sbin/cpuusage 2>/dev/null | grep -oE '[0-9]+(\\.[0-9]+)?(°C|C)' | head -n 1 | tr -dc '0-9.'); [ -n \"\$st\" ] && echo \"SOC_TEMP:\$st\"; fi; DDEV=\$(ip -4 route show default 2>/dev/null | awk '{print \$5}' | head -n 1); [ -z \"\$DDEV\" ] && DDEV=\$(ip -4 route show 2>/dev/null | awk '/default/{print \$5}' | head -n 1); if [ -n \"\$DDEV\" ]; then LIP4=\$(ip -4 addr show dev \"\$DDEV\" 2>/dev/null | awk '/inet /{print \$2}' | cut -d/ -f1 | head -n 1); [ -n \"\$LIP4\" ] && echo \"LIVE_WAN4:\$LIP4\"; fi; DDEV6=\$(ip -6 route show default 2>/dev/null | awk '{print \$5}' | head -n 1); [ -z \"\$DDEV6\" ] && DDEV6=\$(ip -6 route show 2>/dev/null | awk '/default/{print \$5}' | head -n 1); if [ -n \"\$DDEV6\" ]; then LIP6=\$(ip -6 addr show dev \"\$DDEV6\" 2>/dev/null | grep -E 'inet6 ' | grep -v 'fe80:' | grep -v '::1' | awk '{print \$2}' | head -n 1); [ -n \"\$LIP6\" ] && echo \"LIVE_WAN6:\$LIP6\"; fi; PUB_IP=\$(wget -qO- -T 2 http://4.ipw.cn 2>/dev/null || curl -s -m 2 https://api.ipify.org 2>/dev/null); [ -n \"\$PUB_IP\" ] && echo \"PUB_WAN4:\$PUB_IP\""
+            // 源 3：通过 shell 探针全盘扫描 CPU/HWE/ECM、多频 Wi-Fi 硬件温度与公网 IP
+            val detectScript = "if [ -x /sbin/cpuusage ]; then echo \"CPUUSAGE:\$(/sbin/cpuusage 2>/dev/null)\"; fi; if [ -x /sbin/tempinfo ]; then echo \"TEMPINFO:\$(/sbin/tempinfo 2>/dev/null)\"; fi; if [ -d /sys/class/ieee80211 ] && [ -n \"\$(ls /sys/class/ieee80211 2>/dev/null)\" ]; then echo 'WIFI_HW:1'; elif [ -n \"\$(ls /sys/class/net/phy* /sys/class/net/wlan* /sys/class/net/ath* 2>/dev/null)\" ]; then echo 'WIFI_HW:1'; elif iw dev 2>/dev/null | grep -q Interface; then echo 'WIFI_HW:1'; else echo 'WIFI_HW:0'; fi; for p in 0 1 2; do if [ -d \"/sys/class/ieee80211/phy\$p\" ]; then tv=\$(cat \"/sys/class/ieee80211/phy\$p\"/hwmon*/temp1_input 2>/dev/null | head -n 1); [ -z \"\$tv\" ] && tv=\$(cat \"/sys/class/ieee80211/phy\$p\"/device/hwmon/hwmon*/temp1_input 2>/dev/null | head -n 1); [ -z \"\$tv\" ] && tv=\$(cat /sys/kernel/debug/ath11k/*phy\$p*/temperature 2>/dev/null | head -n 1); [ -n \"\$tv\" ] && echo \"RADIO_TEMP:radio\$p:\$tv\"; [ -n \"\$tv\" ] && echo \"RADIO_TEMP:phy\$p:\$tv\"; fi; done; for z in /sys/class/thermal/thermal_zone*; do if [ -d \"\$z\" ]; then zt=\$(cat \"\$z/type\" 2>/dev/null); zv=\$(cat \"\$z/temp\" 2>/dev/null); [ -n \"\$zv\" ] && echo \"ZONE:\$zt:\$zv\"; fi; done; for h in /sys/class/hwmon/hwmon*; do if [ -d \"\$h\" ]; then hn=\$(cat \"\$h/name\" 2>/dev/null); for t in \"\$h\"/temp*_input; do if [ -f \"\$t\" ]; then tv=\$(cat \"\$t\" 2>/dev/null); [ -n \"\$tv\" ] && echo \"HWMON:\$hn:\$tv\"; fi; done; fi; done; DDEV=\$(ip -4 route show default 2>/dev/null | awk '{print \$5}' | head -n 1); [ -z \"\$DDEV\" ] && DDEV=\$(ip -4 route show 2>/dev/null | awk '/default/{print \$5}' | head -n 1); if [ -n \"\$DDEV\" ]; then LIP4=\$(ip -4 addr show dev \"\$DDEV\" 2>/dev/null | awk '/inet /{print \$2}' | cut -d/ -f1 | head -n 1); [ -n \"\$LIP4\" ] && echo \"LIVE_WAN4:\$LIP4\"; fi; DDEV6=\$(ip -6 route show default 2>/dev/null | awk '{print \$5}' | head -n 1); [ -z \"\$DDEV6\" ] && DDEV6=\$(ip -6 route show 2>/dev/null | awk '/default/{print \$5}' | head -n 1); if [ -n \"\$DDEV6\" ]; then LIP6=\$(ip -6 addr show dev \"\$DDEV6\" 2>/dev/null | grep -E 'inet6 ' | grep -v 'fe80:' | grep -v '::1' | awk '{print \$2}' | head -n 1); [ -n \"\$LIP6\" ] && echo \"LIVE_WAN6:\$LIP6\"; fi; PUB_IP=\$(wget -qO- -T 2 http://4.ipw.cn 2>/dev/null || curl -s -m 2 https://api.ipify.org 2>/dev/null); [ -n \"\$PUB_IP\" ] && echo \"PUB_WAN4:\$PUB_IP\""
 
             try {
                 val hwDetectResp = client.callRaw("file", "exec", mapOf(
@@ -197,7 +225,17 @@ class RouterRepository(private val client: UbusClient) {
 
                 hwOut.lineSequence().forEach { line ->
                     val trimmed = line.trim()
-                    if (trimmed.startsWith("WIFI_HW:")) {
+                    if (trimmed.startsWith("CPUUSAGE:")) {
+                        val usageStr = trimmed.substringAfter("CPUUSAGE:").trim()
+                        if (usageStr.isNotBlank()) {
+                            parseCpuUsageString(usageStr)
+                        }
+                    } else if (trimmed.startsWith("TEMPINFO:")) {
+                        val tinfo = trimmed.substringAfter("TEMPINFO:").trim()
+                        val (cDeg, wDegs) = extractTemperaturesFromText(tinfo)
+                        cDeg?.let { cpuCandidates.add(it) }
+                        wifiCandidates.addAll(wDegs)
+                    } else if (trimmed.startsWith("WIFI_HW:")) {
                         hasWirelessHw = trimmed.substringAfter("WIFI_HW:") == "1"
                     } else if (trimmed.startsWith("PUB_WAN4:")) {
                         val pubIp = trimmed.substringAfter("PUB_WAN4:").trim()
@@ -214,11 +252,6 @@ class RouterRepository(private val client: UbusClient) {
                         if (liveIp6.isNotBlank() && (wanIpv6 == "未分配" || !wanIpv6.contains(":"))) {
                             wanIpv6 = liveIp6
                         }
-                    } else if (trimmed.startsWith("TEMPINFO:")) {
-                        val tinfo = trimmed.substringAfter("TEMPINFO:").trim()
-                        val (cDeg, wDegs) = extractTemperaturesFromText(tinfo)
-                        cDeg?.let { cpuCandidates.add(it) }
-                        wifiCandidates.addAll(wDegs)
                     } else if (trimmed.startsWith("RADIO_TEMP:")) {
                         val parts = trimmed.split(":")
                         if (parts.size >= 3) {
@@ -261,11 +294,6 @@ class RouterRepository(private val client: UbusClient) {
                                 }
                             }
                         }
-                    } else if (trimmed.startsWith("SOC_TEMP:")) {
-                        val rawStr = trimmed.substringAfter("SOC_TEMP:").trim()
-                        rawStr.toFloatOrNull()?.toInt()?.let { deg ->
-                            if (deg in 15..125) cpuCandidates.add(deg)
-                        }
                     }
                 }
             } catch (_: Exception) {}
@@ -274,16 +302,6 @@ class RouterRepository(private val client: UbusClient) {
             val wifiConfigs = getWifiConfigs().getOrNull() ?: emptyList()
             if (wifiConfigs.isNotEmpty()) {
                 hasWirelessHw = true
-            }
-
-            // 兜底温控计算：确保所有平台均有合理的温控呈现
-            if (cpuCandidates.isEmpty()) {
-                val simulatedCpu = (42f + (loadAvg * 0.12f)).toInt().coerceIn(38, 75)
-                cpuCandidates.add(simulatedCpu)
-                if (hasWirelessHw && wifiCandidates.isEmpty()) {
-                    wifiCandidates.add(simulatedCpu + 3)
-                    wifiCandidates.add(simulatedCpu + 5)
-                }
             }
 
             if (cpuCandidates.isNotEmpty()) {
@@ -301,23 +319,25 @@ class RouterRepository(private val client: UbusClient) {
                     distinctBands.forEachIndexed { idx, cfg ->
                         val radioKey = cfg.deviceRadio
                         val phyKey = radioKey.replace("radio", "phy")
-                        val explicitTemp = perRadioTemps[phyKey] ?: perRadioTemps[radioKey]
+                        val explicitTemp = perRadioTemps[radioKey] ?: perRadioTemps[phyKey]
                         val tempVal = when {
                             explicitTemp != null -> explicitTemp
                             idx < wifiCandidates.size -> wifiCandidates[idx]
                             wifiCandidates.isNotEmpty() -> wifiCandidates[0] + (idx * 2)
                             cpuCandidates.size > idx + 1 -> cpuCandidates[idx + 1]
                             cpuCandidates.isNotEmpty() -> cpuCandidates[0] + (idx * 2)
-                            else -> 48 + (idx * 2)
+                            else -> null
                         }
 
-                        wifiBandTemps.add(
-                            WifiBandTemperature(
-                                bandName = cfg.bandName,
-                                radioDevice = cfg.deviceRadio,
-                                temperature = "${tempVal}°C"
+                        if (tempVal != null) {
+                            wifiBandTemps.add(
+                                WifiBandTemperature(
+                                    bandName = cfg.bandName,
+                                    radioDevice = cfg.deviceRadio,
+                                    temperature = "${tempVal}°C"
+                                )
                             )
-                        )
+                        }
                     }
                 } else if (wifiCandidates.isNotEmpty()) {
                     wifiBandTemps.add(
@@ -325,22 +345,6 @@ class RouterRepository(private val client: UbusClient) {
                             bandName = "Wi-Fi 射频",
                             radioDevice = "radio0",
                             temperature = "${wifiCandidates[0]}°C"
-                        )
-                    )
-                } else if (cpuCandidates.size > 1) {
-                    wifiBandTemps.add(
-                        WifiBandTemperature(
-                            bandName = "Wi-Fi 射频",
-                            radioDevice = "radio0",
-                            temperature = "${cpuCandidates[1]}°C"
-                        )
-                    )
-                } else if (cpuCandidates.isNotEmpty()) {
-                    wifiBandTemps.add(
-                        WifiBandTemperature(
-                            bandName = "Wi-Fi 射频",
-                            radioDevice = "radio0",
-                            temperature = "${cpuCandidates[0] + 3}°C"
                         )
                     )
                 }
@@ -365,8 +369,11 @@ class RouterRepository(private val client: UbusClient) {
                     wanIpv4 = wanIpv4,
                     wanIpv6 = wanIpv6,
                     lanIp = lanIp,
-                    cpuLoadPercentage = loadAvg,
+                    cpuLoadPercentage = realCpuLoadPct,
                     cpuLoadAverage = cpuLoadAverage,
+                    cpuUsageText = fullCpuUsageText,
+                    hweUsage = hweUsage,
+                    ecmStats = ecmStats,
                     cpuTemperature = cpuTemp,
                     wifiTemperature = wifiTempSummary,
                     wifiBandTemperatures = wifiBandTemps,
@@ -617,13 +624,9 @@ class RouterRepository(private val client: UbusClient) {
                         val rxRate = obj.get("rx_rate")?.asFloat ?: 0f
                         val txRate = obj.get("tx_rate")?.asFloat ?: 0f
 
-                        val is5GHigh = wDev.contains("2") || wDev.contains("phy2")
-                        val is5GLow = wDev.contains("1") || wDev.contains("phy1")
-                        val connType = when {
-                            is5GHigh -> ConnectionType.WIFI_5G
-                            is5GLow -> ConnectionType.WIFI_5G
-                            else -> ConnectionType.WIFI_2G
-                        }
+                        // Athena / IPQ60xx: phy1/wlan1 = 2.4GHz, phy0/wlan0 = 5.8GHz, phy2/wlan2 = 5.2GHz 电竞
+                        val is2G = wDev.startsWith("phy1") || wDev == "wlan1" || wDev.contains("2g") || wDev.contains("2.4")
+                        val connType = if (is2G) ConnectionType.WIFI_2G else ConnectionType.WIFI_5G
 
                         val existing = clientMap[mac]
                         if (existing != null) {

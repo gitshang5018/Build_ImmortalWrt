@@ -172,12 +172,21 @@ fun DashboardScreen(
                         else -> PrimaryBlue
                     }
 
+                    val hwe = state.overview?.hweUsage
+                    val ecm = state.overview?.ecmStats
+                    val cpuSubtitle = when {
+                        hwe != null && ecm != null -> "HWE: $hwe · ECM: $ecm"
+                        hwe != null -> "HWE 硬件加速: $hwe · 负载: ${state.overview?.cpuLoadAverage}"
+                        state.overview?.cpuUsageText != null -> state.overview?.cpuUsageText ?: ""
+                        else -> "平均负载: ${state.overview?.cpuLoadAverage ?: "--"}"
+                    }
+
                     StatCard(
                         title = "CPU 负载",
-                        value = "${String.format("%.1f", cpuLoad)}%",
-                        subtitle = "平均负载: ${state.overview?.cpuLoadAverage ?: "--"}",
+                        value = "${String.format("%.0f", cpuLoad)}%",
+                        subtitle = cpuSubtitle,
                         icon = Icons.Default.Memory,
-                        progress = cpuLoad / 100f,
+                        progress = (cpuLoad / 100f).coerceIn(0f, 1f),
                         progressColor = cpuColor,
                         modifier = Modifier
                             .weight(1f)
