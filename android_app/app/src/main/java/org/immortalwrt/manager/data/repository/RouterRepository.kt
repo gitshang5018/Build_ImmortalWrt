@@ -176,12 +176,14 @@ class RouterRepository(private val client: UbusClient) {
             var cpuTemp: String? = null
 
             // 唯一数据源：通过 /bin/sh -c 一次性执行所有硬件探测命令
-            // 关键：rpcd file.exec 必须用 /bin/sh 包装，直接执行 shell 脚本会静默失败
+            // 关键优化：绝对禁止使用 wget、curl 或 top -bn1 这种会阻塞的命令
+            // rpcd 的 file.exec 默认有 3-5 秒硬超时限制，超过会直接静默杀掉并返回空，导致所有数据失效
+            // 全部改用纯瞬时完成的 cat 和 ip route，耗时限制在 0.05 秒以内
             val probeScript = buildString {
-                // 1. CPU 即时负载 + HWE 硬件加速 + ECM 连接跟踪
-                append("[ -x /sbin/cpuusage ] && echo \"CPUUSAGE:\$(/sbin/cpuusage 2>/dev/null)\"; ")
-                // 2. 官方标准温控 (CPU + WiFi)
-                append("[ -x /sbin/tempinfo ] && echo \"TEMPINFO:\$(/sbin/tempinfo 2>/dev/null)\"; ")
+                // 1. HWE 硬件加速 (直接瞬时读 debugfs)
+                append("[ -f /sys/kernel/debug/qca-nss-drv/stats/cpu_load_ubi ] && echo \"HWE:\$(awk 'NR==6 {print \$2}' /sys/kernel/debug/qca-nss-drv/stats/cpu_load_ubi 2>/dev/null)\"; ")
+                // 2. ECM 连接跟踪 (直接瞬时读 debugfs)
+                append("[ -f /sys/kernel/debug/ecm/ecm_db/connection_count_simple ] && echo \"ECM:\$(cat /sys/kernel/debug/ecm/ecm_db/connection_count_simple 2>/dev/null)\"; ")
                 // 3. Wi-Fi 硬件存在性
                 append("[ -d /sys/class/ieee80211 ] && echo WIFI_HW:1 || echo WIFI_HW:0; ")
                 // 4. 逐射频芯片温度直读
@@ -193,14 +195,12 @@ class RouterRepository(private val client: UbusClient) {
                 append("for z in /sys/class/thermal/thermal_zone*; do [ -d \"\$z\" ] && { ")
                 append("zt=\$(cat \"\$z/type\" 2>/dev/null); zv=\$(cat \"\$z/temp\" 2>/dev/null); ")
                 append("[ -n \"\$zv\" ] && echo \"ZONE:\$zt:\$zv\"; }; done; ")
-                // 6. 公网 IPv4
+                // 6. 连通的 WAN IPv4 (Instant)
                 append("D=\$(ip -4 r s default 2>/dev/null|awk '{print \$5}'|head -1); ")
                 append("[ -n \"\$D\" ] && echo \"LIVE_WAN4:\$(ip -4 a s dev \$D 2>/dev/null|awk '/inet /{print \$2}'|cut -d/ -f1|head -1)\"; ")
-                // 7. 公网 IPv6
+                // 7. 连通的 WAN IPv6 (Instant)
                 append("D6=\$(ip -6 r s default 2>/dev/null|awk '{print \$5}'|head -1); ")
-                append("[ -n \"\$D6\" ] && echo \"LIVE_WAN6:\$(ip -6 a s dev \$D6 2>/dev/null|grep 'inet6 '|grep -v fe80:|grep -v ::1|awk '{print \$2}'|head -1)\"; ")
-                // 8. 真实公网 IP
-                append("P=\$(wget -qO- -T2 http://4.ipw.cn 2>/dev/null||curl -sm2 https://api.ipify.org 2>/dev/null); [ -n \"\$P\" ] && echo \"PUB_WAN4:\$P\"")
+                append("[ -n \"\$D6\" ] && echo \"LIVE_WAN6:\$(ip -6 a s dev \$D6 2>/dev/null|grep 'inet6 '|grep -v fe80:|grep -v ::1|awk '{print \$2}'|head -1)\"")
             }
 
             try {
@@ -213,17 +213,13 @@ class RouterRepository(private val client: UbusClient) {
                 probeOut.lineSequence().forEach { line ->
                     val trimmed = line.trim()
                     when {
-                        trimmed.startsWith("CPUUSAGE:") -> {
-                            val usageStr = trimmed.substringAfter("CPUUSAGE:").trim()
-                            if (usageStr.isNotBlank()) parseCpuUsageString(usageStr)
+                        trimmed.startsWith("HWE:") -> {
+                            val v = trimmed.substringAfter("HWE:").trim()
+                            if (v.isNotBlank()) hweUsage = if (v.endsWith("%")) v else "$v%"
                         }
-                        trimmed.startsWith("TEMPINFO:") -> {
-                            val tinfo = trimmed.substringAfter("TEMPINFO:").trim()
-                            if (tinfo.isNotBlank()) {
-                                val (cDeg, wDegs) = extractTemperaturesFromText(tinfo)
-                                cDeg?.let { cpuCandidates.add(it) }
-                                wifiCandidates.addAll(wDegs)
-                            }
+                        trimmed.startsWith("ECM:") -> {
+                            val v = trimmed.substringAfter("ECM:").trim()
+                            if (v.isNotBlank()) ecmStats = v
                         }
                         trimmed.startsWith("WIFI_HW:") -> {
                             hasWirelessHw = trimmed.substringAfter("WIFI_HW:") == "1"
@@ -254,12 +250,6 @@ class RouterRepository(private val client: UbusClient) {
                                         }
                                     }
                                 }
-                            }
-                        }
-                        trimmed.startsWith("PUB_WAN4:") -> {
-                            val pubIp = trimmed.substringAfter("PUB_WAN4:").trim()
-                            if (pubIp.isNotBlank() && !pubIp.startsWith("127.") && !pubIp.startsWith("192.168.") && !pubIp.startsWith("10.") && !pubIp.startsWith("100.")) {
-                                wanIpv4 = pubIp
                             }
                         }
                         trimmed.startsWith("LIVE_WAN4:") && wanIpv4 == "未连接" -> {
