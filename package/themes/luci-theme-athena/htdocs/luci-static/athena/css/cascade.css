@@ -495,8 +495,8 @@ input:focus, select:focus, textarea:focus {
   background: var(--bg-card);
 }
 
-/* Buttons */
-.cbi-button, .btn, button {
+/* Buttons - exclude .cbi-dropdown so LuCI's dropdown widget works unimpeded */
+.cbi-button:not(.cbi-dropdown), .btn, button:not(.cbi-dropdown) {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   color: var(--text-primary);
@@ -511,18 +511,26 @@ input:focus, select:focus, textarea:focus {
   transition: all 0.2s ease;
 }
 
-.cbi-button:hover, .btn:hover {
+.cbi-button:not(.cbi-dropdown):hover, .btn:hover {
   background: var(--input-bg);
   border-color: var(--text-secondary);
 }
 
-.cbi-button-apply, .cbi-button-save, .btn-primary, .cbi-button-action {
+.cbi-button-apply:not(.cbi-dropdown), .cbi-button-save, .btn-primary, .cbi-button-action:not(.cbi-dropdown) {
   background: var(--primary-blue);
   color: #FFFFFF !important;
   border-color: var(--primary-blue);
 }
 
-.cbi-button-apply:hover, .cbi-button-save:hover, .btn-primary:hover {
+/* Style the dropdown container itself (colors only, no layout changes) */
+.cbi-dropdown.cbi-button-apply {
+  background: var(--primary-blue);
+  color: #FFFFFF !important;
+  border-color: var(--primary-blue);
+  border-radius: var(--btn-radius);
+}
+
+.cbi-button-apply:not(.cbi-dropdown):hover, .cbi-button-save:hover, .btn-primary:hover {
   background: var(--primary-blue-hover);
 }
 
@@ -532,43 +540,12 @@ input:focus, select:focus, textarea:focus {
   border-color: transparent;
 }
 
-/* Fix Save & Apply Dropdown specifically */
-.cbi-button.cbi-dropdown {
-  padding: 0 !important;
-  display: inline-block !important;
-  vertical-align: middle !important;
-  overflow: hidden !important;
-}
-
-.cbi-dropdown[open], .cbi-dropdown.open {
-  overflow: visible !important;
-}
-
-.cbi-dropdown > ul {
-  margin: 0 !important;
-  padding: 0 !important;
-  list-style: none !important;
-  background: transparent;
-  border: none;
-}
-
-.cbi-dropdown > ul > li {
-  padding: 7px 16px;
-  align-items: center;
-  justify-content: space-between;
-}
-
-/* Fix Save & Apply dropdown positioning */
+/* Right-align the action buttons row */
 .cbi-page-actions, .cbi-section-actions, .page-actions {
   text-align: right !important;
   padding: 15px 0;
   margin-top: 20px;
   border-top: 1px solid var(--border-color);
-  display: flex !important;
-  justify-content: flex-end !important;
-  align-items: center !important;
-  flex-wrap: wrap;
-  gap: 12px;
 }
 
 /* Badges & Interface Indicators */
