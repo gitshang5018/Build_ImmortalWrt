@@ -3,7 +3,6 @@
  Licensed to the public under the Apache License 2.0.
 -#}
 {%
-	import { getuid, getspnam } from 'luci.cbi';
 	import { readfile } from 'fs';
 
 	let node = menu.get_active_node();
@@ -47,7 +46,7 @@
 						let entries = menu.get_menu_children(category);
 						if (!entries || !length(entries)) return;
 
-						for (let entry in entries) {
+						for (let i, entry in entries) {
 							let has_children = length(menu.get_menu_children(entry.name)) > 0;
 							let is_active = (node?.name == entry.name || index(node?.name ?? '', entry.name) == 0);
 				%}
