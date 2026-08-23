@@ -476,7 +476,7 @@ a.showSide {
 }
 
 /* Form Controls */
-input[type="text"], input[type="password"], input[type="number"], select, textarea, .cbi-dropdown {
+input[type="text"], input[type="password"], input[type="number"], select, textarea {
   background: var(--input-bg);
   border: 1px solid var(--input-border);
   color: var(--text-primary);
@@ -489,7 +489,7 @@ input[type="text"], input[type="password"], input[type="number"], select, textar
   max-width: 440px;
 }
 
-input:focus, select:focus, textarea:focus, .cbi-dropdown:focus {
+input:focus, select:focus, textarea:focus {
   border-color: var(--input-focus-border);
   box-shadow: 0 0 0 3px var(--input-focus-ring);
   background: var(--bg-card);
@@ -514,6 +514,17 @@ input:focus, select:focus, textarea:focus, .cbi-dropdown:focus {
 .cbi-button:hover, .btn:hover {
   background: var(--input-bg);
   border-color: var(--text-secondary);
+}
+
+.cbi-button.cbi-dropdown {
+  padding: 0 !important;
+  display: inline-block !important;
+}
+
+.cbi-dropdown ul {
+  list-style: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
 }
 
 .cbi-button-apply, .cbi-button-save, .btn-primary, .cbi-button-action {
