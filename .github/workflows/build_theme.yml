@@ -1,0 +1,154 @@
+name: Build Theme Athena
+
+on:
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: '是否发布到 GitHub Releases'
+        required: false
+        type: boolean
+        default: true
+  push:
+    paths:
+      - 'package/themes/luci-theme-athena/**'
+      - '.github/workflows/build_theme.yml'
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  build-theme:
+    name: Build luci-theme-athena Package
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: 检出仓库代码
+        uses: actions/checkout@v4
+
+      - name: 设置时区与环境变量
+        run: |
+          sudo timedatectl set-timezone "Asia/Shanghai"
+          BUILD_TIME=$(date +"%Y%m%d_%H%M%S")
+          echo "BUILD_TIME=$BUILD_TIME" >> $GITHUB_ENV
+          echo "PKG_VERSION=1.0.0" >> $GITHUB_ENV
+
+      - name: 运行主题单元测试
+        run: |
+          chmod +x wrt_core/patches/tests/test_theme_athena.sh
+          ./wrt_core/patches/tests/test_theme_athena.sh
+
+      - name: 构建 OpenWrt 标准 IPK 安装包
+        run: |
+          mkdir -p bin/packages
+          WORK_DIR="/tmp/ipk_build"
+          rm -rf "$WORK_DIR"
+          mkdir -p "$WORK_DIR/data" "$WORK_DIR/control"
+
+          THEME_SRC="package/themes/luci-theme-athena"
+
+          # 1. 复制静态文件到 data 目录
+          mkdir -p "$WORK_DIR/data/www/luci-static/athena"
+          cp -r "$THEME_SRC/htdocs/luci-static/athena/"* "$WORK_DIR/data/www/luci-static/athena/"
+
+          # 2. 复制 ucode 模板
+          mkdir -p "$WORK_DIR/data/usr/share/ucode/luci/template/themes/athena"
+          cp -r "$THEME_SRC/ucode/template/themes/athena/"* "$WORK_DIR/data/usr/share/ucode/luci/template/themes/athena/"
+
+          # 3. 复制 uci-defaults 与菜单 JSON
+          mkdir -p "$WORK_DIR/data/etc/uci-defaults"
+          cp "$THEME_SRC/root/etc/uci-defaults/30_luci-theme-athena" "$WORK_DIR/data/etc/uci-defaults/"
+          chmod +x "$WORK_DIR/data/etc/uci-defaults/30_luci-theme-athena"
+
+          mkdir -p "$WORK_DIR/data/usr/share/luci/menu.d"
+          cp "$THEME_SRC/root/usr/share/luci/menu.d/luci-theme-athena.json" "$WORK_DIR/data/usr/share/luci/menu.d/"
+
+          # 4. 生成 control 文件
+          cat << 'EOF' > "$WORK_DIR/control/control"
+          Package: luci-theme-athena
+          Version: 1.0.0-1
+          Depends: libc, luci-base
+          Section: luci
+          Category: LuCI
+          Title: Athena Modern App-Style Theme
+          Maintainer: OpenWrt
+          Architecture: all
+          Description: Athena Modern Material 3 Card-Based Theme for OpenWrt/ImmortalWrt LuCI.
+          EOF
+          sed -i 's/^[ \t]*//' "$WORK_DIR/control/control"
+
+          # 5. 生成 postinst 与 prerm 脚本
+          cat << 'EOF' > "$WORK_DIR/control/postinst"
+          #!/bin/sh
+          [ -n "$IPKG_INSTROOT" ] || {
+              uci -q batch <<-UCI_EOF >/dev/null
+                  set luci.themes.Athena=/luci-static/athena
+                  commit luci
+          UCI_EOF
+          }
+          exit 0
+          EOF
+          chmod 755 "$WORK_DIR/control/postinst"
+
+          cat << 'EOF' > "$WORK_DIR/control/prerm"
+          #!/bin/sh
+          [ -n "$IPKG_INSTROOT" ] || {
+              uci -q batch <<-UCI_EOF >/dev/null
+                  delete luci.themes.Athena
+                  commit luci
+          UCI_EOF
+          }
+          exit 0
+          EOF
+          chmod 755 "$WORK_DIR/control/prerm"
+
+          # 6. 打包生成 data.tar.gz 与 control.tar.gz
+          tar -czf "$WORK_DIR/data.tar.gz" -C "$WORK_DIR/data" .
+          tar -czf "$WORK_DIR/control.tar.gz" -C "$WORK_DIR/control" .
+          echo "2.0" > "$WORK_DIR/debian-binary"
+
+          # 7. 组装为标准 IPK
+          IPK_NAME="luci-theme-athena_${PKG_VERSION}-1_all.ipk"
+          tar -czf "bin/packages/$IPK_NAME" -C "$WORK_DIR" debian-binary control.tar.gz data.tar.gz
+
+          # 8. 生成直接解压安装的离线包 (Offline Tarball)
+          tar -czf "bin/packages/luci-theme-athena_offline_install.tar.gz" -C "$WORK_DIR/data" .
+
+          echo "=== 打包产物详情 ==="
+          ls -lh bin/packages/
+
+      - name: 上传主题构建产物 (Artifacts)
+        uses: actions/upload-artifact@v4
+        with:
+          name: luci-theme-athena-packages
+          path: bin/packages/
+
+      - name: 发布至 GitHub Releases
+        if: ${{ inputs.create_release == true || github.event_name == 'push' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "athena-theme-${{ env.BUILD_TIME }}"
+          name: "雅典娜 App 风格 LuCI 主题 (luci-theme-athena v${{ env.PKG_VERSION }})"
+          body: |
+            ### 🌟 luci-theme-athena (OpenWrt / ImmortalWrt 现代卡片主题)
+            
+            #### 📦 安装说明：
+            1. **通过 OPKG 安装（推荐）**：
+               - 下载 `luci-theme-athena_${{ env.PKG_VERSION }}-1_all.ipk` 并上传至路由器 `/tmp/`
+               - 执行命令安装：
+                 ```bash
+                 opkg install /tmp/luci-theme-athena_${{ env.PKG_VERSION }}-1_all.ipk
+                 ```
+            2. **手动解压安装（免 opkg 依赖）**：
+               - 下载 `luci-theme-athena_offline_install.tar.gz` 并上传至路由器根目录 `/`
+               - 执行解压与注册：
+                 ```bash
+                 tar -zxvf /tmp/luci-theme-athena_offline_install.tar.gz -C /
+                 /etc/uci-defaults/30_luci-theme-athena
+                 /etc/init.d/rpcd restart
+                 ```
+            3. 进入 LuCI 网页后台「系统 - 语言/界面」即可选择 **Athena** 主题！
+          files: |
+            bin/packages/luci-theme-athena_*.ipk
+            bin/packages/luci-theme-athena_*.tar.gz
+          token: ${{ secrets.GITHUB_TOKEN }}
