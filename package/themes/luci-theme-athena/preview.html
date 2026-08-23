@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Athena App-Style LuCI Theme Preview - 雅典娜主题预览</title>
+  <title>Athena App-Style LuCI Theme Full Preview - 雅典娜完整主题预览</title>
   <link rel="stylesheet" href="htdocs/luci-static/athena/css/cascade.css">
   <link rel="stylesheet" href="htdocs/luci-static/athena/css/dark.css">
   <link rel="stylesheet" href="htdocs/luci-static/athena/css/mobile.css">
@@ -14,26 +14,29 @@
       bottom: 20px;
       left: 50%;
       transform: translateX(-50%);
-      background: rgba(15, 23, 42, 0.85);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border: 1px solid rgba(255, 255, 255, 0.15);
+      background: rgba(15, 23, 42, 0.90);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.18);
       border-radius: 40px;
       padding: 8px 16px;
       display: flex;
-      gap: 12px;
+      gap: 8px;
       align-items: center;
       z-index: 10000;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
+      max-width: 95vw;
+      overflow-x: auto;
+      white-space: nowrap;
     }
 
     .preview-btn {
-      background: rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.10);
       border: none;
       color: #FFFFFF;
       padding: 6px 14px;
       border-radius: 20px;
-      font-size: 13px;
+      font-size: 12.5px;
       font-weight: 600;
       cursor: pointer;
       transition: all 0.2s ease;
@@ -67,7 +70,7 @@
 
     .athena-login-card {
       width: 100%;
-      max-width: 400px;
+      max-width: 420px;
       background: rgba(30, 41, 59, 0.75);
       backdrop-filter: blur(20px);
       -webkit-backdrop-filter: blur(20px);
@@ -131,23 +134,52 @@
       box-shadow: 0 8px 20px rgba(30, 136, 229, 0.4);
       margin-top: 10px;
     }
+
+    /* Port matrix indicator */
+    .port-indicator {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 80px;
+      height: 60px;
+      background: var(--input-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      margin-right: 10px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .port-indicator.active {
+      border-color: var(--success-green);
+      background: var(--success-green-subtle);
+      color: var(--success-green);
+    }
+    .port-indicator.wan {
+      border-color: var(--primary-blue);
+      background: var(--primary-blue-subtle);
+      color: var(--primary-blue);
+    }
   </style>
 </head>
 <body>
 
-  <!-- 浮动控制工具栏 (用于实时切换页面与明暗模式) -->
+  <!-- 浮动控制工具栏 -->
   <div class="preview-bar">
-    <span style="color: #94A3B8; font-size: 12px; font-weight: bold; margin-right: 4px;">ATHENA 样式预览:</span>
-    <button class="preview-btn active" onclick="switchTab('dashboard', this)">📊 状态概览页</button>
-    <button class="preview-btn" onclick="switchTab('settings', this)">⚙️ 系统与插件设置</button>
-    <button class="preview-btn" onclick="switchTab('login', this)">🔒 登录页面</button>
+    <span style="color: #94A3B8; font-size: 12px; font-weight: bold; margin-right: 4px;">全功能模块切换:</span>
+    <button class="preview-btn active" onclick="switchTab('dashboard', this)">📊 状态概览看板</button>
+    <button class="preview-btn" onclick="switchTab('clients', this)">👥 终端设备管理 (在线/离线)</button>
+    <button class="preview-btn" onclick="switchTab('wifi', this)">📶 三频 Wi-Fi 6 配置</button>
+    <button class="preview-btn" onclick="switchTab('led', this)">💡 雅典娜点阵屏控制</button>
+    <button class="preview-btn" onclick="switchTab('plugins', this)">🚀 科学/DNS 插件兼容</button>
+    <button class="preview-btn" onclick="switchTab('login', this)">🔒 登录界面</button>
     <div style="width: 1px; height: 18px; background: rgba(255,255,255,0.2); margin: 0 4px;"></div>
-    <button class="preview-btn" id="preview-dark-btn" onclick="toggleTheme()">🌙 明暗切换</button>
+    <button class="preview-btn" id="preview-dark-btn" onclick="toggleTheme()">🌙 明暗模式</button>
   </div>
 
   <div id="athena-backdrop" class="athena-mobile-backdrop"></div>
 
-  <!-- 1. 主控制台视图 (Dashboard) -->
+  <!-- 1. 状态概览看板 (Dashboard) -->
   <div id="view-dashboard" class="preview-view active">
     <div id="maincontent">
       <!-- 悬浮侧边栏 -->
@@ -157,41 +189,14 @@
           <div class="title">ImmortalWrt</div>
         </div>
         <ul class="sidebar-menu">
-          <li class="active">
-            <a href="javascript:void(0)" class="active">
-              <span>📊 状态概览</span>
-            </a>
-          </li>
-          <li>
-            <a href="javascript:void(0)" onclick="switchTab('settings', document.querySelectorAll('.preview-btn')[1])">
-              <span>📶 无线网络 (Wi-Fi 6)</span>
-            </a>
-          </li>
-          <li>
-            <a href="javascript:void(0)">
-              <span>🛡️ 防火墙 & NAT</span>
-            </a>
-          </li>
-          <li>
-            <a href="javascript:void(0)">
-              <span>🚀 PassWall 科学加速</span>
-            </a>
-          </li>
-          <li>
-            <a href="javascript:void(0)">
-              <span>⚡ MosDNS 智能分流</span>
-            </a>
-          </li>
-          <li>
-            <a href="javascript:void(0)">
-              <span>💡 雅典娜点阵屏控制</span>
-            </a>
-          </li>
-          <li>
-            <a href="javascript:void(0)">
-              <span>⚙️ 系统设置</span>
-            </a>
-          </li>
+          <li class="active"><a href="javascript:void(0)" class="active"><span>📊 状态概览</span></a></li>
+          <li><a href="javascript:void(0)" onclick="switchTab('clients', document.querySelectorAll('.preview-btn')[1])"><span>👥 终端设备</span></a></li>
+          <li><a href="javascript:void(0)" onclick="switchTab('wifi', document.querySelectorAll('.preview-btn')[2])"><span>📶 无线网络 (三频)</span></a></li>
+          <li><a href="javascript:void(0)" onclick="switchTab('led', document.querySelectorAll('.preview-btn')[3])"><span>💡 点阵屏控制</span></a></li>
+          <li><a href="javascript:void(0)" onclick="switchTab('plugins', document.querySelectorAll('.preview-btn')[4])"><span>🚀 PassWall 加速</span></a></li>
+          <li><a href="javascript:void(0)"><span>⚡ MosDNS 智能分流</span></a></li>
+          <li><a href="javascript:void(0)"><span>🛡️ 防火墙 & NAT</span></a></li>
+          <li><a href="javascript:void(0)"><span>⚙️ 系统设置</span></a></li>
         </ul>
       </aside>
 
@@ -209,7 +214,7 @@
             <button class="athena-icon-btn" onclick="toggleTheme()" title="明暗模式切换">
               <span id="athena-theme-icon">🌙</span>
             </button>
-            <button class="athena-icon-btn" onclick="switchTab('login', document.querySelectorAll('.preview-btn')[2])" title="退出登录">🚪</button>
+            <button class="athena-icon-btn" onclick="switchTab('login', document.querySelectorAll('.preview-btn')[5])" title="退出登录">🚪</button>
           </div>
         </header>
 
@@ -219,10 +224,10 @@
             <!-- 实时网速波形看板 -->
             <div class="athena-stat-card" style="grid-column: 1 / -1;">
               <div class="athena-stat-header">
-                <span class="athena-stat-title">实时流量监测 (实时双向贝塞尔波形)</span>
+                <span class="athena-stat-title">实时流量监测 (实时双向贝塞尔波形图)</span>
                 <div style="display: flex; gap: 16px; font-size: 13px; font-weight: 600;">
-                  <span style="color: #1E88E5;">▼ 下载: <span id="demo-rx">34.8 MB/s</span></span>
-                  <span style="color: #00BCD4;">▲ 上传: <span id="demo-tx">4.2 MB/s</span></span>
+                  <span style="color: #1E88E5;">▼ 实时下载: <span id="demo-rx">34.8 MB/s</span></span>
+                  <span style="color: #00BCD4;">▲ 实时上传: <span id="demo-tx">4.2 MB/s</span></span>
                 </div>
               </div>
               <div class="traffic-chart-box">
@@ -234,13 +239,13 @@
             <div class="athena-stat-card">
               <div class="athena-stat-header">
                 <span class="athena-stat-title">CPU 处理器负载</span>
-                <span class="temp-pill cool" id="demo-cpu-badge">48.5 °C</span>
+                <span class="temp-pill cool">48.5 °C</span>
               </div>
               <div class="athena-stat-value">12%</div>
               <div class="cbi-progressbar" style="margin: 8px 0;">
                 <div style="width: 12%;"></div>
               </div>
-              <div class="athena-stat-subtitle">IPQ6010 4核 @ 1.8GHz (NSS 硬件卸载开启)</div>
+              <div class="athena-stat-subtitle">IPQ6010 4核 @ 1.8GHz (NSS 硬件加速已开启)</div>
             </div>
 
             <!-- 内存状态卡片 -->
@@ -263,7 +268,7 @@
                 <span class="temp-pill cool">45.0 °C</span>
               </div>
               <div class="athena-stat-value">Radio1 · 信道 1</div>
-              <div class="athena-stat-subtitle">QCN5022 2x2 574Mbps (已连接 8 台智能家居)</div>
+              <div class="athena-stat-subtitle">QCN5022 2x2 574Mbps (在线 8 台)</div>
             </div>
 
             <!-- 雅典娜 5.8G 频段 -->
@@ -273,7 +278,7 @@
                 <span class="temp-pill cool">47.2 °C</span>
               </div>
               <div class="athena-stat-value">Radio0 · 信道 149</div>
-              <div class="athena-stat-subtitle">QCN5052 2x2 80M 1201Mbps (已连接 6 台设备)</div>
+              <div class="athena-stat-subtitle">QCN5052 2x2 80M 1201Mbps (在线 6 台)</div>
             </div>
 
             <!-- 雅典娜 5.2G 电竞频段 -->
@@ -284,6 +289,36 @@
               </div>
               <div class="athena-stat-value">Radio2 · 信道 44</div>
               <div class="athena-stat-subtitle">QCN9074 4x4 160M 4804Mbps (低延迟独立功放)</div>
+            </div>
+
+            <!-- 物理以太网接口状态卡片 -->
+            <div class="athena-stat-card" style="grid-column: 1 / -1;">
+              <div class="athena-stat-header">
+                <span class="athena-stat-title">物理以太网端口链路矩阵</span>
+                <span style="font-size: 12px; color: var(--text-secondary);">WAN口 (2.5G) + 4x LAN (1G)</span>
+              </div>
+              <div style="display: flex; gap: 12px; margin-top: 10px; flex-wrap: wrap;">
+                <div class="port-indicator wan">
+                  <span style="font-size: 14px; margin-bottom: 2px;">🌐 WAN</span>
+                  <span>2.5 Gbps</span>
+                </div>
+                <div class="port-indicator active">
+                  <span style="font-size: 14px; margin-bottom: 2px;">💻 LAN 1</span>
+                  <span>1000 Mbps</span>
+                </div>
+                <div class="port-indicator active">
+                  <span style="font-size: 14px; margin-bottom: 2px;">📺 LAN 2</span>
+                  <span>1000 Mbps</span>
+                </div>
+                <div class="port-indicator">
+                  <span style="font-size: 14px; margin-bottom: 2px;">🔌 LAN 3</span>
+                  <span style="color: var(--text-muted);">未连接</span>
+                </div>
+                <div class="port-indicator">
+                  <span style="font-size: 14px; margin-bottom: 2px;">🔌 LAN 4</span>
+                  <span style="color: var(--text-muted);">未连接</span>
+                </div>
+              </div>
             </div>
 
             <!-- 内存释放与清理 -->
@@ -297,48 +332,13 @@
               </button>
             </div>
           </div>
-
-          <!-- 系统基础信息表格卡片 -->
-          <div class="cbi-section">
-            <div class="cbi-section-legend">设备硬件与网络环境详情</div>
-            <table class="cbi-section-table">
-              <tr>
-                <th style="width: 25%;">项目</th>
-                <th>参数详情</th>
-              </tr>
-              <tr>
-                <td>主机型号</td>
-                <td><strong>JDCloud RE-CS-02 (京东云无线宝 雅典娜 AX6600)</strong></td>
-              </tr>
-              <tr>
-                <td>处理器架构</td>
-                <td>ARMv8 Processor rev 4 (v8l) x 4 (1.8GHz, 高通 IPQ6010)</td>
-              </tr>
-              <tr>
-                <td>固件版本</td>
-                <td>ImmortalWrt 24.10 / LuCI Master (NSS 12.5 Retail 加速)</td>
-              </tr>
-              <tr>
-                <td>WAN 外网 IPv4</td>
-                <td><span style="color: #1E88E5; font-weight: bold;">120.231.148.92</span> (已连接)</td>
-              </tr>
-              <tr>
-                <td>WAN 外网 IPv6</td>
-                <td>2409:8a62:312:1890::1 / 64 (原生公网)</td>
-              </tr>
-              <tr>
-                <td>局域网 IPv4</td>
-                <td>10.10.10.1 / 255.255.255.0</td>
-              </tr>
-            </table>
-          </div>
         </main>
       </div>
     </div>
   </div>
 
-  <!-- 2. 系统与插件配置视图 (Settings & Form) -->
-  <div id="view-settings" class="preview-view">
+  <!-- 2. 终端设备管理 (Clients - 在线/离线精细展示) -->
+  <div id="view-clients" class="preview-view">
     <div id="maincontent">
       <aside class="main-left">
         <div class="sidebar-brand">
@@ -347,9 +347,10 @@
         </div>
         <ul class="sidebar-menu">
           <li><a href="javascript:void(0)" onclick="switchTab('dashboard', document.querySelectorAll('.preview-btn')[0])"><span>📊 状态概览</span></a></li>
-          <li class="active"><a href="javascript:void(0)" class="active"><span>📶 无线网络 (Wi-Fi 6)</span></a></li>
-          <li><a href="javascript:void(0)"><span>🛡️ 防火墙 & NAT</span></a></li>
-          <li><a href="javascript:void(0)"><span>🚀 PassWall 科学加速</span></a></li>
+          <li class="active"><a href="javascript:void(0)" class="active"><span>👥 终端设备</span></a></li>
+          <li><a href="javascript:void(0)" onclick="switchTab('wifi', document.querySelectorAll('.preview-btn')[2])"><span>📶 无线网络 (三频)</span></a></li>
+          <li><a href="javascript:void(0)" onclick="switchTab('led', document.querySelectorAll('.preview-btn')[3])"><span>💡 点阵屏控制</span></a></li>
+          <li><a href="javascript:void(0)" onclick="switchTab('plugins', document.querySelectorAll('.preview-btn')[4])"><span>🚀 PassWall 加速</span></a></li>
           <li><a href="javascript:void(0)"><span>⚙️ 系统设置</span></a></li>
         </ul>
       </aside>
@@ -358,76 +359,160 @@
         <header class="athena-header">
           <div class="header-left">
             <button class="athena-icon-btn mobile-only">☰</button>
-            <div class="brand-badge">无线设置 · 802.11ax Wi-Fi 6</div>
+            <div class="brand-badge">终端管理 · 在线 14 台 / 离线 3 台 (共 17 台)</div>
           </div>
           <div class="header-right">
             <button class="athena-icon-btn" onclick="toggleTheme()" title="明暗模式切换">🌙</button>
-            <button class="athena-icon-btn" onclick="switchTab('login', document.querySelectorAll('.preview-btn')[2])">🚪</button>
+            <button class="athena-icon-btn" onclick="switchTab('login', document.querySelectorAll('.preview-btn')[5])">🚪</button>
+          </div>
+        </header>
+
+        <main class="container">
+          <div class="cbi-section">
+            <div class="cbi-section-legend">已连接与历史终端列表</div>
+            <table class="cbi-section-table">
+              <thead>
+                <tr>
+                  <th>状态</th>
+                  <th>设备名称 (备注)</th>
+                  <th>IP 地址</th>
+                  <th>MAC 物理地址</th>
+                  <th>连接类型</th>
+                  <th>信号 / 速率</th>
+                  <th>厂商识别</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><span class="temp-pill cool">● 在线</span></td>
+                  <td><strong>iPhone 15 Pro Max (我的手机)</strong></td>
+                  <td>10.10.10.105</td>
+                  <td>3c:22:fb:8a:12:94</td>
+                  <td><span class="temp-pill cool">5.2G 电竞</span></td>
+                  <td>-42 dBm · 2402 Mbps</td>
+                  <td>Apple Inc.</td>
+                  <td><button class="cbi-button" style="padding: 4px 8px; font-size: 11px;">📌 静态绑定</button></td>
+                </tr>
+                <tr>
+                  <td><span class="temp-pill cool">● 在线</span></td>
+                  <td><strong>MacBook Pro 16 M3</strong></td>
+                  <td>10.10.10.102</td>
+                  <td>a4:83:e7:51:c8:0b</td>
+                  <td><span class="temp-pill cool">5.8G 影音</span></td>
+                  <td>-48 dBm · 1201 Mbps</td>
+                  <td>Apple Inc.</td>
+                  <td><button class="cbi-button" style="padding: 4px 8px; font-size: 11px;">📌 静态绑定</button></td>
+                </tr>
+                <tr>
+                  <td><span class="temp-pill cool">● 在线</span></td>
+                  <td><strong>群晖 Synology NAS</strong></td>
+                  <td>10.10.10.200</td>
+                  <td>00:11:32:c4:90:12</td>
+                  <td><span class="temp-pill cool">LAN 1 (千兆)</span></td>
+                  <td>1000 Mbps</td>
+                  <td>Synology</td>
+                  <td><span class="temp-pill cool" style="background: rgba(52,199,89,0.15); color: #34C759;">已静态绑定</span></td>
+                </tr>
+                <tr>
+                  <td><span class="temp-pill cool">● 在线</span></td>
+                  <td><strong>米家智能空调伴侣</strong></td>
+                  <td>10.10.10.55</td>
+                  <td>64:cc:2e:91:0a:77</td>
+                  <td><span class="temp-pill cool">2.4G 基础</span></td>
+                  <td>-55 dBm · 72 Mbps</td>
+                  <td>Xiaomi (IoT)</td>
+                  <td><button class="cbi-button" style="padding: 4px 8px; font-size: 11px;">📌 静态绑定</button></td>
+                </tr>
+                <tr style="opacity: 0.65; background: var(--input-bg);">
+                  <td><span class="temp-pill" style="background: rgba(148, 163, 184, 0.2); color: #94A3B8;">○ 离线</span></td>
+                  <td>Nintendo Switch OLED</td>
+                  <td>10.10.10.128</td>
+                  <td>f8:e4:e3:10:99:a4</td>
+                  <td><span class="temp-pill" style="background: rgba(148, 163, 184, 0.2); color: #94A3B8;">历史 5G</span></td>
+                  <td>--</td>
+                  <td>Nintendo</td>
+                  <td><button class="cbi-button" style="padding: 4px 8px; font-size: 11px;">📌 静态绑定</button></td>
+                </tr>
+                <tr style="opacity: 0.65; background: var(--input-bg);">
+                  <td><span class="temp-pill" style="background: rgba(148, 163, 184, 0.2); color: #94A3B8;">○ 离线</span></td>
+                  <td>iPad Air 5</td>
+                  <td>10.10.10.110</td>
+                  <td>ac:de:48:aa:bb:cc</td>
+                  <td><span class="temp-pill" style="background: rgba(148, 163, 184, 0.2); color: #94A3B8;">历史 5.2G</span></td>
+                  <td>--</td>
+                  <td>Apple Inc.</td>
+                  <td><button class="cbi-button" style="padding: 4px 8px; font-size: 11px;">📌 静态绑定</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </main>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. 三频 Wi-Fi 6 配置 (Wi-Fi 6 Tri-band) -->
+  <div id="view-wifi" class="preview-view">
+    <div id="maincontent">
+      <aside class="main-left">
+        <div class="sidebar-brand">
+          <img src="htdocs/luci-static/athena/img/logo.svg" alt="Athena Logo">
+          <div class="title">ImmortalWrt</div>
+        </div>
+        <ul class="sidebar-menu">
+          <li><a href="javascript:void(0)" onclick="switchTab('dashboard', document.querySelectorAll('.preview-btn')[0])"><span>📊 状态概览</span></a></li>
+          <li><a href="javascript:void(0)" onclick="switchTab('clients', document.querySelectorAll('.preview-btn')[1])"><span>👥 终端设备</span></a></li>
+          <li class="active"><a href="javascript:void(0)" class="active"><span>📶 无线网络 (三频)</span></a></li>
+          <li><a href="javascript:void(0)" onclick="switchTab('led', document.querySelectorAll('.preview-btn')[3])"><span>💡 点阵屏控制</span></a></li>
+          <li><a href="javascript:void(0)" onclick="switchTab('plugins', document.querySelectorAll('.preview-btn')[4])"><span>🚀 PassWall 加速</span></a></li>
+          <li><a href="javascript:void(0)"><span>⚙️ 系统设置</span></a></li>
+        </ul>
+      </aside>
+
+      <div class="main-right">
+        <header class="athena-header">
+          <div class="header-left">
+            <button class="athena-icon-btn mobile-only">☰</button>
+            <div class="brand-badge">三频射频调度 · 物理信道 100% 对齐</div>
+          </div>
+          <div class="header-right">
+            <button class="athena-icon-btn" onclick="toggleTheme()" title="明暗模式切换">🌙</button>
+            <button class="athena-icon-btn" onclick="switchTab('login', document.querySelectorAll('.preview-btn')[5])">🚪</button>
           </div>
         </header>
 
         <main class="container">
           <div class="cbi-map">
-            <div class="cbi-map-title">雅典娜 5.2GHz 电竞频段高阶参数 (QCN9074)</div>
-            <div class="cbi-map-descr">配置 4x4 160MHz 独立功放网卡发射功率、漫游协议与 MU-MIMO 调度机制</div>
+            <div class="cbi-map-title">雅典娜 5.2GHz 电竞独享频段 (QCN9074 PCIe)</div>
+            <div class="cbi-map-descr">4x4 160MHz 满血高频宽，专属 FEM 独立功放芯片驱动</div>
 
             <div class="cbi-section">
               <div class="cbi-value">
-                <div class="cbi-value-title">无线开关</div>
-                <div class="cbi-value-field">
-                  <input type="checkbox" checked style="width: 20px; height: 20px; accent-color: var(--primary-blue);">
-                </div>
-              </div>
-
-              <div class="cbi-value">
                 <div class="cbi-value-title">无线名称 (SSID)</div>
-                <div class="cbi-value-field">
-                  <input type="text" value="JDC_AX6600_5G2">
-                </div>
+                <div class="cbi-value-field"><input type="text" value="JDC_AX6600_5G2"></div>
               </div>
-
               <div class="cbi-value">
-                <div class="cbi-value-title">工作频宽模式</div>
+                <div class="cbi-value-title">工作信道与频宽</div>
                 <div class="cbi-value-field">
                   <select>
-                    <option selected>HE160 (160 MHz - 4804 Mbps 满血电竞)</option>
-                    <option>HE80 (80 MHz - 2402 Mbps 稳定兼容)</option>
-                    <option>HE40 (40 MHz)</option>
+                    <option selected>信道 44 (5220 MHz) · HE160 (160MHz 频宽 4804Mbps)</option>
+                    <option>信道 36 (5180 MHz) · HE160</option>
+                    <option>信道 48 (5240 MHz) · HE80</option>
                   </select>
                 </div>
               </div>
-
               <div class="cbi-value">
-                <div class="cbi-value-title">发射信道 (Channel)</div>
-                <div class="cbi-value-field">
-                  <select>
-                    <option selected>44 (5220 MHz - 低频无干扰)</option>
-                    <option>36 (5180 MHz)</option>
-                    <option>48 (5240 MHz)</option>
-                    <option>149 (5745 MHz)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div class="cbi-value">
-                <div class="cbi-value-title">发射功率 (TxPower)</div>
-                <div class="cbi-value-field">
-                  <input type="number" value="25" style="max-width: 120px;"> dBm (ddwrt 驱动已解锁)
-                </div>
-              </div>
-
-              <div class="cbi-value">
-                <div class="cbi-value-title">快速漫游协议</div>
+                <div class="cbi-value-title">漫游与空口调度机制</div>
                 <div class="cbi-value-field">
                   <span class="temp-pill cool" style="margin-right: 6px;">802.11k 开启</span>
                   <span class="temp-pill cool" style="margin-right: 6px;">802.11v BSS Transition 开启</span>
-                  <span class="temp-pill warm">802.11r 关闭 (兼容防拒连)</span>
+                  <span class="temp-pill cool" style="margin-right: 6px;">MU-MIMO 波束成形 开启</span>
+                  <span class="temp-pill warm">802.11r 关闭 (避免拒连)</span>
                 </div>
               </div>
-
-              <div style="margin-top: 24px; display: flex; gap: 12px;">
-                <button class="cbi-button cbi-button-apply">保存并应用设置</button>
-                <button class="cbi-button cbi-button-reset">复位配置</button>
+              <div style="margin-top: 20px;">
+                <button class="cbi-button cbi-button-apply">保存并应用</button>
               </div>
             </div>
           </div>
@@ -436,7 +521,159 @@
     </div>
   </div>
 
-  <!-- 3. 登录页视图 (Login Mock) -->
+  <!-- 4. 雅典娜 LED 点阵屏控制 (luci-app-athena-led) -->
+  <div id="view-led" class="preview-view">
+    <div id="maincontent">
+      <aside class="main-left">
+        <div class="sidebar-brand">
+          <img src="htdocs/luci-static/athena/img/logo.svg" alt="Athena Logo">
+          <div class="title">ImmortalWrt</div>
+        </div>
+        <ul class="sidebar-menu">
+          <li><a href="javascript:void(0)" onclick="switchTab('dashboard', document.querySelectorAll('.preview-btn')[0])"><span>📊 状态概览</span></a></li>
+          <li><a href="javascript:void(0)" onclick="switchTab('clients', document.querySelectorAll('.preview-btn')[1])"><span>👥 终端设备</span></a></li>
+          <li><a href="javascript:void(0)" onclick="switchTab('wifi', document.querySelectorAll('.preview-btn')[2])"><span>📶 无线网络 (三频)</span></a></li>
+          <li class="active"><a href="javascript:void(0)" class="active"><span>💡 点阵屏控制</span></a></li>
+          <li><a href="javascript:void(0)" onclick="switchTab('plugins', document.querySelectorAll('.preview-btn')[4])"><span>🚀 PassWall 加速</span></a></li>
+          <li><a href="javascript:void(0)"><span>⚙️ 系统设置</span></a></li>
+        </ul>
+      </aside>
+
+      <div class="main-right">
+        <header class="athena-header">
+          <div class="header-left">
+            <button class="athena-icon-btn mobile-only">☰</button>
+            <div class="brand-badge">前面板 LED 点阵屏 · 实时动态显示</div>
+          </div>
+          <div class="header-right">
+            <button class="athena-icon-btn" onclick="toggleTheme()" title="明暗模式切换">🌙</button>
+            <button class="athena-icon-btn" onclick="switchTab('login', document.querySelectorAll('.preview-btn')[5])">🚪</button>
+          </div>
+        </header>
+
+        <main class="container">
+          <div class="cbi-map">
+            <div class="cbi-map-title">前面板点阵屏工作模式与亮度</div>
+            <div class="cbi-map-descr">控制雅典娜机身正面 LED 像素矩阵的显示内容、滚动动画与时段休眠</div>
+
+            <div class="cbi-section">
+              <div class="cbi-value">
+                <div class="cbi-value-title">显示模式</div>
+                <div class="cbi-value-field">
+                  <select>
+                    <option selected>时钟 + 实时网速轮显 (推荐)</option>
+                    <option>实时 CPU/Wi-Fi 温度监控</option>
+                    <option>天气与室外温湿度</option>
+                    <option>自定义文字跑马灯</option>
+                    <option>完全关闭屏显 (夜间免打扰)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="cbi-value">
+                <div class="cbi-value-title">屏显亮度等级</div>
+                <div class="cbi-value-field">
+                  <input type="range" min="1" max="5" value="3" style="width: 200px; accent-color: var(--primary-blue);">
+                  <span style="margin-left: 12px; font-weight: bold;">中等亮度 (Level 3)</span>
+                </div>
+              </div>
+
+              <div class="cbi-value">
+                <div class="cbi-value-title">夜间自动熄屏</div>
+                <div class="cbi-value-field">
+                  <input type="checkbox" checked style="width: 20px; height: 20px; accent-color: var(--primary-blue);">
+                  <span style="margin-left: 8px; font-size: 13px; color: var(--text-secondary);">23:00 至 次日 07:00 自动关闭</span>
+                </div>
+              </div>
+
+              <div style="margin-top: 20px;">
+                <button class="cbi-button cbi-button-apply">保存屏显策略</button>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. 科学/DNS 插件兼容展示 (Plugins / PassWall / MosDNS) -->
+  <div id="view-plugins" class="preview-view">
+    <div id="maincontent">
+      <aside class="main-left">
+        <div class="sidebar-brand">
+          <img src="htdocs/luci-static/athena/img/logo.svg" alt="Athena Logo">
+          <div class="title">ImmortalWrt</div>
+        </div>
+        <ul class="sidebar-menu">
+          <li><a href="javascript:void(0)" onclick="switchTab('dashboard', document.querySelectorAll('.preview-btn')[0])"><span>📊 状态概览</span></a></li>
+          <li><a href="javascript:void(0)" onclick="switchTab('clients', document.querySelectorAll('.preview-btn')[1])"><span>👥 终端设备</span></a></li>
+          <li><a href="javascript:void(0)" onclick="switchTab('wifi', document.querySelectorAll('.preview-btn')[2])"><span>📶 无线网络 (三频)</span></a></li>
+          <li><a href="javascript:void(0)" onclick="switchTab('led', document.querySelectorAll('.preview-btn')[3])"><span>💡 点阵屏控制</span></a></li>
+          <li class="active"><a href="javascript:void(0)" class="active"><span>🚀 PassWall 加速</span></a></li>
+          <li><a href="javascript:void(0)"><span>⚙️ 系统设置</span></a></li>
+        </ul>
+      </aside>
+
+      <div class="main-right">
+        <header class="athena-header">
+          <div class="header-left">
+            <button class="athena-icon-btn mobile-only">☰</button>
+            <div class="brand-badge">PassWall · Xray 核心运行中 (BBR加速 + 128M内存限流)</div>
+          </div>
+          <div class="header-right">
+            <button class="athena-icon-btn" onclick="toggleTheme()" title="明暗模式切换">🌙</button>
+            <button class="athena-icon-btn" onclick="switchTab('login', document.querySelectorAll('.preview-btn')[5])">🚪</button>
+          </div>
+        </header>
+
+        <main class="container">
+          <div class="cbi-map">
+            <div class="cbi-map-title">科学网关主节点与分流策略</div>
+            <div class="cbi-map-descr">基于 Go 运行时内存限流 (GOMEMLIMIT=128MiB)，杜绝 1GB 内存溢出</div>
+
+            <div class="cbi-section">
+              <div class="cbi-value">
+                <div class="cbi-value-title">运行状态</div>
+                <div class="cbi-value-field">
+                  <span class="temp-pill cool">● TCP 代理运行正常</span>
+                  <span class="temp-pill cool" style="margin-left: 8px;">● UDP 游戏加速运行正常</span>
+                  <span class="temp-pill cool" style="margin-left: 8px;">● 延迟: 42 ms (HK BGP 专线)</span>
+                </div>
+              </div>
+
+              <div class="cbi-value">
+                <div class="cbi-value-title">TCP 默认节点</div>
+                <div class="cbi-value-field">
+                  <select>
+                    <option selected>🇭🇰 香港 01 - IPLC 高速专线 (Netflix/Disney+/ChatGPT)</option>
+                    <option>🇯🇵 日本 02 - BGP 优化线路</option>
+                    <option>🇺🇸 美国 01 - 住宅原生 IP</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="cbi-value">
+                <div class="cbi-value-title">DNS 分流后端</div>
+                <div class="cbi-value-field">
+                  <select>
+                    <option selected>MosDNS 本地防污染缓存 (127.0.0.1:5335)</option>
+                    <option>SmartDNS 双栈加速</option>
+                    <option>Dnsmasq 原生查询</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style="margin-top: 20px;">
+                <button class="cbi-button cbi-button-apply">保存并重启服务</button>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. 登录页视图 (Login Mock) -->
   <div id="view-login" class="preview-view">
     <div class="login-mock-container">
       <div class="athena-login-card">
@@ -513,7 +750,6 @@
       const ctx = canvas.getContext('2d');
 
       function draw() {
-        // 模拟平滑波动数据
         rxPoints.shift();
         rxPoints.push(Math.max(5, (rxPoints[rxPoints.length - 1] || 20) + (Math.random() * 12 - 6)));
         txPoints.shift();
@@ -532,8 +768,10 @@
         drawCurve(ctx, rxPoints, w, h, maxVal, '#1E88E5', 'rgba(30, 136, 229, 0.18)');
         drawCurve(ctx, txPoints, w, h, maxVal, '#00BCD4', 'rgba(0, 188, 212, 0.15)');
 
-        document.getElementById('demo-rx').innerText = (rxPoints[rxPoints.length - 1] * 1.1).toFixed(1) + ' MB/s';
-        document.getElementById('demo-tx').innerText = (txPoints[txPoints.length - 1] * 0.8).toFixed(1) + ' MB/s';
+        const rxEl = document.getElementById('demo-rx');
+        if (rxEl) rxEl.innerText = (rxPoints[rxPoints.length - 1] * 1.1).toFixed(1) + ' MB/s';
+        const txEl = document.getElementById('demo-tx');
+        if (txEl) txEl.innerText = (txPoints[txPoints.length - 1] * 0.8).toFixed(1) + ' MB/s';
       }
 
       function drawCurve(ctx, pts, w, h, max, stroke, fill) {
