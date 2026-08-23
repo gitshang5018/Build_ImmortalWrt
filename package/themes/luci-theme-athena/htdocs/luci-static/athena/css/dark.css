@@ -1,0 +1,76 @@
+/**
+ * luci-theme-athena - Dark Mode Theme Overrides
+ */
+
+[data-theme="dark"] {
+  /* Dark Theme Surfaces */
+  --bg-main: #0B1120;
+  --bg-card: #1E293B;
+  --bg-sidebar: #1E293B;
+  --bg-header: rgba(30, 41, 59, 0.85);
+  --border-color: #334155;
+  --border-color-subtle: #293548;
+  --text-primary: #F8FAFC;
+  --text-secondary: #94A3B8;
+  --text-muted: #64748B;
+
+  /* Form & Components */
+  --input-bg: #0F172A;
+  --input-border: #334155;
+  --input-focus-border: #38BDF8;
+  --input-focus-ring: rgba(56, 189, 248, 0.25);
+
+  /* Shadows */
+  --card-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  --elevated-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+  --glow-primary: 0 4px 16px rgba(30, 136, 229, 0.5);
+}
+
+[data-theme="dark"] input[type="text"],
+[data-theme="dark"] input[type="password"],
+[data-theme="dark"] input[type="number"],
+[data-theme="dark"] select,
+[data-theme="dark"] textarea {
+  background: var(--input-bg);
+  border-color: var(--input-border);
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] table.cbi-section-table th,
+[data-theme="dark"] table.table th {
+  background: #182234;
+  color: var(--text-secondary);
+  border-bottom-color: var(--border-color);
+}
+
+[data-theme="dark"] .cbi-value {
+  border-bottom-color: var(--border-color-subtle);
+}
+
+[data-theme="dark"] .cbi-button,
+[data-theme="dark"] .btn {
+  background: #273549;
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .cbi-button:hover,
+[data-theme="dark"] .btn:hover {
+  background: #334155;
+}
+
+[data-theme="dark"] .cbi-progressbar {
+  background: #182234;
+}
+
+[data-theme="dark"] .athena-icon-btn {
+  background: #1E293B;
+  border-color: #334155;
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .athena-icon-btn:hover {
+  background: rgba(56, 189, 248, 0.15);
+  color: #38BDF8;
+  border-color: #38BDF8;
+}

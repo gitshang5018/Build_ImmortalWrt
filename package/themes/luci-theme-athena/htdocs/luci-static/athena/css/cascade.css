@@ -1,0 +1,491 @@
+/**
+ * luci-theme-athena - Main Stylesheet (Material 3 Card UI)
+ * Designed for OpenWrt / ImmortalWrt (Athena AX6600 & Arthur AX1800 Pro)
+ */
+
+:root {
+  /* Brand Colors aligned with App */
+  --primary-blue: #1E88E5;
+  --primary-blue-hover: #1565C0;
+  --primary-blue-subtle: rgba(30, 136, 229, 0.12);
+  --secondary-cyan: #00BCD4;
+  --secondary-cyan-subtle: rgba(0, 188, 212, 0.12);
+  --success-green: #34C759;
+  --success-green-subtle: rgba(52, 199, 89, 0.15);
+  --warning-orange: #FF9500;
+  --warning-orange-subtle: rgba(255, 149, 0, 0.15);
+  --error-red: #FF3B30;
+  --error-red-subtle: rgba(255, 59, 48, 0.15);
+
+  /* Light Theme Surfaces */
+  --bg-main: #F5F7FA;
+  --bg-card: #FFFFFF;
+  --bg-sidebar: #FFFFFF;
+  --bg-header: rgba(255, 255, 255, 0.85);
+  --border-color: #E2E8F0;
+  --border-color-subtle: #EDF2F7;
+  --text-primary: #1E293B;
+  --text-secondary: #64748B;
+  --text-muted: #94A3B8;
+
+  /* Form & Components */
+  --input-bg: #F8FAFC;
+  --input-border: #CBD5E1;
+  --input-focus-border: #1E88E5;
+  --input-focus-ring: rgba(30, 136, 229, 0.25);
+
+  /* Dimensions & Shapes */
+  --card-radius: 16px;
+  --input-radius: 10px;
+  --btn-radius: 10px;
+  --badge-radius: 6px;
+  --sidebar-width: 260px;
+  --sidebar-collapsed-width: 72px;
+  --header-height: 64px;
+
+  /* Shadows */
+  --card-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+  --elevated-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+  --glow-primary: 0 4px 14px rgba(30, 136, 229, 0.35);
+
+  /* Transitions */
+  --transition-fast: 0.18s ease;
+  --transition-normal: 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Global Reset & Base */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background-color: var(--bg-main);
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.5;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--primary-blue);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+a:hover {
+  color: var(--primary-blue-hover);
+}
+
+/* App Shell Layout */
+#maincontent {
+  display: flex;
+  min-height: 100vh;
+}
+
+.main-left {
+  width: var(--sidebar-width);
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 100;
+  transition: width var(--transition-normal), transform var(--transition-normal);
+}
+
+.main-right {
+  flex: 1;
+  margin-left: var(--sidebar-width);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  transition: margin-left var(--transition-normal);
+}
+
+/* Header Navbar */
+header.athena-header {
+  height: var(--header-height);
+  background: var(--bg-header);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-color);
+  position: sticky;
+  top: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+}
+
+.header-left, .header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-badge {
+  background: var(--primary-blue-subtle);
+  color: var(--primary-blue);
+  font-weight: 700;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: var(--badge-radius);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.brand-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success-green);
+}
+
+/* Header Buttons */
+.athena-icon-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.athena-icon-btn:hover {
+  background: var(--primary-blue-subtle);
+  color: var(--primary-blue);
+  border-color: var(--primary-blue);
+}
+
+/* Sidebar Branding & Navigation */
+.sidebar-brand {
+  height: var(--header-height);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.sidebar-brand img {
+  width: 32px;
+  height: 32px;
+}
+
+.sidebar-brand .title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.2px;
+}
+
+.sidebar-menu {
+  flex: 1;
+  padding: 16px 12px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.sidebar-menu li {
+  margin-bottom: 4px;
+}
+
+.sidebar-menu a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+  transition: all var(--transition-fast);
+}
+
+.sidebar-menu a:hover {
+  background: var(--input-bg);
+  color: var(--text-primary);
+}
+
+.sidebar-menu a.active, .sidebar-menu li.active > a {
+  background: var(--primary-blue);
+  color: #FFFFFF;
+  font-weight: 600;
+  box-shadow: var(--glow-primary);
+}
+
+/* Submenu dropdown */
+.sidebar-menu ul.sub-menu {
+  list-style: none;
+  padding-left: 28px;
+  margin-top: 4px;
+}
+
+.sidebar-menu ul.sub-menu a {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+/* Main Content Body */
+.container {
+  padding: 24px;
+  max-width: 1360px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* Material 3 Card Container for LuCI Sections */
+.cbi-map, .cbi-section, .panel, .cbi-tabgroup, .athena-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--card-radius);
+  box-shadow: var(--card-shadow);
+  padding: 20px;
+  margin-bottom: 20px;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.cbi-map-title, h2, h3, .cbi-section-legend {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cbi-map-descr, .cbi-section-descr {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+
+/* Form Fields & Controls */
+.cbi-value {
+  display: flex;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-color-subtle);
+}
+
+.cbi-value:last-child {
+  border-bottom: none;
+}
+
+.cbi-value-title {
+  width: 220px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.cbi-value-field {
+  flex: 1;
+}
+
+input[type="text"], input[type="password"], input[type="number"], select, textarea {
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  color: var(--text-primary);
+  border-radius: var(--input-radius);
+  padding: 8px 12px;
+  font-size: 13.5px;
+  outline: none;
+  transition: all var(--transition-fast);
+  width: 100%;
+  max-width: 420px;
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: var(--input-focus-border);
+  box-shadow: 0 0 0 3px var(--input-focus-ring);
+  background: var(--bg-card);
+}
+
+/* Buttons */
+.cbi-button, .btn {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: var(--btn-radius);
+  cursor: pointer;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all var(--transition-fast);
+}
+
+.cbi-button:hover, .btn:hover {
+  background: var(--input-bg);
+  border-color: var(--text-secondary);
+}
+
+.cbi-button-apply, .cbi-button-save, .btn-primary {
+  background: var(--primary-blue);
+  color: #FFFFFF;
+  border-color: var(--primary-blue);
+}
+
+.cbi-button-apply:hover, .cbi-button-save:hover, .btn-primary:hover {
+  background: var(--primary-blue-hover);
+  border-color: var(--primary-blue-hover);
+  box-shadow: var(--glow-primary);
+}
+
+.cbi-button-reset, .btn-danger {
+  background: var(--error-red-subtle);
+  color: var(--error-red);
+  border-color: transparent;
+}
+
+.cbi-button-reset:hover, .btn-danger:hover {
+  background: var(--error-red);
+  color: #FFFFFF;
+}
+
+/* Tables */
+table.cbi-section-table, table.table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin-top: 10px;
+}
+
+table.cbi-section-table th, table.table th {
+  background: var(--input-bg);
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 12.5px;
+  text-align: left;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+table.cbi-section-table th:first-child {
+  border-top-left-radius: 10px;
+  border-bottom-left-radius: 10px;
+}
+
+table.cbi-section-table th:last-child {
+  border-top-right-radius: 10px;
+  border-bottom-right-radius: 10px;
+}
+
+table.cbi-section-table td, table.table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-color-subtle);
+  color: var(--text-primary);
+}
+
+/* Progress & Sliders */
+.cbi-progressbar {
+  height: 10px;
+  background: var(--border-color-subtle);
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
+}
+
+.cbi-progressbar > div {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary-blue), var(--secondary-cyan));
+  border-radius: 10px;
+  transition: width 0.4s ease;
+}
+
+/* Athena Dashboard Extended Cards */
+.athena-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.athena-stat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--card-radius);
+  box-shadow: var(--card-shadow);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+
+.athena-stat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.athena-stat-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.athena-stat-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.athena-stat-subtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Tri-band Temperature Pill Badges */
+.temp-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.temp-pill.cool {
+  background: var(--success-green-subtle);
+  color: var(--success-green);
+}
+
+.temp-pill.warm {
+  background: var(--warning-orange-subtle);
+  color: var(--warning-orange);
+}
+
+.temp-pill.hot {
+  background: var(--error-red-subtle);
+  color: var(--error-red);
+}
+
+/* Traffic Waveform Chart Container */
+.traffic-chart-box {
+  width: 100%;
+  height: 120px;
+  margin-top: 10px;
+}
