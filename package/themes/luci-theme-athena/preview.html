@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Athena App-Style LuCI Theme Preview - 雅典娜主题预览</title>
+  <link rel="stylesheet" href="htdocs/luci-static/athena/css/cascade.css">
+  <link rel="stylesheet" href="htdocs/luci-static/athena/css/dark.css">
+  <link rel="stylesheet" href="htdocs/luci-static/athena/css/mobile.css">
+  <style>
+    /* Preview Toolbar */
+    .preview-bar {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 40px;
+      padding: 8px 16px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      z-index: 10000;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    }
+
+    .preview-btn {
+      background: rgba(255, 255, 255, 0.12);
+      border: none;
+      color: #FFFFFF;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .preview-btn:hover, .preview-btn.active {
+      background: #1E88E5;
+      box-shadow: 0 4px 12px rgba(30, 136, 229, 0.4);
+    }
+
+    .preview-view {
+      display: none;
+    }
+
+    .preview-view.active {
+      display: block;
+    }
+
+    /* Embedded Login Mock */
+    .login-mock-container {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #0B1120 url('htdocs/luci-static/athena/img/bg-login.svg') no-repeat center center / cover;
+      padding: 20px;
+    }
+
+    .athena-login-card {
+      width: 100%;
+      max-width: 400px;
+      background: rgba(30, 41, 59, 0.75);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 24px;
+      padding: 36px 28px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+      color: #F8FAFC;
+      text-align: center;
+    }
+
+    .athena-login-logo {
+      width: 64px;
+      height: 64px;
+      margin: 0 auto 16px;
+      border-radius: 20px;
+      box-shadow: 0 10px 25px rgba(30, 136, 229, 0.4);
+    }
+
+    .athena-input-group {
+      margin-bottom: 18px;
+      text-align: left;
+    }
+
+    .athena-input-group label {
+      display: block;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: #CBD5E1;
+      margin-bottom: 6px;
+    }
+
+    .athena-input-group input {
+      width: 100%;
+      max-width: 100%;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 12px;
+      padding: 12px 14px;
+      color: #FFFFFF;
+      font-size: 14px;
+      outline: none;
+      transition: all 0.2s ease;
+    }
+
+    .athena-input-group input:focus {
+      border-color: #38BDF8;
+      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.25);
+    }
+
+    .athena-submit-btn {
+      width: 100%;
+      background: linear-gradient(135deg, #1E88E5, #00BCD4);
+      border: none;
+      border-radius: 12px;
+      color: #FFFFFF;
+      font-weight: 700;
+      font-size: 15px;
+      padding: 13px;
+      cursor: pointer;
+      box-shadow: 0 8px 20px rgba(30, 136, 229, 0.4);
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 浮动控制工具栏 (用于实时切换页面与明暗模式) -->
+  <div class="preview-bar">
+    <span style="color: #94A3B8; font-size: 12px; font-weight: bold; margin-right: 4px;">ATHENA 样式预览:</span>
+    <button class="preview-btn active" onclick="switchTab('dashboard', this)">📊 状态概览页</button>
+    <button class="preview-btn" onclick="switchTab('settings', this)">⚙️ 系统与插件设置</button>
+    <button class="preview-btn" onclick="switchTab('login', this)">🔒 登录页面</button>
+    <div style="width: 1px; height: 18px; background: rgba(255,255,255,0.2); margin: 0 4px;"></div>
+    <button class="preview-btn" id="preview-dark-btn" onclick="toggleTheme()">🌙 明暗切换</button>
+  </div>
+
+  <div id="athena-backdrop" class="athena-mobile-backdrop"></div>
+
+  <!-- 1. 主控制台视图 (Dashboard) -->
+  <div id="view-dashboard" class="preview-view active">
+    <div id="maincontent">
+      <!-- 悬浮侧边栏 -->
+      <aside class="main-left">
+        <div class="sidebar-brand">
+          <img src="htdocs/luci-static/athena/img/logo.svg" alt="Athena Logo">
+          <div class="title">ImmortalWrt</div>
+        </div>
+        <ul class="sidebar-menu">
+          <li class="active">
+            <a href="javascript:void(0)" class="active">
+              <span>📊 状态概览</span>
+            </a>
+          </li>
+          <li>
+            <a href="javascript:void(0)" onclick="switchTab('settings', document.querySelectorAll('.preview-btn')[1])">
+              <span>📶 无线网络 (Wi-Fi 6)</span>
+            </a>
+          </li>
+          <li>
+            <a href="javascript:void(0)">
+              <span>🛡️ 防火墙 & NAT</span>
+            </a>
+          </li>
+          <li>
+            <a href="javascript:void(0)">
+              <span>🚀 PassWall 科学加速</span>
+            </a>
+          </li>
+          <li>
+            <a href="javascript:void(0)">
+              <span>⚡ MosDNS 智能分流</span>
+            </a>
+          </li>
+          <li>
+            <a href="javascript:void(0)">
+              <span>💡 雅典娜点阵屏控制</span>
+            </a>
+          </li>
+          <li>
+            <a href="javascript:void(0)">
+              <span>⚙️ 系统设置</span>
+            </a>
+          </li>
+        </ul>
+      </aside>
+
+      <!-- 主内容右侧区 -->
+      <div class="main-right">
+        <header class="athena-header">
+          <div class="header-left">
+            <button id="athena-menu-btn" class="athena-icon-btn mobile-only" title="菜单">☰</button>
+            <div class="brand-badge">
+              JDCloud RE-CS-02 (雅典娜) · 三频满血加速
+            </div>
+          </div>
+          <div class="header-right">
+            <span style="font-size: 13px; color: var(--text-secondary); margin-right: 8px;">运行时间: 5天 14小时 22分</span>
+            <button class="athena-icon-btn" onclick="toggleTheme()" title="明暗模式切换">
+              <span id="athena-theme-icon">🌙</span>
+            </button>
+            <button class="athena-icon-btn" onclick="switchTab('login', document.querySelectorAll('.preview-btn')[2])" title="退出登录">🚪</button>
+          </div>
+        </header>
+
+        <main class="container">
+          <!-- 实时仪表盘卡片组 -->
+          <div class="athena-grid">
+            <!-- 实时网速波形看板 -->
+            <div class="athena-stat-card" style="grid-column: 1 / -1;">
+              <div class="athena-stat-header">
+                <span class="athena-stat-title">实时流量监测 (实时双向贝塞尔波形)</span>
+                <div style="display: flex; gap: 16px; font-size: 13px; font-weight: 600;">
+                  <span style="color: #1E88E5;">▼ 下载: <span id="demo-rx">34.8 MB/s</span></span>
+                  <span style="color: #00BCD4;">▲ 上传: <span id="demo-tx">4.2 MB/s</span></span>
+                </div>
+              </div>
+              <div class="traffic-chart-box">
+                <canvas id="athena-traffic-canvas" style="width: 100%; height: 100%;"></canvas>
+              </div>
+            </div>
+
+            <!-- CPU 状态卡片 -->
+            <div class="athena-stat-card">
+              <div class="athena-stat-header">
+                <span class="athena-stat-title">CPU 处理器负载</span>
+                <span class="temp-pill cool" id="demo-cpu-badge">48.5 °C</span>
+              </div>
+              <div class="athena-stat-value">12%</div>
+              <div class="cbi-progressbar" style="margin: 8px 0;">
+                <div style="width: 12%;"></div>
+              </div>
+              <div class="athena-stat-subtitle">IPQ6010 4核 @ 1.8GHz (NSS 硬件卸载开启)</div>
+            </div>
+
+            <!-- 内存状态卡片 -->
+            <div class="athena-stat-card">
+              <div class="athena-stat-header">
+                <span class="athena-stat-title">DDR4 物理内存</span>
+                <span class="temp-pill cool">可用 642 MB</span>
+              </div>
+              <div class="athena-stat-value">38%</div>
+              <div class="cbi-progressbar" style="margin: 8px 0;">
+                <div style="width: 38%;"></div>
+              </div>
+              <div class="athena-stat-subtitle">已用 382 MB / 总共 1024 MB (ZRAM 已启用)</div>
+            </div>
+
+            <!-- 雅典娜 2.4G 频段 -->
+            <div class="athena-stat-card">
+              <div class="athena-stat-header">
+                <span class="athena-stat-title">2.4GHz 基础覆盖</span>
+                <span class="temp-pill cool">45.0 °C</span>
+              </div>
+              <div class="athena-stat-value">Radio1 · 信道 1</div>
+              <div class="athena-stat-subtitle">QCN5022 2x2 574Mbps (已连接 8 台智能家居)</div>
+            </div>
+
+            <!-- 雅典娜 5.8G 频段 -->
+            <div class="athena-stat-card">
+              <div class="athena-stat-header">
+                <span class="athena-stat-title">5.8GHz 日常影音</span>
+                <span class="temp-pill cool">47.2 °C</span>
+              </div>
+              <div class="athena-stat-value">Radio0 · 信道 149</div>
+              <div class="athena-stat-subtitle">QCN5052 2x2 80M 1201Mbps (已连接 6 台设备)</div>
+            </div>
+
+            <!-- 雅典娜 5.2G 电竞频段 -->
+            <div class="athena-stat-card">
+              <div class="athena-stat-header">
+                <span class="athena-stat-title">5.2GHz 电竞高频宽</span>
+                <span class="temp-pill warm">51.0 °C</span>
+              </div>
+              <div class="athena-stat-value">Radio2 · 信道 44</div>
+              <div class="athena-stat-subtitle">QCN9074 4x4 160M 4804Mbps (低延迟独立功放)</div>
+            </div>
+
+            <!-- 内存释放与清理 -->
+            <div class="athena-stat-card" style="grid-column: 1 / -1; display: flex; flex-direction: row; align-items: center; justify-content: space-between;">
+              <div>
+                <div style="font-weight: 700; font-size: 14px; margin-bottom: 4px;">Linux 内核缓存智能释放 (Drop Caches)</div>
+                <div style="font-size: 12px; color: var(--text-secondary);">一键清理系统 PageCache / Slab 临时缓存，保障高速传输不发生 OOM</div>
+              </div>
+              <button class="cbi-button cbi-button-apply" onclick="demoDropCache(this)">
+                🧹 立即释放内存缓存
+              </button>
+            </div>
+          </div>
+
+          <!-- 系统基础信息表格卡片 -->
+          <div class="cbi-section">
+            <div class="cbi-section-legend">设备硬件与网络环境详情</div>
+            <table class="cbi-section-table">
+              <tr>
+                <th style="width: 25%;">项目</th>
+                <th>参数详情</th>
+              </tr>
+              <tr>
+                <td>主机型号</td>
+                <td><strong>JDCloud RE-CS-02 (京东云无线宝 雅典娜 AX6600)</strong></td>
+              </tr>
+              <tr>
+                <td>处理器架构</td>
+                <td>ARMv8 Processor rev 4 (v8l) x 4 (1.8GHz, 高通 IPQ6010)</td>
+              </tr>
+              <tr>
+                <td>固件版本</td>
+                <td>ImmortalWrt 24.10 / LuCI Master (NSS 12.5 Retail 加速)</td>
+              </tr>
+              <tr>
+                <td>WAN 外网 IPv4</td>
+                <td><span style="color: #1E88E5; font-weight: bold;">120.231.148.92</span> (已连接)</td>
+              </tr>
+              <tr>
+                <td>WAN 外网 IPv6</td>
+                <td>2409:8a62:312:1890::1 / 64 (原生公网)</td>
+              </tr>
+              <tr>
+                <td>局域网 IPv4</td>
+                <td>10.10.10.1 / 255.255.255.0</td>
+              </tr>
+            </table>
+          </div>
+        </main>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. 系统与插件配置视图 (Settings & Form) -->
+  <div id="view-settings" class="preview-view">
+    <div id="maincontent">
+      <aside class="main-left">
+        <div class="sidebar-brand">
+          <img src="htdocs/luci-static/athena/img/logo.svg" alt="Athena Logo">
+          <div class="title">ImmortalWrt</div>
+        </div>
+        <ul class="sidebar-menu">
+          <li><a href="javascript:void(0)" onclick="switchTab('dashboard', document.querySelectorAll('.preview-btn')[0])"><span>📊 状态概览</span></a></li>
+          <li class="active"><a href="javascript:void(0)" class="active"><span>📶 无线网络 (Wi-Fi 6)</span></a></li>
+          <li><a href="javascript:void(0)"><span>🛡️ 防火墙 & NAT</span></a></li>
+          <li><a href="javascript:void(0)"><span>🚀 PassWall 科学加速</span></a></li>
+          <li><a href="javascript:void(0)"><span>⚙️ 系统设置</span></a></li>
+        </ul>
+      </aside>
+
+      <div class="main-right">
+        <header class="athena-header">
+          <div class="header-left">
+            <button class="athena-icon-btn mobile-only">☰</button>
+            <div class="brand-badge">无线设置 · 802.11ax Wi-Fi 6</div>
+          </div>
+          <div class="header-right">
+            <button class="athena-icon-btn" onclick="toggleTheme()" title="明暗模式切换">🌙</button>
+            <button class="athena-icon-btn" onclick="switchTab('login', document.querySelectorAll('.preview-btn')[2])">🚪</button>
+          </div>
+        </header>
+
+        <main class="container">
+          <div class="cbi-map">
+            <div class="cbi-map-title">雅典娜 5.2GHz 电竞频段高阶参数 (QCN9074)</div>
+            <div class="cbi-map-descr">配置 4x4 160MHz 独立功放网卡发射功率、漫游协议与 MU-MIMO 调度机制</div>
+
+            <div class="cbi-section">
+              <div class="cbi-value">
+                <div class="cbi-value-title">无线开关</div>
+                <div class="cbi-value-field">
+                  <input type="checkbox" checked style="width: 20px; height: 20px; accent-color: var(--primary-blue);">
+                </div>
+              </div>
+
+              <div class="cbi-value">
+                <div class="cbi-value-title">无线名称 (SSID)</div>
+                <div class="cbi-value-field">
+                  <input type="text" value="JDC_AX6600_5G2">
+                </div>
+              </div>
+
+              <div class="cbi-value">
+                <div class="cbi-value-title">工作频宽模式</div>
+                <div class="cbi-value-field">
+                  <select>
+                    <option selected>HE160 (160 MHz - 4804 Mbps 满血电竞)</option>
+                    <option>HE80 (80 MHz - 2402 Mbps 稳定兼容)</option>
+                    <option>HE40 (40 MHz)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="cbi-value">
+                <div class="cbi-value-title">发射信道 (Channel)</div>
+                <div class="cbi-value-field">
+                  <select>
+                    <option selected>44 (5220 MHz - 低频无干扰)</option>
+                    <option>36 (5180 MHz)</option>
+                    <option>48 (5240 MHz)</option>
+                    <option>149 (5745 MHz)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="cbi-value">
+                <div class="cbi-value-title">发射功率 (TxPower)</div>
+                <div class="cbi-value-field">
+                  <input type="number" value="25" style="max-width: 120px;"> dBm (ddwrt 驱动已解锁)
+                </div>
+              </div>
+
+              <div class="cbi-value">
+                <div class="cbi-value-title">快速漫游协议</div>
+                <div class="cbi-value-field">
+                  <span class="temp-pill cool" style="margin-right: 6px;">802.11k 开启</span>
+                  <span class="temp-pill cool" style="margin-right: 6px;">802.11v BSS Transition 开启</span>
+                  <span class="temp-pill warm">802.11r 关闭 (兼容防拒连)</span>
+                </div>
+              </div>
+
+              <div style="margin-top: 24px; display: flex; gap: 12px;">
+                <button class="cbi-button cbi-button-apply">保存并应用设置</button>
+                <button class="cbi-button cbi-button-reset">复位配置</button>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. 登录页视图 (Login Mock) -->
+  <div id="view-login" class="preview-view">
+    <div class="login-mock-container">
+      <div class="athena-login-card">
+        <img src="htdocs/luci-static/athena/img/logo.svg" alt="Logo" class="athena-login-logo">
+        <h1 style="font-size: 22px; font-weight: 700; margin-bottom: 6px; color: #FFFFFF;">ImmortalWrt</h1>
+        <p style="font-size: 13px; color: #94A3B8; margin-bottom: 28px;">雅典娜 AX6600 智能路由系统</p>
+
+        <form onsubmit="event.preventDefault(); switchTab('dashboard', document.querySelectorAll('.preview-btn')[0]);">
+          <div class="athena-input-group">
+            <label for="mock-user">管理员账号</label>
+            <input type="text" id="mock-user" value="root">
+          </div>
+
+          <div class="athena-input-group">
+            <label for="mock-pwd">登录密码</label>
+            <input type="password" id="mock-pwd" value="password" placeholder="请输入密码">
+          </div>
+
+          <button type="submit" class="athena-submit-btn">
+            即 刻 登 录
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Tab 切换逻辑
+    function switchTab(viewName, btn) {
+      document.querySelectorAll('.preview-view').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.preview-btn').forEach(el => el.classList.remove('active'));
+      
+      const target = document.getElementById('view-' + viewName);
+      if (target) target.classList.add('active');
+      if (btn) btn.classList.add('active');
+
+      if (viewName === 'dashboard') {
+        setTimeout(initWaveform, 100);
+      }
+    }
+
+    // 明暗主题切换
+    function toggleTheme() {
+      const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+      const next = isDark ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      
+      const btn = document.getElementById('preview-dark-btn');
+      btn.innerText = next === 'dark' ? '☀️ 明亮模式' : '🌙 暗黑模式';
+      const icon = document.getElementById('athena-theme-icon');
+      if (icon) icon.innerText = next === 'dark' ? '☀️' : '🌙';
+    }
+
+    // 内存释放演示动画
+    function demoDropCache(btn) {
+      btn.disabled = true;
+      btn.innerHTML = '正在释放 PageCache...';
+      setTimeout(() => {
+        btn.innerHTML = '✅ 内存已释放 (可用 +128MB)';
+        setTimeout(() => {
+          btn.disabled = false;
+          btn.innerHTML = '🧹 立即释放内存缓存';
+        }, 2000);
+      }, 800);
+    }
+
+    // 动态绘制实时贝塞尔波形图演示
+    let rxPoints = new Array(30).fill(20);
+    let txPoints = new Array(30).fill(5);
+
+    function initWaveform() {
+      const canvas = document.getElementById('athena-traffic-canvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+
+      function draw() {
+        // 模拟平滑波动数据
+        rxPoints.shift();
+        rxPoints.push(Math.max(5, (rxPoints[rxPoints.length - 1] || 20) + (Math.random() * 12 - 6)));
+        txPoints.shift();
+        txPoints.push(Math.max(1, (txPoints[txPoints.length - 1] || 5) + (Math.random() * 4 - 2)));
+
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width * (window.devicePixelRatio || 1);
+        canvas.height = rect.height * (window.devicePixelRatio || 1);
+        ctx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
+
+        const w = rect.width;
+        const h = rect.height;
+        ctx.clearRect(0, 0, w, h);
+
+        const maxVal = 60;
+        drawCurve(ctx, rxPoints, w, h, maxVal, '#1E88E5', 'rgba(30, 136, 229, 0.18)');
+        drawCurve(ctx, txPoints, w, h, maxVal, '#00BCD4', 'rgba(0, 188, 212, 0.15)');
+
+        document.getElementById('demo-rx').innerText = (rxPoints[rxPoints.length - 1] * 1.1).toFixed(1) + ' MB/s';
+        document.getElementById('demo-tx').innerText = (txPoints[txPoints.length - 1] * 0.8).toFixed(1) + ' MB/s';
+      }
+
+      function drawCurve(ctx, pts, w, h, max, stroke, fill) {
+        if (pts.length < 2) return;
+        const step = w / (pts.length - 1);
+        ctx.beginPath();
+        ctx.moveTo(0, h - (pts[0] / max) * (h - 10));
+        for (let i = 0; i < pts.length - 1; i++) {
+          const x0 = i * step;
+          const y0 = h - (pts[i] / max) * (h - 10);
+          const x1 = (i + 1) * step;
+          const y1 = h - (pts[i + 1] / max) * (h - 10);
+          const cx = (x0 + x1) / 2;
+          ctx.bezierCurveTo(cx, y0, cx, y1, x1, y1);
+        }
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+        ctx.lineTo(w, h);
+        ctx.lineTo(0, h);
+        ctx.closePath();
+        ctx.fillStyle = fill;
+        ctx.fill();
+      }
+
+      setInterval(draw, 1000);
+      draw();
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      initWaveform();
+    });
+  </script>
+</body>
+</html>
