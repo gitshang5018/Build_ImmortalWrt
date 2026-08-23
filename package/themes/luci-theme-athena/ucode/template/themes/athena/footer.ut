@@ -1,0 +1,13 @@
+{#
+ Copyright 2026 OpenWrt.org
+ Licensed to the public under the Apache License 2.0.
+-#}
+			</main>
+
+			<footer style="padding: 24px; text-align: center; color: var(--text-muted); font-size: 12px;">
+				<div>Powered by <a href="https://github.com/immortalwrt/immortalwrt" target="_blank" rel="noreferrer">ImmortalWrt</a> · Athena Theme</div>
+			</footer>
+		</div>
+	</div>
+</body>
+</html>
