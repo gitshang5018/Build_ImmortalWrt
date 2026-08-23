@@ -2,6 +2,7 @@
  Copyright 2026 OpenWrt.org
  Licensed to the public under the Apache License 2.0.
 -#}
+{% if (!blank_page): %}
 			</main>
 
 			<footer style="padding: 24px; text-align: center; color: var(--text-muted); font-size: 12px;">
@@ -9,5 +10,9 @@
 			</footer>
 		</div>
 	</div>
+{% else: %}
+		</main>
+	</div>
+{% endif %}
 </body>
 </html>

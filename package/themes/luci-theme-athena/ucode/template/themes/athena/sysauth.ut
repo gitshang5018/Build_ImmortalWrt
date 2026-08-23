@@ -5,146 +5,37 @@
 {%
 	const boardinfo = ubus.call('system', 'board') ?? {};
 	const hostname = boardinfo.hostname ?? 'ImmortalWrt';
-	http.prepare_content('text/html; charset=UTF-8');
 -%}
-<!DOCTYPE html>
-<html lang="{{ dispatcher.lang }}" data-theme="light">
-<head>
-	<meta charset="utf-8">
-	<title>{{ hostname }} - 登录</title>
-	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-	<meta name="theme-color" content="#1E88E5">
-	<link rel="stylesheet" href="{{ media }}/css/cascade.css">
-	<link rel="stylesheet" href="{{ media }}/css/dark.css">
-	<link rel="shortcut icon" href="{{ media }}/img/logo.svg" type="image/svg+xml">
-	<script src="{{ media }}/js/theme.js"></script>
-	<style>
-		.athena-login-wrapper {
-			min-height: 100vh;
-			display: flex;
-			align-items: center;
-			justify-content: center;
-			padding: 20px;
-			background: #0B1120 url('{{ media }}/img/bg-login.svg') no-repeat center center / cover;
-			position: relative;
-		}
-		.athena-login-card {
-			width: 100%;
-			max-width: 400px;
-			background: rgba(30, 41, 59, 0.75);
-			backdrop-filter: blur(20px);
-			-webkit-backdrop-filter: blur(20px);
-			border: 1px solid rgba(255, 255, 255, 0.15);
-			border-radius: 24px;
-			padding: 36px 28px;
-			box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
-			color: #F8FAFC;
-			text-align: center;
-		}
-		.athena-login-logo {
-			width: 68px;
-			height: 68px;
-			margin: 0 auto 16px;
-			border-radius: 20px;
-			box-shadow: 0 10px 25px rgba(30, 136, 229, 0.4);
-		}
-		.athena-login-card h1 {
-			font-size: 22px;
-			font-weight: 700;
-			margin-bottom: 6px;
-			color: #FFFFFF;
-		}
-		.athena-login-card p {
-			font-size: 13px;
-			color: #94A3B8;
-			margin-bottom: 28px;
-		}
-		.athena-input-group {
-			margin-bottom: 18px;
-			text-align: left;
-		}
-		.athena-input-group label {
-			display: block;
-			font-size: 12.5px;
-			font-weight: 600;
-			color: #CBD5E1;
-			margin-bottom: 6px;
-		}
-		.athena-input-group input {
-			width: 100%;
-			max-width: 100%;
-			background: rgba(15, 23, 42, 0.6);
-			border: 1px solid rgba(255, 255, 255, 0.2);
-			border-radius: 12px;
-			padding: 12px 14px;
-			color: #FFFFFF;
-			font-size: 14px;
-			outline: none;
-			transition: all 0.2s ease;
-		}
-		.athena-input-group input:focus {
-			border-color: #38BDF8;
-			box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.25);
-			background: rgba(15, 23, 42, 0.85);
-		}
-		.athena-submit-btn {
-			width: 100%;
-			background: linear-gradient(135deg, #1E88E5, #00BCD4);
-			border: none;
-			border-radius: 12px;
-			color: #FFFFFF;
-			font-weight: 700;
-			font-size: 15px;
-			padding: 13px;
-			cursor: pointer;
-			box-shadow: 0 8px 20px rgba(30, 136, 229, 0.4);
-			transition: all 0.2s ease;
-			margin-top: 10px;
-		}
-		.athena-submit-btn:hover {
-			transform: translateY(-1px);
-			box-shadow: 0 10px 25px rgba(30, 136, 229, 0.6);
-		}
-		.athena-error-box {
-			background: rgba(239, 68, 68, 0.2);
-			border: 1px solid rgba(239, 68, 68, 0.4);
-			border-radius: 10px;
-			padding: 10px;
-			color: #FCA5A5;
-			font-size: 13px;
-			margin-bottom: 18px;
-		}
-	</style>
-</head>
-<body>
-	<div class="athena-login-wrapper">
-		<div class="athena-login-card">
-			<img src="{{ media }}/img/logo.svg" alt="Logo" class="athena-login-logo">
-			<h1>{{ hostname }}</h1>
-			<p>雅典娜 AX6600 智能路由系统</p>
+{% include('header', { blank_page: true }) %}
 
-			{% if (fuser): %}
-				<div class="athena-error-box">
-					{{ _('Invalid username and/or password! Please try again.') }}
-				</div>
-			{% endif %}
+<div class="athena-login-wrapper">
+	<div class="athena-login-card">
+		<img src="{{ media }}/img/logo.svg" alt="Logo" class="athena-login-logo">
+		<h1>{{ hostname }}</h1>
+		<p>雅典娜 AX6600 智能路由系统</p>
 
-			<form method="post">
-				<div class="athena-input-group">
-					<label for="focus_user">{{ _('Username') }}</label>
-					<input type="text" name="luci_username" id="focus_user" value="{{ entityencode(duser ?? 'root', true) }}" autocomplete="username" autocorrect="off" autocapitalize="none">
-				</div>
+		{% if (fuser): %}
+			<div class="athena-error-box">
+				{{ _('Invalid username and/or password! Please try again.') }}
+			</div>
+		{% endif %}
 
-				<div class="athena-input-group">
-					<label for="focus_password">{{ _('Password') }}</label>
-					<input type="password" name="luci_password" id="focus_password" autocomplete="current-password">
-				</div>
+		<form method="post">
+			<div class="athena-input-group">
+				<label for="focus_user">{{ _('Username') }}</label>
+				<input type="text" name="luci_username" id="focus_user" value="{{ entityencode(duser ?? 'root', true) }}" autocomplete="username" autocorrect="off" autocapitalize="none">
+			</div>
 
-				<button type="submit" class="athena-submit-btn">
-					{{ _('Log in') }}
-				</button>
-			</form>
-		</div>
+			<div class="athena-input-group">
+				<label for="focus_password">{{ _('Password') }}</label>
+				<input type="password" name="luci_password" id="focus_password" autocomplete="current-password">
+			</div>
+
+			<button type="submit" class="athena-submit-btn">
+				{{ _('Log in') }}
+			</button>
+		</form>
 	</div>
-</body>
-</html>
+</div>
+
+{% include('footer', { blank_page: true }) %}

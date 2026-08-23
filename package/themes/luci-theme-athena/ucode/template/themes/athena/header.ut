@@ -26,7 +26,8 @@
 	<script src="{{ resource }}/luci.js"></script>
 	<script src="{{ media }}/js/theme.js"></script>
 </head>
-<body class="lang_{{ dispatcher.lang }} {{ entityencode(join('-', ctx.request_path ?? []), true) }}">
+<body class="lang_{{ dispatcher.lang }} {{ entityencode(join('-', ctx.request_path ?? []), true) }} {{ blank_page ? 'blank-page' : '' }}">
+{% if (!blank_page): %}
 	<div id="athena-backdrop" class="athena-mobile-backdrop"></div>
 	
 	<div id="maincontent">
@@ -67,3 +68,7 @@
 			</header>
 
 			<main class="container">
+{% else: %}
+	<div id="maincontent" class="login-page">
+		<main class="container-fluid" style="padding: 0; min-height: 100vh;">
+{% endif %}
