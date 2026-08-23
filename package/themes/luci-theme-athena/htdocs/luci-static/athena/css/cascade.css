@@ -467,6 +467,17 @@ input:focus, select:focus, textarea:focus, .cbi-dropdown:focus {
 }
 
 /* Badges & Interface Indicators */
+.ifacebox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--input-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 6px 12px;
+  margin: 4px;
+}
+
 .ifacebadge, .zonebadge, .temp-pill {
   display: inline-flex;
   align-items: center;
@@ -478,6 +489,56 @@ input:focus, select:focus, textarea:focus, .cbi-dropdown:focus {
   background: var(--input-bg);
   border: 1px solid var(--border-color);
   color: var(--text-primary);
+}
+
+.ifacebadge img {
+  width: 16px;
+  height: 16px;
+}
+
+/* Port Status & Switch Matrix */
+.cbi-section[data-tab="ports"], .cbi-section-node.ports, .ports, table.ports tbody tr {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 16px !important;
+  justify-content: flex-start !important;
+  align-items: stretch !important;
+  border: none !important;
+}
+
+.port-status, .port, table.ports td {
+  display: inline-flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: var(--input-bg) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 14px !important;
+  padding: 14px 20px !important;
+  min-width: 100px !important;
+  text-align: center !important;
+  box-shadow: var(--card-shadow) !important;
+  transition: all 0.2s ease !important;
+  margin: 4px !important;
+}
+
+.port:hover, table.ports td:hover {
+  border-color: var(--primary-blue) !important;
+  transform: translateY(-2px) !important;
+}
+
+.port img, .port-icon, table.ports td img {
+  width: 38px !important;
+  height: 38px !important;
+  margin-bottom: 6px !important;
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.12));
+}
+
+.port-title, .port strong, table.ports td strong {
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  color: var(--text-primary) !important;
+  margin-bottom: 2px !important;
 }
 
 .temp-pill.cool {

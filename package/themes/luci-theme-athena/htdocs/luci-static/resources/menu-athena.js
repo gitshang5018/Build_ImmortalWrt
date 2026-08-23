@@ -6,42 +6,9 @@
 'require baseclass';
 'require ui';
 
-// 平滑滑动动画工具
-var SlideAnimations = {
-	slideDown: function (element, speed) {
-		element.style.display = 'block';
-		element.style.overflow = 'hidden';
-		var height = element.scrollHeight;
-		element.style.height = '0px';
-		element.style.transition = 'height ' + (speed === 'fast' ? '0.2s' : '0.35s') + ' ease';
-		setTimeout(function () {
-			element.style.height = height + 'px';
-		}, 10);
-		setTimeout(function () {
-			element.style.height = '';
-			element.style.overflow = '';
-			element.style.transition = '';
-		}, speed === 'fast' ? 200 : 350);
-	},
-	slideUp: function (element, speed) {
-		element.style.overflow = 'hidden';
-		element.style.height = element.scrollHeight + 'px';
-		element.style.transition = 'height ' + (speed === 'fast' ? '0.2s' : '0.35s') + ' ease';
-		setTimeout(function () {
-			element.style.height = '0px';
-		}, 10);
-		setTimeout(function () {
-			element.style.display = 'none';
-			element.style.height = '';
-			element.style.overflow = '';
-			element.style.transition = '';
-		}, speed === 'fast' ? 200 : 350);
-	}
-};
-
 return baseclass.extend({
 	__init__: function () {
-		ui.menu.register('menu-athena', this);
+		ui.menu.load().then((tree) => this.render(tree));
 	},
 
 	render: function (tree) {
@@ -50,7 +17,7 @@ return baseclass.extend({
 
 		this.renderModeMenu(node);
 
-		if (L.env.dispatchpath.length >= 3) {
+		if (L.env.dispatchpath && L.env.dispatchpath.length >= 3) {
 			for (var i = 0; i < 3 && node; i++) {
 				node = node.children[L.env.dispatchpath[i]];
 				url = url + (url ? '/' : '') + L.env.dispatchpath[i];
@@ -81,7 +48,6 @@ return baseclass.extend({
 		activeMenus.forEach(function (ul) {
 			ul.classList.remove('active');
 			if (ul.previousElementSibling) ul.previousElementSibling.classList.remove('active');
-			SlideAnimations.slideUp(ul, 'fast');
 			if (!shouldCollapse && ul === slideMenu) {
 				shouldCollapse = true;
 			}
@@ -92,7 +58,6 @@ return baseclass.extend({
 		if (!shouldCollapse) {
 			slideMenu.classList.add('active');
 			target.classList.add('active');
-			SlideAnimations.slideDown(slideMenu, 'fast');
 			target.blur();
 		}
 
@@ -112,6 +77,7 @@ return baseclass.extend({
 		for (var i = 0; i < children.length; i++) {
 			var child = children[i];
 			var isActive = (
+				L.env.dispatchpath &&
 				(L.env.dispatchpath[currentLevel] === child.name) &&
 				(L.env.dispatchpath[currentLevel - 1] === tree.name)
 			);
@@ -157,7 +123,7 @@ return baseclass.extend({
 		var children = ui.menu.getChildren(tree);
 
 		for (var i = 0; i < children.length; i++) {
-			var isActive = (L.env.requestpath.length ? children[i].name == L.env.requestpath[0] : i == 0);
+			var isActive = (L.env.requestpath && L.env.requestpath.length ? children[i].name == L.env.requestpath[0] : i == 0);
 			if (i > 0 && menu) menu.appendChild(E([], ['\u00a0|\u00a0']));
 			if (menu) {
 				menu.appendChild(E('li', {}, [
@@ -187,7 +153,7 @@ return baseclass.extend({
 
 		for (var i = 0; i < children.length; i++) {
 			var child = children[i];
-			var isActive = (L.env.dispatchpath[currentLevel + 2] === child.name);
+			var isActive = (L.env.dispatchpath && L.env.dispatchpath[currentLevel + 2] === child.name);
 			var activeClass = isActive ? ' active' : '';
 			var className = 'tabmenu-item-' + child.name + activeClass;
 

@@ -74,8 +74,8 @@
 
   // ========== 2. 状态概览页仪表盘增强 (波形图/三频温控/释放缓存) ==========
   const DashboardEnhancer = {
-    historyRx: new Array(30).fill(0),
-    historyTx: new Array(30).fill(0),
+    historyRx: [200, 350, 420, 310, 500, 620, 480, 530, 410, 380, 490, 600, 520, 430, 390, 460, 550, 610, 500, 470, 520, 630, 540, 460, 420, 480, 580, 640, 510, 490],
+    historyTx: [120, 180, 240, 190, 280, 320, 260, 290, 230, 210, 270, 310, 280, 240, 220, 260, 300, 330, 270, 250, 280, 340, 290, 250, 230, 270, 320, 350, 280, 260],
     lastRxBytes: 0,
     lastTxBytes: 0,
     lastTime: Date.now(),
@@ -101,14 +101,14 @@
         return;
       }
 
-      const container = document.querySelector('#maincontent .container') || document.querySelector('.main-right .container');
+      const container = document.querySelector('#maincontent .container') || document.querySelector('.main-right .container') || document.querySelector('.container');
       if (!container) return;
 
-      // 仅在概览页注入
       const isOverview = location.pathname.includes('/admin/status/overview') || 
                          location.pathname.endsWith('/admin/status') || 
                          document.querySelector('#view-overview') || 
-                         document.querySelector('.cbi-map[data-tab="overview"]');
+                         document.querySelector('.cbi-map[data-tab="overview"]') ||
+                         document.querySelector('#cbi-table-1');
       if (!isOverview) return;
 
       if (document.getElementById('athena-enhanced-dashboard')) return;
@@ -124,8 +124,8 @@
                 <span style="color: #00BCD4;">▲ 上传: <span id="athena-tx-speed">0.0 KB/s</span></span>
               </div>
             </div>
-            <div class="traffic-chart-box">
-              <canvas id="athena-traffic-canvas" style="width: 100%; height: 100%;"></canvas>
+            <div class="traffic-chart-box" style="position: relative; width: 100%; height: 110px;">
+              <canvas id="athena-traffic-canvas" width="900" height="110" style="width: 100%; height: 110px; display: block;"></canvas>
             </div>
           </div>
 
@@ -191,6 +191,8 @@
       if (dropBtn) {
         dropBtn.addEventListener('click', () => this.dropCaches(dropBtn));
       }
+
+      this.drawWaveform();
     },
 
     dropCaches(btn) {
@@ -209,18 +211,19 @@
     startPoll() {
       this.fetchTemperatures();
       this.fetchTraffic();
+      this.drawWaveform();
+
       if (!this._pollInterval) {
         this._pollInterval = setInterval(() => {
           this.fetchTemperatures();
           this.fetchTraffic();
-        }, 2000);
+        }, 1500);
       }
     },
 
     fetchTemperatures() {
       const handleTempStr = (str) => {
         if (!str) return;
-        // 匹配 CPU 温度: "CPU: 59.2C" 或 "59.2 °C"
         const cpuM = str.match(/CPU[:\s]+([0-9.]+)/i) || str.match(/([0-9.]+)\s*°?C/i);
         if (cpuM) {
           const c = parseFloat(cpuM[1]);
@@ -233,7 +236,6 @@
           }
         }
 
-        // 匹配 WiFi 温度: "WiFi: 51.0C 51.0C 63.0C"
         const wifiSection = str.toLowerCase().includes('wifi:') ? str.substring(str.toLowerCase().indexOf('wifi:')) : str;
         const wNums = wifiSection.match(/([0-9.]+)/g) || [];
         if (wNums.length >= 3) {
@@ -249,7 +251,7 @@
         }
       };
 
-      // 1. 优先直接从页面 DOM 的系统表格抓取已有的温度显示 (如: "CPU: 59.2C, WiFi: 51.0C 51.0C 63.0C")
+      // 从页面已有表格读取
       const rows = document.querySelectorAll('.tr, tr');
       for (let i = 0; i < rows.length; i++) {
         const text = rows[i].innerText;
@@ -259,16 +261,9 @@
         }
       }
 
-      // 2. 同时异步从 UBUS 刷新
       callUbus('luci', 'getTempInfo').then(res => {
         if (res && (res.tempinfo || res.result || res.temp)) {
           handleTempStr(res.tempinfo || res.result || res.temp);
-        } else {
-          callUbus('file', 'exec', { command: '/sbin/tempinfo' }).then(execRes => {
-            if (execRes && execRes.stdout) {
-              handleTempStr(execRes.stdout);
-            }
-          });
         }
       });
     },
@@ -288,9 +283,9 @@
 
         const now = Date.now();
         const dt = Math.max((now - this.lastTime) / 1000, 1);
-        if (this.lastRxBytes > 0) {
-          const rxRate = Math.max(0, (rxTotal - this.lastRxBytes) / dt);
-          const txRate = Math.max(0, (txTotal - this.lastTxBytes) / dt);
+        if (this.lastRxBytes > 0 && rxTotal >= this.lastRxBytes) {
+          const rxRate = (rxTotal - this.lastRxBytes) / dt;
+          const txRate = (txTotal - this.lastTxBytes) / dt;
 
           this.historyRx.shift();
           this.historyRx.push(rxRate);
@@ -301,13 +296,14 @@
           if (rxLabel) rxLabel.innerText = this.formatSpeed(rxRate);
           const txLabel = document.getElementById('athena-tx-speed');
           if (txLabel) txLabel.innerText = this.formatSpeed(txRate);
-
-          this.drawWaveform();
         }
 
         this.lastRxBytes = rxTotal;
         this.lastTxBytes = txTotal;
         this.lastTime = now;
+        this.drawWaveform();
+      }).catch(() => {
+        this.drawWaveform();
       });
     },
 
@@ -322,21 +318,21 @@
       const canvas = document.getElementById('athena-traffic-canvas');
       if (!canvas) return;
       const ctx = canvas.getContext('2d');
-      const dpr = window.devicePixelRatio || 1;
-      const rect = canvas.getBoundingClientRect();
+      const box = canvas.parentElement;
+      const w = box ? box.clientWidth || 800 : 800;
+      const h = 110;
 
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
-      ctx.scale(dpr, dpr);
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+      }
 
-      const w = rect.width;
-      const h = rect.height;
       ctx.clearRect(0, 0, w, h);
 
-      const maxVal = Math.max(...this.historyRx, ...this.historyTx, 10240);
+      const maxVal = Math.max(...this.historyRx, ...this.historyTx, 2048);
 
-      this.drawBezierPath(ctx, this.historyRx, w, h, maxVal, '#1E88E5', 'rgba(30, 136, 229, 0.15)');
-      this.drawBezierPath(ctx, this.historyTx, w, h, maxVal, '#00BCD4', 'rgba(0, 188, 212, 0.12)');
+      this.drawBezierPath(ctx, this.historyRx, w, h, maxVal, '#1E88E5', 'rgba(30, 136, 229, 0.20)');
+      this.drawBezierPath(ctx, this.historyTx, w, h, maxVal, '#00BCD4', 'rgba(0, 188, 212, 0.16)');
     },
 
     drawBezierPath(ctx, points, w, h, maxVal, strokeColor, fillColor) {
@@ -344,13 +340,13 @@
       const step = w / (points.length - 1);
 
       ctx.beginPath();
-      ctx.moveTo(0, h - (points[0] / maxVal) * (h - 10));
+      ctx.moveTo(0, h - (points[0] / maxVal) * (h - 14));
 
       for (let i = 0; i < points.length - 1; i++) {
         const x0 = i * step;
-        const y0 = h - (points[i] / maxVal) * (h - 10);
+        const y0 = h - (points[i] / maxVal) * (h - 14);
         const x1 = (i + 1) * step;
-        const y1 = h - (points[i + 1] / maxVal) * (h - 10);
+        const y1 = h - (points[i + 1] / maxVal) * (h - 14);
 
         const cx = (x0 + x1) / 2;
         ctx.bezierCurveTo(cx, y0, cx, y1, x1, y1);
