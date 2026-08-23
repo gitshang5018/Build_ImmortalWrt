@@ -6,7 +6,7 @@
 (function () {
   'use strict';
 
-  // 通用 UBUS 调用助手 (兼容所有 LuCI JS 版本)
+  // 通用 UBUS 调用助手
   function callUbus(object, method, params) {
     const token = (window.L && L.env && L.env.ubus_token) || '00000000000000000000000000000000';
     return fetch('/ubus', {
@@ -72,26 +72,7 @@
 
   ThemeManager.init();
 
-  // ========== 2. 移动端侧边栏交互 ==========
-  document.addEventListener('DOMContentLoaded', () => {
-    const menuBtn = document.getElementById('athena-menu-btn');
-    const sidebar = document.querySelector('.main-left');
-    const backdrop = document.getElementById('athena-backdrop');
-
-    if (menuBtn && sidebar && backdrop) {
-      menuBtn.addEventListener('click', () => {
-        sidebar.classList.toggle('open');
-        backdrop.classList.toggle('active');
-      });
-
-      backdrop.addEventListener('click', () => {
-        sidebar.classList.remove('open');
-        backdrop.classList.remove('active');
-      });
-    }
-  });
-
-  // ========== 3. 状态概览页仪表盘增强 (波形图/三频温控/释放缓存) ==========
+  // ========== 2. 状态概览页仪表盘增强 (波形图/三频温控/释放缓存) ==========
   const DashboardEnhancer = {
     historyRx: new Array(30).fill(0),
     historyTx: new Array(30).fill(0),
@@ -100,28 +81,35 @@
     lastTime: Date.now(),
 
     init() {
-      document.addEventListener('DOMContentLoaded', () => {
+      const run = () => {
         this.injectDashboardCards();
         this.startPoll();
-      });
-      // 兼容单页应用路由切换
-      window.addEventListener('load', () => {
-        this.injectDashboardCards();
-      });
+      };
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', run);
+      } else {
+        run();
+      }
+      window.addEventListener('load', run);
     },
 
     injectDashboardCards() {
-      if (document.body.classList.contains('blank-page') ||
-          document.body.classList.contains('login-page') ||
-          document.querySelector('.athena-login-card') ||
+      // 登录页严禁注入
+      if (document.querySelector('.athena-login-card') ||
           document.querySelector('#focus_user') ||
           document.querySelector('#focus_password')) {
-        return; // 登录页面严禁注入
+        return;
       }
 
-      const container = document.querySelector('main.container') || document.querySelector('.main-right .container');
+      const container = document.querySelector('#maincontent .container') || document.querySelector('.main-right .container');
       if (!container) return;
-      if (!location.pathname.includes('/admin/status/overview') && !location.pathname.endsWith('/admin/status')) return;
+
+      // 仅在概览页注入
+      const isOverview = location.pathname.includes('/admin/status/overview') || 
+                         location.pathname.endsWith('/admin/status') || 
+                         document.querySelector('#view-overview') || 
+                         document.querySelector('.cbi-map[data-tab="overview"]');
+      if (!isOverview) return;
 
       if (document.getElementById('athena-enhanced-dashboard')) return;
 
@@ -221,16 +209,19 @@
     startPoll() {
       this.fetchTemperatures();
       this.fetchTraffic();
-      setInterval(() => {
-        this.fetchTemperatures();
-        this.fetchTraffic();
-      }, 2500);
+      if (!this._pollInterval) {
+        this._pollInterval = setInterval(() => {
+          this.fetchTemperatures();
+          this.fetchTraffic();
+        }, 2000);
+      }
     },
 
     fetchTemperatures() {
       const handleTempStr = (str) => {
         if (!str) return;
-        const cpuM = str.match(/CPU[:\s]+([0-9.]+)/i);
+        // 匹配 CPU 温度: "CPU: 59.2C" 或 "59.2 °C"
+        const cpuM = str.match(/CPU[:\s]+([0-9.]+)/i) || str.match(/([0-9.]+)\s*°?C/i);
         if (cpuM) {
           const c = parseFloat(cpuM[1]);
           const el = document.getElementById('athena-cpu-temp');
@@ -242,7 +233,8 @@
           }
         }
 
-        const wifiSection = str.substring(str.toLowerCase().indexOf('wifi:'));
+        // 匹配 WiFi 温度: "WiFi: 51.0C 51.0C 63.0C"
+        const wifiSection = str.toLowerCase().includes('wifi:') ? str.substring(str.toLowerCase().indexOf('wifi:')) : str;
         const wNums = wifiSection.match(/([0-9.]+)/g) || [];
         if (wNums.length >= 3) {
           const el58 = document.getElementById('athena-w58-temp');
@@ -257,11 +249,21 @@
         }
       };
 
+      // 1. 优先直接从页面 DOM 的系统表格抓取已有的温度显示 (如: "CPU: 59.2C, WiFi: 51.0C 51.0C 63.0C")
+      const rows = document.querySelectorAll('.tr, tr');
+      for (let i = 0; i < rows.length; i++) {
+        const text = rows[i].innerText;
+        if (text.includes('温度') || text.includes('Temperature')) {
+          handleTempStr(text);
+          break;
+        }
+      }
+
+      // 2. 同时异步从 UBUS 刷新
       callUbus('luci', 'getTempInfo').then(res => {
         if (res && (res.tempinfo || res.result || res.temp)) {
           handleTempStr(res.tempinfo || res.result || res.temp);
         } else {
-          // 降级尝试 file.exec /sbin/tempinfo
           callUbus('file', 'exec', { command: '/sbin/tempinfo' }).then(execRes => {
             if (execRes && execRes.stdout) {
               handleTempStr(execRes.stdout);

@@ -3,15 +3,22 @@
  Licensed to the public under the Apache License 2.0.
 -#}
 {% if (!blank_page): %}
-			</main>
-
-			<footer style="padding: 24px; text-align: center; color: var(--text-muted); font-size: 12px;">
-				<div>Powered by <a href="https://github.com/immortalwrt/immortalwrt" target="_blank" rel="noreferrer">ImmortalWrt</a> · Athena Theme</div>
-			</footer>
+				</div>
+				<footer class="athena-footer">
+					<div style="display: flex; flex-wrap: wrap; gap: 0.5em; justify-content: center; align-items: center; padding: 24px; color: var(--text-muted); font-size: 12px;">
+						<a class="luci-link" href="https://github.com/openwrt/luci" target="_blank" rel="noreferrer">Powered by {{ version.luciname }} ({{ version.luciversion }})</a>
+						<span>|</span>
+						<span>Athena Theme</span>
+						<span>|</span>
+						<a class="luci-link" href="{{ version.disturl }}" target="_blank" rel="noreferrer">{{ version.distname }} {{ version.distversion }}</a>
+						<ul class="breadcrumb" id="modemenu" style="display:none"></ul>
+					</div>
+				</footer>
+			</div>
 		</div>
 	</div>
+	<script type="text/javascript">L.require('menu-athena')</script>
 {% else %}
-		</main>
 	</div>
 {% endif %}
 </body>

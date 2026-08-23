@@ -3,8 +3,8 @@
  Licensed to the public under the Apache License 2.0.
 -#}
 {%
-	const boardinfo = ubus.call('system', 'board') ?? {};
-	const hostname = boardinfo.hostname ?? 'ImmortalWrt';
+	const boardinfo = ubus.call("system", "board") ?? {};
+	const hostname = striptags(boardinfo?.hostname ?? 'ImmortalWrt');
 
 	http.prepare_content('text/html; charset=UTF-8');
 -%}
@@ -12,50 +12,43 @@
 <html lang="{{ dispatcher.lang }}" data-theme="light">
 <head>
 	<meta charset="utf-8">
-	<title>{{ striptags(`${hostname}${dispatched?.title ? ` - ${_(dispatched.title)}` : ''}`) }} - LuCI</title>
-	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>{{ hostname }}{{ node?.title ? ` - ${striptags(node.title)}` : '' }} - LuCI</title>
 	<meta name="theme-color" content="#1E88E5">
-	<meta name="apple-mobile-web-app-capable" content="yes">
-	<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 	<link rel="stylesheet" href="{{ media }}/css/cascade.css">
 	<link rel="stylesheet" href="{{ media }}/css/dark.css">
-	<link rel="stylesheet" href="{{ media }}/css/mobile.css">
 	<link rel="shortcut icon" href="{{ media }}/img/logo.svg" type="image/svg+xml">
+	{% if (node?.css): %}
+	<link rel="stylesheet" href="{{ resource }}/{{ node.css }}">
+	{% endif %}
+	{% if (css): %}
+	<style title="text/css">{{ css }}</style>
+	{% endif %}
 	<script src="{{ dispatcher.build_url('admin/translations', dispatcher.lang) }}"></script>
 	<script src="{{ resource }}/cbi.js"></script>
 	<script src="{{ resource }}/luci.js"></script>
 	<script src="{{ media }}/js/theme.js"></script>
 </head>
-<body class="lang_{{ dispatcher.lang }} {{ entityencode(join('-', ctx.request_path ?? []), true) }} {{ blank_page ? 'blank-page' : '' }}">
+<body class="lang_{{ dispatcher.lang }} {{ node?.title ? ` - ${striptags(node.title)}` : '' }} {% if (ctx.authsession): %}logged-in{% endif %}" data-page="{{ entityencode(join('-', ctx.request_path ?? []), true) }}">
 {% if (!blank_page): %}
-	<div id="athena-backdrop" class="athena-mobile-backdrop"></div>
-	
-	<div id="maincontent">
-		<!-- 悬浮侧边栏 -->
-		<aside class="main-left">
-			<div class="sidebar-brand">
-				<img src="{{ media }}/img/logo.svg" alt="Athena Logo">
-				<div class="title">{{ hostname }}</div>
+	<div class="main">
+		<div class="main-left" id="mainmenu" style="display:none">
+			<div class="sidenav-header">
+				<a class="brand" href="#">
+					<img src="{{ media }}/img/logo.svg" alt="Athena Logo">
+					<span class="brand-text">{{ hostname }}</span>
+				</a>
 			</div>
+		</div>
 
-			<div class="main-menu" id="mainmenu">
-				<!-- LuCI JS 客户端动态渲染菜单 -->
-			</div>
-		</aside>
-
-		<!-- 主内容右侧区 -->
 		<div class="main-right">
 			<header class="athena-header">
 				<div class="header-left">
-					<button id="athena-menu-btn" class="athena-icon-btn mobile-only" title="菜单">
-						☰
-					</button>
-					<div class="brand-badge">
-						雅典娜 AX6600 · 三频满血加速
-					</div>
+					<a class="showSide">☰</a>
+					<div class="brand-badge">雅典娜 AX6600 · 三频满血加速</div>
 				</div>
-
 				<div class="header-right">
+					<div class="status" id="indicators"></div>
 					<button id="athena-theme-btn" class="athena-icon-btn" title="明暗模式切换">
 						<span id="athena-theme-icon">🌙</span>
 					</button>
@@ -67,8 +60,11 @@
 				</div>
 			</header>
 
-			<main class="container">
+			<div class="darkMask"></div>
+
+			<div id="maincontent">
+				<div class="container">
+					<div id="tabmenu" style="display:none"></div>
 {% else %}
-	<div id="maincontent" class="login-page">
-		<main class="container-fluid" style="padding: 0; min-height: 100vh;">
+	<div class="athena-login-page">
 {% endif %}
