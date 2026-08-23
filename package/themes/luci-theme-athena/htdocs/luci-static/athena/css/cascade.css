@@ -543,7 +543,8 @@ input:focus, select:focus, textarea:focus, .cbi-dropdown:focus {
   border-radius: 8px;
   padding: 12px;
   margin: 4px;
-  min-width: 140px;
+  min-width: 210px;
+  vertical-align: top;
 }
 
 .ifacebox-head {
@@ -554,7 +555,10 @@ input:focus, select:focus, textarea:focus, .cbi-dropdown:focus {
 .ifacebox-body {
   text-align: left;
   font-size: 12.5px;
-  white-space: nowrap;
+}
+
+td:has(> .ifacebox) {
+  vertical-align: top;
 }
 
 .ifacebadge, .zonebadge, .temp-pill {
@@ -576,7 +580,7 @@ input:focus, select:focus, textarea:focus, .cbi-dropdown:focus {
 }
 
 /* Replace legacy OpenWrt icons with modern SVGs */
-img[src*="port_up"] {
+img[src*="port_up"], img[src*="eth"] {
   content: url('data:image/svg+xml;utf8,<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="%231E88E5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><path d="M6 18h.01"/><path d="M10 18h.01"/><path d="M12 14v-4"/><path d="M8 6h8"/><path d="M12 6V2"/></svg>') !important;
 }
 
