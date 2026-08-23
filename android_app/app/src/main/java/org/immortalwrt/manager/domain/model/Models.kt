@@ -94,7 +94,8 @@ data class ConnectedClient(
     val txRateMbps: Float = 0f,
     val ipv6Address: String? = null,
     val vendor: String? = null,
-    val isStaticLease: Boolean = false
+    val isStaticLease: Boolean = false,
+    val isOnline: Boolean = true
 ) {
     val displayName: String get() = customAlias?.takeIf { it.isNotBlank() } ?: hostname
 }

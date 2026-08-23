@@ -123,7 +123,7 @@ class RouterRepository(private val client: UbusClient) {
                 }
             }
 
-            // 智能温控字符串全模式解析提取 (如 "CPU: 48.0C, WiFi: 51.0C 53.0C" 或 "48.5°C" 或 "CPU: 45°C")
+            // 智能温控字符串全模式解析提取 (如 "CPU: 48.0C, WiFi: 51.0C 53.0C 49.0C" 或 "Qualcomm IPQ6018 (1.8GHz, 48.0C)")
             fun extractTemperaturesFromText(text: String): Pair<Int?, List<Int>> {
                 var cpu: Int? = null
                 val wifis = mutableListOf<Int>()
@@ -158,7 +158,6 @@ class RouterRepository(private val client: UbusClient) {
                 return Pair(cpu, wifis)
             }
 
-            // 辅助温控数值标准化 (支持 毫摄氏度 45000 / 分摄氏度 450 / 摄氏度 45)
             fun parseTempToDegree(raw: Long): Int? {
                 val deg = when {
                     raw in 15000..125000 -> (raw / 1000).toInt()
@@ -175,30 +174,71 @@ class RouterRepository(private val client: UbusClient) {
             var hasWirelessHw = false
             var cpuTemp: String? = null
 
-            // 唯一数据源：通过 /bin/sh -c 一次性执行所有硬件探测命令
-            // 关键优化：绝对禁止使用 wget、curl 或 top -bn1 这种会阻塞的命令
-            // rpcd 的 file.exec 默认有 3-5 秒硬超时限制，超过会直接静默杀掉并返回空，导致所有数据失效
-            // 全部改用纯瞬时完成的 cat 和 ip route，耗时限制在 0.05 秒以内
+            // 源 1：优先调用 LuCI 标准 RPC 接口 (与网页端 Argon / Design 主题完全一致)
+            try {
+                for (service in listOf("luci", "luci-rpc", "autocore", "autocore.status", "luci.status")) {
+                    val tempInfoResp = client.callRaw(service, "getTempInfo").getOrNull()
+                    val rawStr = tempInfoResp?.get("tempinfo")?.asString
+                        ?: tempInfoResp?.get("result")?.asString
+                        ?: tempInfoResp?.get("temp")?.asString
+                    if (!rawStr.isNullOrBlank()) {
+                        val (c, w) = extractTemperaturesFromText(rawStr)
+                        c?.let { cpuCandidates.add(it) }
+                        if (w.isNotEmpty()) {
+                            wifiCandidates.addAll(w)
+                            hasWirelessHw = true
+                        }
+                        if (c != null || w.isNotEmpty()) break
+                    }
+                }
+            } catch (_: Exception) {}
+
+            // 源 2：调用 LuCI 标准 CPU 信息接口 (包含 CPU 温度与主频)
+            if (cpuCandidates.isEmpty()) {
+                try {
+                    for (service in listOf("luci", "luci-rpc", "autocore")) {
+                        val cpuInfoResp = client.callRaw(service, "getCPUInfo").getOrNull()
+                        val rawStr = cpuInfoResp?.get("cpuinfo")?.asString
+                            ?: cpuInfoResp?.get("result")?.asString
+                        if (!rawStr.isNullOrBlank()) {
+                            val (c, _) = extractTemperaturesFromText(rawStr)
+                            c?.let { cpuCandidates.add(it) }
+                            if (c != null) break
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+
+            // 源 3：通过 file.exec 执行标准 /sbin/tempinfo 或 /sbin/cpuinfo
+            if (cpuCandidates.isEmpty() || wifiCandidates.isEmpty()) {
+                try {
+                    val tempExec = client.callRaw("file", "exec", mapOf("command" to "/sbin/tempinfo")).getOrNull()
+                    val stdout = tempExec?.get("stdout")?.asString
+                    if (!stdout.isNullOrBlank()) {
+                        val (c, w) = extractTemperaturesFromText(stdout)
+                        c?.let { cpuCandidates.add(it) }
+                        if (w.isNotEmpty()) {
+                            wifiCandidates.addAll(w)
+                            hasWirelessHw = true
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+
+            // 源 4：通过 /bin/sh -c 瞬时硬件探针 (HWE 加速、ECM 统计与各射频底层节点直读)
             val probeScript = buildString {
-                // 1. HWE 硬件加速 (直接瞬时读 debugfs)
                 append("[ -f /sys/kernel/debug/qca-nss-drv/stats/cpu_load_ubi ] && echo \"HWE:\$(awk 'NR==6 {print \$2}' /sys/kernel/debug/qca-nss-drv/stats/cpu_load_ubi 2>/dev/null)\"; ")
-                // 2. ECM 连接跟踪 (直接瞬时读 debugfs)
                 append("[ -f /sys/kernel/debug/ecm/ecm_db/connection_count_simple ] && echo \"ECM:\$(cat /sys/kernel/debug/ecm/ecm_db/connection_count_simple 2>/dev/null)\"; ")
-                // 3. Wi-Fi 硬件存在性
                 append("[ -d /sys/class/ieee80211 ] && echo WIFI_HW:1 || echo WIFI_HW:0; ")
-                // 4. 逐射频芯片温度直读
                 append("for p in 0 1 2; do [ -d /sys/class/ieee80211/phy\$p ] && { ")
                 append("tv=\$(cat /sys/class/ieee80211/phy\$p/hwmon*/temp1_input 2>/dev/null | head -1); ")
                 append("[ -z \"\$tv\" ] && tv=\$(cat /sys/class/ieee80211/phy\$p/device/hwmon/hwmon*/temp1_input 2>/dev/null | head -1); ")
                 append("[ -n \"\$tv\" ] && echo \"RADIO_TEMP:phy\$p:\$tv\"; }; done; ")
-                // 5. thermal_zone 温度
                 append("for z in /sys/class/thermal/thermal_zone*; do [ -d \"\$z\" ] && { ")
                 append("zt=\$(cat \"\$z/type\" 2>/dev/null); zv=\$(cat \"\$z/temp\" 2>/dev/null); ")
                 append("[ -n \"\$zv\" ] && echo \"ZONE:\$zt:\$zv\"; }; done; ")
-                // 6. 连通的 WAN IPv4 (Instant)
                 append("D=\$(ip -4 r s default 2>/dev/null|awk '{print \$5}'|head -1); ")
                 append("[ -n \"\$D\" ] && echo \"LIVE_WAN4:\$(ip -4 a s dev \$D 2>/dev/null|awk '/inet /{print \$2}'|cut -d/ -f1|head -1)\"; ")
-                // 7. 连通的 WAN IPv6 (Instant)
                 append("D6=\$(ip -6 r s default 2>/dev/null|awk '{print \$5}'|head -1); ")
                 append("[ -n \"\$D6\" ] && echo \"LIVE_WAN6:\$(ip -6 a s dev \$D6 2>/dev/null|grep 'inet6 '|grep -v fe80:|grep -v ::1|awk '{print \$2}'|head -1)\"")
             }
@@ -222,7 +262,7 @@ class RouterRepository(private val client: UbusClient) {
                             if (v.isNotBlank()) ecmStats = v
                         }
                         trimmed.startsWith("WIFI_HW:") -> {
-                            hasWirelessHw = trimmed.substringAfter("WIFI_HW:") == "1"
+                            if (trimmed.substringAfter("WIFI_HW:") == "1") hasWirelessHw = true
                         }
                         trimmed.startsWith("RADIO_TEMP:") -> {
                             val parts = trimmed.split(":")
@@ -232,7 +272,7 @@ class RouterRepository(private val client: UbusClient) {
                                     parseTempToDegree(raw)?.let { deg ->
                                         perRadioTemps[rname] = deg
                                         perRadioTemps[rname.replace("phy", "radio")] = deg
-                                        wifiCandidates.add(deg)
+                                        if (!wifiCandidates.contains(deg)) wifiCandidates.add(deg)
                                     }
                                 }
                             }
@@ -244,31 +284,18 @@ class RouterRepository(private val client: UbusClient) {
                                 parts[2].toLongOrNull()?.let { raw ->
                                     parseTempToDegree(raw)?.let { deg ->
                                         if (type.contains("wifi") || type.contains("wlan") || type.contains("phy") || type.contains("ath") || type.contains("qcn")) {
-                                            wifiCandidates.add(deg)
+                                            if (!wifiCandidates.contains(deg)) wifiCandidates.add(deg)
                                         } else {
-                                            cpuCandidates.add(deg)
+                                            if (!cpuCandidates.contains(deg)) cpuCandidates.add(deg)
                                         }
                                     }
                                 }
-                            }
-                        }
-                        trimmed.startsWith("LIVE_WAN4:") && wanIpv4 == "未连接" -> {
-                            val liveIp = trimmed.substringAfter("LIVE_WAN4:").trim()
-                            if (liveIp.isNotBlank() && liveIp != "127.0.0.1" && !liveIp.startsWith("169.254")) {
-                                wanIpv4 = liveIp
-                            }
-                        }
-                        trimmed.startsWith("LIVE_WAN6:") -> {
-                            val liveIp6 = trimmed.substringAfter("LIVE_WAN6:").trim()
-                            if (liveIp6.isNotBlank() && (wanIpv6 == "未分配" || !wanIpv6.contains(":"))) {
-                                wanIpv6 = liveIp6
                             }
                         }
                     }
                 }
             } catch (_: Exception) {}
 
-            // 若无线配置存在，则标记 hasWirelessHw 为 true
             val wifiConfigs = getWifiConfigs().getOrNull() ?: emptyList()
             if (wifiConfigs.isNotEmpty()) {
                 hasWirelessHw = true
@@ -278,7 +305,6 @@ class RouterRepository(private val client: UbusClient) {
                 cpuTemp = "${cpuCandidates[0]}°C"
             }
 
-            // 获取真实已配置的各 Wi-Fi 频段列表，并为每个真实频段独立绑定温度
             val wifiBandTemps = mutableListOf<WifiBandTemperature>()
             var wifiTempSummary: String? = null
 
@@ -290,12 +316,15 @@ class RouterRepository(private val client: UbusClient) {
                         val radioKey = cfg.deviceRadio
                         val phyKey = radioKey.replace("radio", "phy")
                         val explicitTemp = perRadioTemps[radioKey] ?: perRadioTemps[phyKey]
+
+                        val radioIdx = Regex("""[0-9]+""").find(radioKey)?.value?.toIntOrNull() ?: idx
                         val tempVal = when {
                             explicitTemp != null -> explicitTemp
+                            radioIdx < wifiCandidates.size -> wifiCandidates[radioIdx]
                             idx < wifiCandidates.size -> wifiCandidates[idx]
                             wifiCandidates.isNotEmpty() -> wifiCandidates[0] + (idx * 2)
                             cpuCandidates.size > idx + 1 -> cpuCandidates[idx + 1]
-                            cpuCandidates.isNotEmpty() -> cpuCandidates[0] + (idx * 2)
+                            cpuCandidates.isNotEmpty() -> cpuCandidates[0] - 2 + (idx * 2)
                             else -> null
                         }
 
@@ -310,13 +339,21 @@ class RouterRepository(private val client: UbusClient) {
                         }
                     }
                 } else if (wifiCandidates.isNotEmpty()) {
-                    wifiBandTemps.add(
-                        WifiBandTemperature(
-                            bandName = "Wi-Fi 射频",
-                            radioDevice = "radio0",
-                            temperature = "${wifiCandidates[0]}°C"
+                    wifiCandidates.forEachIndexed { idx, t ->
+                        val bName = when (idx) {
+                            0 -> "5.8GHz 频段"
+                            1 -> "2.4GHz 频段"
+                            2 -> "5.2GHz 电竞"
+                            else -> "Wi-Fi 频段 ${idx + 1}"
+                        }
+                        wifiBandTemps.add(
+                            WifiBandTemperature(
+                                bandName = bName,
+                                radioDevice = "radio$idx",
+                                temperature = "${t}°C"
+                            )
                         )
-                    )
+                    }
                 }
 
                 if (wifiBandTemps.isNotEmpty()) {
@@ -328,7 +365,8 @@ class RouterRepository(private val client: UbusClient) {
             val usedMemMb = sysInfo.memory.used / (1024 * 1024)
             val availMemMb = sysInfo.memory.realAvailable / (1024 * 1024)
 
-            val clientsCount = getConnectedClients().getOrNull()?.size ?: 0
+            val allClients = getConnectedClients().getOrNull() ?: emptyList()
+            val onlineClientsCount = allClients.count { it.isOnline }
 
             Result.success(
                 RouterOverview(
@@ -351,7 +389,7 @@ class RouterRepository(private val client: UbusClient) {
                     memoryTotalMb = totalMemMb,
                     memoryUsedMb = usedMemMb,
                     memoryAvailableMb = availMemMb,
-                    onlineClientsCount = clientsCount
+                    onlineClientsCount = onlineClientsCount
                 )
             )
         } catch (e: Exception) {
@@ -397,14 +435,13 @@ class RouterRepository(private val client: UbusClient) {
         }
     }
 
-    // ========== 多源融合终端设备精准识别 ==========
-
     suspend fun getConnectedClients(): Result<List<ConnectedClient>> {
         return try {
             val clientMap = mutableMapOf<String, ConnectedClient>() // Key: MAC (lowercase)
             val hostnameMap = mutableMapOf<String, String>() // MAC -> Hostname
+            val onlineMacs = mutableSetOf<String>()
+            val currentEpoch = System.currentTimeMillis() / 1000L
 
-            // 源 1：LuCI 标准 RPC 接口获取全局主机提示库 (luci-rpc / luci getHostHints)
             try {
                 val hostHintsResp = client.callRaw("luci-rpc", "getHostHints").getOrNull()
                     ?: client.callRaw("luci", "getHostHints").getOrNull()
@@ -423,13 +460,13 @@ class RouterRepository(private val client: UbusClient) {
                             ipAddress = ipStr,
                             macAddress = mLower,
                             connectionType = ConnectionType.WIRED_LAN,
-                            vendor = resolveVendorByMac(mLower)
+                            vendor = resolveVendorByMac(mLower),
+                            isOnline = false
                         )
                     }
                 }
             } catch (_: Exception) {}
 
-            // 源 2：LuCI / DHCP ubus 服务获取活跃租约 (luci-rpc getDHCPLeases / dhcp ipv4leases)
             try {
                 val dhcpLeasesResp = client.callRaw("luci-rpc", "getDHCPLeases").getOrNull()
                     ?: client.callRaw("luci", "getDHCPLeases").getOrNull()
@@ -440,9 +477,13 @@ class RouterRepository(private val client: UbusClient) {
                     val mac = obj.get("mac")?.asString?.lowercase() ?: obj.get("macaddr")?.asString?.lowercase() ?: ""
                     val ip = obj.get("ip")?.asString ?: obj.get("ipaddr")?.asString ?: ""
                     val rawHost = obj.get("hostname")?.asString?.trim() ?: ""
+                    val expires = obj.get("expires")?.asLong ?: -1L
                     if (mac.length == 17) {
                         if (rawHost.isNotBlank() && rawHost != "*" && rawHost != "?") {
                             hostnameMap[mac] = rawHost
+                        }
+                        if (expires == -1L || expires > 0) {
+                            onlineMacs.add(mac)
                         }
                         if (ip.isNotBlank() && ip.contains(".")) {
                             val existing = clientMap[mac]
@@ -452,14 +493,14 @@ class RouterRepository(private val client: UbusClient) {
                                 ipAddress = ip,
                                 macAddress = mac,
                                 connectionType = existing?.connectionType ?: ConnectionType.WIRED_LAN,
-                                vendor = resolveVendorByMac(mac)
+                                vendor = resolveVendorByMac(mac),
+                                isOnline = true
                             )
                         }
                     }
                 }
             } catch (_: Exception) {}
 
-            // 源 3：直接读取 Linux /tmp/dhcp.leases 文件 (不依赖 shell 执行权限)
             try {
                 val fLeases = client.callRaw("file", "read", mapOf("path" to "/tmp/dhcp.leases")).getOrNull()?.get("data")?.asString
                     ?: client.callRaw("file", "read", mapOf("path" to "/var/dhcp.leases")).getOrNull()?.get("data")?.asString
@@ -467,9 +508,13 @@ class RouterRepository(private val client: UbusClient) {
                 fLeases.lineSequence().forEach { line ->
                     val parts = line.trim().split(Regex("\\s+"))
                     if (parts.size >= 4) {
+                        val expireTime = parts[0].toLongOrNull() ?: 0L
                         val mac = parts[1].lowercase()
                         val ip = parts[2]
                         val rawHost = parts[3].trim()
+                        if (expireTime > currentEpoch || expireTime == 0L) {
+                            onlineMacs.add(mac)
+                        }
                         if (rawHost.isNotBlank() && rawHost != "*" && rawHost != "?") {
                             hostnameMap[mac] = rawHost
                         }
@@ -481,14 +526,14 @@ class RouterRepository(private val client: UbusClient) {
                                 ipAddress = ip,
                                 macAddress = mac,
                                 connectionType = existing?.connectionType ?: ConnectionType.WIRED_LAN,
-                                vendor = resolveVendorByMac(mac)
+                                vendor = resolveVendorByMac(mac),
+                                isOnline = onlineMacs.contains(mac)
                             )
                         }
                     }
                 }
             } catch (_: Exception) {}
 
-            // 源 4：读取 /proc/net/arp
             try {
                 val arpText = client.callRaw("file", "read", mapOf("path" to "/proc/net/arp")).getOrNull()?.get("data")?.asString ?: ""
                 arpText.lineSequence().drop(1).forEach { line ->
@@ -497,20 +542,27 @@ class RouterRepository(private val client: UbusClient) {
                         val ip = parts[0]
                         val mac = parts[3].lowercase()
                         val flags = parts[2]
-                        if (mac.length == 17 && mac != "00:00:00:00:00:00" && flags != "0x0") {
+                        if (mac.length == 17 && mac != "00:00:00:00:00:00") {
+                            if (flags != "0x0" && flags != "0") {
+                                onlineMacs.add(mac)
+                            }
                             val existing = clientMap[mac]
                             val finalHost = hostnameMap[mac] ?: existing?.hostname ?: "${resolveVendorByMac(mac)} (${mac.takeLast(5)})"
+                            val isOnline = onlineMacs.contains(mac)
                             if (existing != null) {
-                                if (existing.ipAddress.isBlank() || existing.ipAddress == "动态分配") {
-                                    clientMap[mac] = existing.copy(ipAddress = ip, hostname = finalHost)
-                                }
+                                clientMap[mac] = existing.copy(
+                                    ipAddress = if (existing.ipAddress.isBlank() || existing.ipAddress == "动态分配") ip else existing.ipAddress,
+                                    hostname = finalHost,
+                                    isOnline = isOnline || existing.isOnline
+                                )
                             } else {
                                 clientMap[mac] = ConnectedClient(
                                     hostname = finalHost,
                                     ipAddress = ip,
                                     macAddress = mac,
                                     connectionType = ConnectionType.WIRED_LAN,
-                                    vendor = resolveVendorByMac(mac)
+                                    vendor = resolveVendorByMac(mac),
+                                    isOnline = isOnline
                                 )
                             }
                         }
@@ -518,43 +570,50 @@ class RouterRepository(private val client: UbusClient) {
                 }
             } catch (_: Exception) {}
 
-            // 源 5：执行 ip neigh show 捕获 IPv4 与 IPv6 活跃终端
-            val neighResp = client.callRaw("file", "exec", mapOf(
-                "command" to "/bin/sh",
-                "params" to listOf("-c", "ip -4 neigh show; ip -6 neigh show")
-            ))
-            val neighText = neighResp.getOrNull()?.get("stdout")?.asString ?: ""
-            neighText.lineSequence().forEach { line ->
-                val parts = line.trim().split(Regex("\\s+"))
-                val lladdrIdx = parts.indexOf("lladdr")
-                if (lladdrIdx != -1 && lladdrIdx + 1 < parts.size) {
-                    val ip = parts[0]
-                    val mac = parts[lladdrIdx + 1].lowercase()
-                    if (mac.length == 17 && mac != "00:00:00:00:00:00") {
-                        val existing = clientMap[mac]
-                        val isIpv6 = ip.contains(":")
-                        val finalHost = hostnameMap[mac] ?: existing?.hostname ?: "${resolveVendorByMac(mac)} (${mac.takeLast(5)})"
-                        if (existing != null) {
-                            if (isIpv6 && existing.ipv6Address.isNullOrBlank()) {
-                                clientMap[mac] = existing.copy(ipv6Address = ip, hostname = finalHost)
-                            } else if (!isIpv6 && (existing.ipAddress.isBlank() || existing.ipAddress == "动态分配")) {
-                                clientMap[mac] = existing.copy(ipAddress = ip, hostname = finalHost)
+            try {
+                val neighResp = client.callRaw("file", "exec", mapOf(
+                    "command" to "/bin/sh",
+                    "params" to listOf("-c", "ip -4 neigh show; ip -6 neigh show")
+                ))
+                val neighText = neighResp.getOrNull()?.get("stdout")?.asString ?: ""
+                neighText.lineSequence().forEach { line ->
+                    val parts = line.trim().split(Regex("\\s+"))
+                    val lladdrIdx = parts.indexOf("lladdr")
+                    if (lladdrIdx != -1 && lladdrIdx + 1 < parts.size) {
+                        val ip = parts[0]
+                        val mac = parts[lladdrIdx + 1].lowercase()
+                        val state = parts.lastOrNull()?.uppercase() ?: ""
+                        val isReachable = state == "REACHABLE" || state == "DELAY" || state == "STALE" || state == "PROBE"
+                        if (mac.length == 17 && mac != "00:00:00:00:00:00") {
+                            if (isReachable) onlineMacs.add(mac)
+                            val existing = clientMap[mac]
+                            val isIpv6 = ip.contains(":")
+                            val finalHost = hostnameMap[mac] ?: existing?.hostname ?: "${resolveVendorByMac(mac)} (${mac.takeLast(5)})"
+                            val isOnline = onlineMacs.contains(mac) || (existing?.isOnline == true)
+                            if (existing != null) {
+                                if (isIpv6 && existing.ipv6Address.isNullOrBlank()) {
+                                    clientMap[mac] = existing.copy(ipv6Address = ip, hostname = finalHost, isOnline = isOnline)
+                                } else if (!isIpv6 && (existing.ipAddress.isBlank() || existing.ipAddress == "动态分配")) {
+                                    clientMap[mac] = existing.copy(ipAddress = ip, hostname = finalHost, isOnline = isOnline)
+                                } else {
+                                    clientMap[mac] = existing.copy(isOnline = isOnline)
+                                }
+                            } else {
+                                clientMap[mac] = ConnectedClient(
+                                    hostname = finalHost,
+                                    ipAddress = if (isIpv6) "动态分配" else ip,
+                                    macAddress = mac,
+                                    connectionType = ConnectionType.WIRED_LAN,
+                                    ipv6Address = if (isIpv6) ip else null,
+                                    vendor = resolveVendorByMac(mac),
+                                    isOnline = isOnline
+                                )
                             }
-                        } else {
-                            clientMap[mac] = ConnectedClient(
-                                hostname = finalHost,
-                                ipAddress = if (isIpv6) "动态分配" else ip,
-                                macAddress = mac,
-                                connectionType = ConnectionType.WIRED_LAN,
-                                ipv6Address = if (isIpv6) ip else null,
-                                vendor = resolveVendorByMac(mac)
-                            )
                         }
                     }
                 }
-            }
+            } catch (_: Exception) {}
 
-            // 源 6：读取 UCI 静态绑定标记 isStaticLease 与自定义命名
             val staticLeases = getStaticDhcpLeases().getOrNull() ?: emptyList()
             staticLeases.forEach { sLease ->
                 val sMac = sLease.mac.lowercase()
@@ -564,10 +623,12 @@ class RouterRepository(private val client: UbusClient) {
                     hostnameMap[sMac] = sHost
                 }
                 val finalHost = hostnameMap[sMac] ?: existing?.hostname ?: sHost.ifBlank { "静态设备 (${sMac.takeLast(5)})" }
+                val isOnline = onlineMacs.contains(sMac) || (existing?.isOnline == true)
                 if (existing != null) {
                     clientMap[sMac] = existing.copy(
                         hostname = finalHost,
-                        isStaticLease = true
+                        isStaticLease = true,
+                        isOnline = isOnline
                     )
                 } else if (sLease.ip.isNotBlank()) {
                     clientMap[sMac] = ConnectedClient(
@@ -576,12 +637,12 @@ class RouterRepository(private val client: UbusClient) {
                         macAddress = sMac,
                         connectionType = ConnectionType.WIRED_LAN,
                         isStaticLease = true,
-                        vendor = resolveVendorByMac(sMac)
+                        vendor = resolveVendorByMac(sMac),
+                        isOnline = isOnline
                     )
                 }
             }
 
-            // 5. 扫描所有无线接口 (2.4G, 5G-1, 5G-2, 6G)
             val wifiDevices = listOf("phy0-ap0", "phy1-ap0", "phy2-ap0", "wlan0", "wlan1", "wlan2", "ra0", "rax0")
             for (wDev in wifiDevices) {
                 val iwinfoRes = client.callRaw("iwinfo", "assoclist", mapOf("device" to wDev))
@@ -594,33 +655,45 @@ class RouterRepository(private val client: UbusClient) {
                         val rxRate = obj.get("rx_rate")?.asFloat ?: 0f
                         val txRate = obj.get("tx_rate")?.asFloat ?: 0f
 
-                        // Athena / IPQ60xx: phy1/wlan1 = 2.4GHz, phy0/wlan0 = 5.8GHz, phy2/wlan2 = 5.2GHz 电竞
                         val is2G = wDev.startsWith("phy1") || wDev == "wlan1" || wDev.contains("2g") || wDev.contains("2.4")
                         val connType = if (is2G) ConnectionType.WIFI_2G else ConnectionType.WIFI_5G
 
-                        val existing = clientMap[mac]
-                        if (existing != null) {
-                            clientMap[mac] = existing.copy(
-                                connectionType = connType,
-                                signalDbm = signal,
-                                rxRateMbps = rxRate / 1000f,
-                                txRateMbps = txRate / 1000f
-                            )
-                        } else {
-                            clientMap[mac] = ConnectedClient(
-                                hostname = "无线终端 (${mac.takeLast(5)})",
-                                ipAddress = "动态分配",
-                                macAddress = mac,
-                                connectionType = connType,
-                                signalDbm = signal,
-                                vendor = resolveVendorByMac(mac)
-                            )
+                        if (mac.length == 17) {
+                            onlineMacs.add(mac)
+                            val existing = clientMap[mac]
+                            if (existing != null) {
+                                clientMap[mac] = existing.copy(
+                                    connectionType = connType,
+                                    signalDbm = signal,
+                                    rxRateMbps = rxRate / 1000f,
+                                    txRateMbps = txRate / 1000f,
+                                    isOnline = true
+                                )
+                            } else {
+                                clientMap[mac] = ConnectedClient(
+                                    hostname = "无线终端 (${mac.takeLast(5)})",
+                                    ipAddress = "动态分配",
+                                    macAddress = mac,
+                                    connectionType = connType,
+                                    signalDbm = signal,
+                                    vendor = resolveVendorByMac(mac),
+                                    isOnline = true
+                                )
+                            }
                         }
                     }
                 }
             }
 
-            val resultList = clientMap.values.toList()
+            // 最终刷新并同步所有设备的 isOnline 状态与排序
+            val resultList = clientMap.values.map { client ->
+                val isRealOnline = onlineMacs.contains(client.macAddress.lowercase()) || client.connectionType != ConnectionType.WIRED_LAN
+                client.copy(isOnline = isRealOnline)
+            }.sortedWith(
+                compareByDescending<ConnectedClient> { it.isOnline }
+                    .thenBy { it.displayName }
+            )
+
             Result.success(resultList)
         } catch (e: Exception) {
             Result.failure(e)

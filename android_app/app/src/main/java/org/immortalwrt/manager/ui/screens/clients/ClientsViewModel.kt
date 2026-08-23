@@ -12,6 +12,8 @@ import org.immortalwrt.manager.domain.model.ConnectionType
 
 enum class ClientFilter {
     ALL,
+    ONLINE_ONLY,
+    OFFLINE_ONLY,
     WIFI_ONLY,
     WIRED_ONLY
 }
@@ -27,22 +29,31 @@ data class ClientsUiState(
     val errorMessage: String? = null,
     val toastMessage: String? = null
 ) {
+    val onlineCount: Int get() = clients.count { it.isOnline }
+    val offlineCount: Int get() = clients.count { !it.isOnline }
+    val totalCount: Int get() = clients.size
+
     val filteredClients: List<ConnectedClient>
         get() = clients.map { client ->
             val alias = customAliases[client.macAddress.lowercase()]
             if (alias != null) client.copy(customAlias = alias) else client
         }.filter { client ->
-            val searchTarget = "${client.displayName} ${client.ipAddress} ${client.macAddress}"
+            val searchTarget = "${client.displayName} ${client.ipAddress} ${client.macAddress} ${client.vendor ?: ""}"
             val matchSearch = searchTarget.contains(searchQuery, ignoreCase = true)
 
             val matchFilter = when (filter) {
                 ClientFilter.ALL -> true
+                ClientFilter.ONLINE_ONLY -> client.isOnline
+                ClientFilter.OFFLINE_ONLY -> !client.isOnline
                 ClientFilter.WIFI_ONLY -> client.connectionType != ConnectionType.WIRED_LAN
                 ClientFilter.WIRED_ONLY -> client.connectionType == ConnectionType.WIRED_LAN
             }
 
             matchSearch && matchFilter
-        }
+        }.sortedWith(
+            compareByDescending<ConnectedClient> { it.isOnline }
+                .thenBy { it.displayName }
+        )
 }
 
 class ClientsViewModel(

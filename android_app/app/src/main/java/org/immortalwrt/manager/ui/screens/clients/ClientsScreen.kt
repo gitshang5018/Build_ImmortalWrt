@@ -3,9 +3,11 @@ package org.immortalwrt.manager.ui.screens.clients
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -73,18 +75,52 @@ fun ClientsScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // 统计总览
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "在线 ${state.onlineCount} 台 · 离线 ${state.offlineCount} 台 (共 ${state.totalCount} 台)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // 可横向滑动的筛选 Chips
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 FilterChip(
                     selected = state.filter == ClientFilter.ALL,
                     onClick = { viewModel.onFilterChange(ClientFilter.ALL) },
-                    label = { Text("全部 (${state.clients.size})") }
+                    label = { Text("全部 (${state.totalCount})") }
+                )
+                FilterChip(
+                    selected = state.filter == ClientFilter.ONLINE_ONLY,
+                    onClick = { viewModel.onFilterChange(ClientFilter.ONLINE_ONLY) },
+                    label = { Text("在线 (${state.onlineCount})") },
+                    leadingIcon = { Icon(Icons.Default.CheckCircle, contentDescription = null, tint = SuccessGreen, modifier = Modifier.size(16.dp)) }
+                )
+                FilterChip(
+                    selected = state.filter == ClientFilter.OFFLINE_ONLY,
+                    onClick = { viewModel.onFilterChange(ClientFilter.OFFLINE_ONLY) },
+                    label = { Text("离线 (${state.offlineCount})") },
+                    leadingIcon = { Icon(Icons.Default.Cancel, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp)) }
                 )
                 FilterChip(
                     selected = state.filter == ClientFilter.WIFI_ONLY,
                     onClick = { viewModel.onFilterChange(ClientFilter.WIFI_ONLY) },
-                    label = { Text("Wi-Fi 无线") },
+                    label = { Text("无线 Wi-Fi") },
                     leadingIcon = { Icon(Icons.Default.Wifi, contentDescription = null, modifier = Modifier.size(16.dp)) }
                 )
                 FilterChip(
@@ -104,7 +140,7 @@ fun ClientsScreen(
             } else if (state.filteredClients.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
-                        text = "暂无匹配的在线设备",
+                        text = "暂无匹配的设备",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -143,6 +179,8 @@ fun ClientItemCard(
     client: ConnectedClient,
     onClick: () -> Unit
 ) {
+    val isOnline = client.isOnline
+
     ElevatedCard(
         modifier = Modifier
             .fillMaxWidth()
@@ -155,12 +193,13 @@ fun ClientItemCard(
                 .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            val (icon, iconBg) = getDeviceIconAndColor(client)
+            val (icon, rawIconBg) = getDeviceIconAndColor(client)
+            val iconBg = if (isOnline) rawIconBg else Color(0xFF8E8E93)
 
             Box(
                 modifier = Modifier
                     .size(46.dp)
-                    .background(iconBg.copy(alpha = 0.15f), RoundedCornerShape(12.dp)),
+                    .background(iconBg.copy(alpha = if (isOnline) 0.15f else 0.10f), RoundedCornerShape(12.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(imageVector = icon, contentDescription = null, tint = iconBg)
@@ -172,27 +211,46 @@ fun ClientItemCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = client.displayName,
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (isOnline) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
+                        ),
                         maxLines = 1
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Surface(
-                        color = iconBg.copy(alpha = 0.12f),
-                        shape = RoundedCornerShape(4.dp)
-                    ) {
-                        val typeText = when (client.connectionType) {
-                            ConnectionType.WIRED_LAN -> "LAN"
-                            ConnectionType.WIFI_2G -> "2.4G"
-                            ConnectionType.WIFI_5G -> "5G"
-                            ConnectionType.WIFI_6G -> "6G"
+
+                    if (isOnline) {
+                        Surface(
+                            color = iconBg.copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            val typeText = when (client.connectionType) {
+                                ConnectionType.WIRED_LAN -> "LAN"
+                                ConnectionType.WIFI_2G -> "2.4G"
+                                ConnectionType.WIFI_5G -> "5G"
+                                ConnectionType.WIFI_6G -> "6G"
+                            }
+                            Text(
+                                text = typeText,
+                                color = iconBg,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                            )
                         }
-                        Text(
-                            text = typeText,
-                            color = iconBg,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                        )
+                    } else {
+                        Surface(
+                            color = Color(0xFF8E8E93).copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text(
+                                text = "离线",
+                                color = Color(0xFF8E8E93),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                            )
+                        }
                     }
 
                     if (client.isStaticLease) {
@@ -215,18 +273,18 @@ fun ClientItemCard(
                 Text(
                     text = "${client.ipAddress} · ${client.macAddress}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (isOnline) 1f else 0.65f)
                 )
                 client.vendor?.let { v ->
                     Text(
                         text = "厂商: $v",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary
+                        color = if (isOnline) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                     )
                 }
             }
 
-            if (client.connectionType != ConnectionType.WIRED_LAN) {
+            if (isOnline && client.connectionType != ConnectionType.WIRED_LAN) {
                 Column(horizontalAlignment = Alignment.End) {
                     Icon(
                         imageVector = Icons.Default.SignalWifi4Bar,
@@ -240,6 +298,13 @@ fun ClientItemCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+            } else if (!isOnline) {
+                Text(
+                    text = "离线",
+                    fontSize = 11.sp,
+                    color = Color.Gray,
+                    fontWeight = FontWeight.Medium
+                )
             } else {
                 Icon(
                     imageVector = Icons.Default.ChevronRight,
@@ -283,6 +348,15 @@ fun ClientDetailDialog(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("连接状态", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                text = if (client.isOnline) "实时在线" else "离线",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (client.isOnline) SuccessGreen else Color.Gray
+                            )
+                        }
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("原始主机名", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(client.hostname, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
