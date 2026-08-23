@@ -516,17 +516,6 @@ input:focus, select:focus, textarea:focus {
   border-color: var(--text-secondary);
 }
 
-.cbi-button.cbi-dropdown {
-  padding: 0 !important;
-  display: inline-block !important;
-}
-
-.cbi-dropdown ul {
-  list-style: none !important;
-  margin: 0 !important;
-  padding: 0 !important;
-}
-
 .cbi-button-apply, .cbi-button-save, .btn-primary, .cbi-button-action {
   background: var(--primary-blue);
   color: #FFFFFF !important;
@@ -541,6 +530,43 @@ input:focus, select:focus, textarea:focus {
   background: var(--error-red-subtle);
   color: var(--error-red) !important;
   border-color: transparent;
+}
+
+/* Fix Save & Apply Dropdown specifically */
+.cbi-button.cbi-dropdown {
+  padding: 0 !important;
+  display: inline-block !important;
+  overflow: visible !important; /* Let the ul handle overflow */
+}
+
+.cbi-dropdown > ul {
+  margin: 0 !important;
+  padding: 0 !important;
+  list-style: none !important;
+  background: transparent;
+  border: none;
+}
+
+.cbi-dropdown:not([open]) > ul > li:not([display]) {
+  display: none !important;
+}
+
+.cbi-dropdown > ul > li {
+  padding: 7px 16px !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Fix Save & Apply dropdown positioning */
+.cbi-page-actions {
+  text-align: right;
+  padding: 15px 0;
+  margin-top: 20px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
 }
 
 /* Badges & Interface Indicators */
