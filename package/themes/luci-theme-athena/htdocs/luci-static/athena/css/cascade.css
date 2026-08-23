@@ -623,9 +623,9 @@ img[src*="wifi"] {
 .cbi-progressbar {
   display: block !important;
   width: 100% !important;
-  height: 8px !important;
+  height: 22px !important;
   background: var(--border-color-subtle) !important;
-  border-radius: 10px !important;
+  border-radius: 6px !important;
   overflow: hidden !important;
   position: relative !important;
   margin: 10px 0 !important;
@@ -633,9 +633,27 @@ img[src*="wifi"] {
 }
 
 .cbi-progressbar > div {
-  height: 100%;
-  border-radius: 10px;
-  transition: width 0.3s ease;
+  height: 100% !important;
+  border-radius: 6px !important;
+  transition: width 0.3s ease !important;
+  background-color: var(--primary-blue);
+}
+
+.cbi-progressbar::after {
+  content: attr(title);
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  text-align: center;
+  font-size: 11.5px;
+  line-height: 22px;
+  color: var(--text-primary);
+  font-weight: 600;
+  pointer-events: none;
+  white-space: nowrap;
+  text-shadow: 0 0 3px rgba(255,255,255,0.8);
 }
 
 /* ================= 4. Athena Dashboard Extended Cards ================= */
