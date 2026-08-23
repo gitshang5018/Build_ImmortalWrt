@@ -111,8 +111,17 @@
     },
 
     injectDashboardCards() {
-      const container = document.querySelector('.container') || document.getElementById('maincontent');
-      if (!container || !location.pathname.includes('/admin/status/overview')) return;
+      if (document.body.classList.contains('blank-page') ||
+          document.body.classList.contains('login-page') ||
+          document.querySelector('.athena-login-card') ||
+          document.querySelector('#focus_user') ||
+          document.querySelector('#focus_password')) {
+        return; // 登录页面严禁注入
+      }
+
+      const container = document.querySelector('main.container') || document.querySelector('.main-right .container');
+      if (!container) return;
+      if (!location.pathname.includes('/admin/status/overview') && !location.pathname.endsWith('/admin/status')) return;
 
       if (document.getElementById('athena-enhanced-dashboard')) return;
 
