@@ -10,7 +10,7 @@
 			</footer>
 		</div>
 	</div>
-{% else: %}
+{% else %}
 		</main>
 	</div>
 {% endif %}
