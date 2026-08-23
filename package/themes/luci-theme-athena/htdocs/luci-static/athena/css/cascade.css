@@ -1,10 +1,11 @@
 /**
- * luci-theme-athena - Main Stylesheet (Material 3 Card UI)
- * Designed for OpenWrt / ImmortalWrt (Athena AX6600 & Arthur AX1800 Pro)
+ * luci-theme-athena - Complete Material 3 Card UI Stylesheet
+ * Fully compatible with OpenWrt / ImmortalWrt LuCI JS & ucode Engine
  */
 
 :root {
-  /* Brand Colors aligned with App */
+  /* Brand Palette (Aligned with Android App) */
+  --primary: #1E88E5;
   --primary-blue: #1E88E5;
   --primary-blue-hover: #1565C0;
   --primary-blue-subtle: rgba(30, 136, 229, 0.12);
@@ -21,73 +22,79 @@
   --bg-main: #F5F7FA;
   --bg-card: #FFFFFF;
   --bg-sidebar: #FFFFFF;
-  --bg-header: rgba(255, 255, 255, 0.85);
+  --bg-header: rgba(255, 255, 255, 0.90);
   --border-color: #E2E8F0;
   --border-color-subtle: #EDF2F7;
   --text-primary: #1E293B;
   --text-secondary: #64748B;
   --text-muted: #94A3B8;
 
-  /* Form & Components */
+  /* Inputs & Components */
   --input-bg: #F8FAFC;
   --input-border: #CBD5E1;
   --input-focus-border: #1E88E5;
   --input-focus-ring: rgba(30, 136, 229, 0.25);
 
-  /* Dimensions & Shapes */
+  /* Dimensions */
   --card-radius: 16px;
   --input-radius: 10px;
   --btn-radius: 10px;
-  --badge-radius: 6px;
-  --sidebar-width: 260px;
-  --sidebar-collapsed-width: 72px;
-  --header-height: 64px;
-
-  /* Shadows */
+  --sidebar-width: 250px;
+  --header-height: 60px;
   --card-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
-  --elevated-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
-  --glow-primary: 0 4px 14px rgba(30, 136, 229, 0.35);
-
-  /* Transitions */
-  --transition-fast: 0.18s ease;
-  --transition-normal: 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Global Reset & Base */
+[data-theme="dark"] {
+  --bg-main: #0B1120;
+  --bg-card: #1E293B;
+  --bg-sidebar: #1E293B;
+  --bg-header: rgba(30, 41, 59, 0.90);
+  --border-color: #334155;
+  --border-color-subtle: #293548;
+  --text-primary: #F8FAFC;
+  --text-secondary: #94A3B8;
+  --text-muted: #64748B;
+  --input-bg: #0F172A;
+  --input-border: #334155;
+  --input-focus-border: #38BDF8;
+  --input-focus-ring: rgba(56, 189, 248, 0.25);
+  --card-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+}
+
+/* ================= 1. Global Reset & Body ================= */
 * {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
-body {
+html, body {
+  min-height: 100vh;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   background-color: var(--bg-main);
   color: var(--text-primary);
   font-size: 14px;
   line-height: 1.5;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
   -webkit-font-smoothing: antialiased;
 }
 
 a {
   color: var(--primary-blue);
   text-decoration: none;
-  transition: color var(--transition-fast);
+  transition: color 0.2s ease;
 }
 
 a:hover {
   color: var(--primary-blue-hover);
 }
 
-/* App Shell Layout */
+/* ================= 2. App Shell Layout ================= */
 #maincontent {
   display: flex;
   min-height: 100vh;
 }
 
+/* Sidebar */
 .main-left {
   width: var(--sidebar-width);
   background: var(--bg-sidebar);
@@ -99,16 +106,103 @@ a:hover {
   bottom: 0;
   left: 0;
   z-index: 100;
-  transition: width var(--transition-normal), transform var(--transition-normal);
+  overflow-y: auto;
+  transition: transform 0.25s ease;
 }
 
+.main-left .sidebar-brand {
+  height: var(--header-height);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 12px;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.main-left .sidebar-brand img {
+  width: 32px;
+  height: 32px;
+}
+
+.main-left .sidebar-brand .title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* LuCI JS Sidebar Navigation Menu */
+.main-left .main-menu, .main-left #mainmenu, .main-left .nav {
+  padding: 12px 8px;
+  list-style: none;
+  flex: 1;
+}
+
+.main-left .nav > li, .main-left ul > li {
+  margin-bottom: 4px;
+  list-style: none;
+}
+
+.main-left .nav > li > a, .main-left ul > li > a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-size: 13.5px;
+  transition: all 0.2s ease;
+}
+
+.main-left .nav > li > a:hover, .main-left ul > li > a:hover {
+  background: var(--input-bg);
+  color: var(--text-primary);
+}
+
+.main-left .nav > li > a.active, .main-left .nav > li.active > a,
+.main-left ul > li.active > a, .main-left ul > li > a.selected {
+  background: var(--primary-blue);
+  color: #FFFFFF;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(30, 136, 229, 0.35);
+}
+
+/* Submenu */
+.main-left .slide-menu, .main-left ul.sub-menu {
+  list-style: none;
+  padding-left: 20px;
+  margin-top: 4px;
+  margin-bottom: 6px;
+}
+
+.main-left .slide-menu > li > a, .main-left ul.sub-menu > li > a {
+  display: block;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  border-radius: 6px;
+}
+
+.main-left .slide-menu > li > a:hover, .main-left ul.sub-menu > li > a:hover {
+  color: var(--primary-blue);
+  background: var(--input-bg);
+}
+
+.main-left .slide-menu > li > a.active, .main-left .slide-menu > li.active > a {
+  color: var(--primary-blue);
+  font-weight: 700;
+  background: var(--primary-blue-subtle);
+}
+
+/* Right Content Area */
 .main-right {
   flex: 1;
   margin-left: var(--sidebar-width);
   display: flex;
   flex-direction: column;
   min-width: 0;
-  transition: margin-left var(--transition-normal);
+  background-color: var(--bg-main);
 }
 
 /* Header Navbar */
@@ -139,7 +233,7 @@ header.athena-header {
   font-weight: 700;
   font-size: 12px;
   padding: 4px 10px;
-  border-radius: var(--badge-radius);
+  border-radius: 6px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -153,11 +247,10 @@ header.athena-header {
   background: var(--success-green);
 }
 
-/* Header Buttons */
 .athena-icon-btn {
-  width: 38px;
-  height: 38px;
-  border-radius: 10px;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
   border: 1px solid var(--border-color);
   background: var(--bg-card);
   color: var(--text-primary);
@@ -165,7 +258,7 @@ header.athena-header {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: all 0.2s ease;
 }
 
 .athena-icon-btn:hover {
@@ -174,98 +267,80 @@ header.athena-header {
   border-color: var(--primary-blue);
 }
 
-/* Sidebar Branding & Navigation */
-.sidebar-brand {
-  height: var(--header-height);
-  display: flex;
-  align-items: center;
-  padding: 0 20px;
-  gap: 12px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.sidebar-brand img {
-  width: 32px;
-  height: 32px;
-}
-
-.sidebar-brand .title {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--text-primary);
-  letter-spacing: -0.2px;
-}
-
-.sidebar-menu {
-  flex: 1;
-  padding: 16px 12px;
-  overflow-y: auto;
-  list-style: none;
-}
-
-.sidebar-menu li {
-  margin-bottom: 4px;
-}
-
-.sidebar-menu a {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
-  border-radius: 12px;
-  color: var(--text-secondary);
-  font-weight: 500;
-  transition: all var(--transition-fast);
-}
-
-.sidebar-menu a:hover {
-  background: var(--input-bg);
-  color: var(--text-primary);
-}
-
-.sidebar-menu a.active, .sidebar-menu li.active > a {
-  background: var(--primary-blue);
-  color: #FFFFFF;
-  font-weight: 600;
-  box-shadow: var(--glow-primary);
-}
-
-/* Submenu dropdown */
-.sidebar-menu ul.sub-menu {
-  list-style: none;
-  padding-left: 28px;
-  margin-top: 4px;
-}
-
-.sidebar-menu ul.sub-menu a {
-  padding: 6px 12px;
-  font-size: 13px;
-}
-
-/* Main Content Body */
 .container {
-  padding: 24px;
+  padding: 20px 24px;
   max-width: 1360px;
   width: 100%;
   margin: 0 auto;
 }
 
+/* ================= 3. LuCI Standard DOM & Grid Table Engine ================= */
+/* This restores complete LuCI JS table formatting! */
+.table, table.table, table.cbi-section-table {
+  width: 100%;
+  display: table;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: 12px 0;
+}
+
+.tr, table tr {
+  display: table-row;
+}
+
+.thead, table thead {
+  display: table-header-group;
+}
+
+.tbody, table tbody {
+  display: table-row-group;
+}
+
+.tfoot, table tfoot {
+  display: table-footer-group;
+}
+
+.th, .td, table th, table td {
+  display: table-cell;
+  padding: 10px 14px;
+  vertical-align: middle;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color-subtle);
+}
+
+.th, table th {
+  background: var(--input-bg);
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 12.5px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.th:first-child, table th:first-child {
+  border-top-left-radius: 8px;
+  border-bottom-left-radius: 8px;
+}
+
+.th:last-child, table th:last-child {
+  border-top-right-radius: 8px;
+  border-bottom-right-radius: 8px;
+}
+
 /* Material 3 Card Container for LuCI Sections */
-.cbi-map, .cbi-section, .panel, .cbi-tabgroup, .athena-card {
+.cbi-map, .cbi-section, .panel, .cbi-tabgroup, .cbi-section-node {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--card-radius);
   box-shadow: var(--card-shadow);
   padding: 20px;
-  margin-bottom: 20px;
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+  margin-bottom: 18px;
 }
 
 .cbi-map-title, h2, h3, .cbi-section-legend {
   font-size: 16px;
   font-weight: 700;
   color: var(--text-primary);
-  margin-bottom: 16px;
+  margin-bottom: 14px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -274,10 +349,10 @@ header.athena-header {
 .cbi-map-descr, .cbi-section-descr {
   color: var(--text-secondary);
   font-size: 13px;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 
-/* Form Fields & Controls */
+/* Form Row (cbi-value) */
 .cbi-value {
   display: flex;
   align-items: center;
@@ -290,7 +365,8 @@ header.athena-header {
 }
 
 .cbi-value-title {
-  width: 220px;
+  width: 230px;
+  flex-shrink: 0;
   font-weight: 600;
   color: var(--text-primary);
 }
@@ -299,7 +375,14 @@ header.athena-header {
   flex: 1;
 }
 
-input[type="text"], input[type="password"], input[type="number"], select, textarea {
+.cbi-value-description {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+/* Form Controls */
+input[type="text"], input[type="password"], input[type="number"], select, textarea, .cbi-dropdown {
   background: var(--input-bg);
   border: 1px solid var(--input-border);
   color: var(--text-primary);
@@ -307,31 +390,31 @@ input[type="text"], input[type="password"], input[type="number"], select, textar
   padding: 8px 12px;
   font-size: 13.5px;
   outline: none;
-  transition: all var(--transition-fast);
+  transition: all 0.2s ease;
   width: 100%;
-  max-width: 420px;
+  max-width: 440px;
 }
 
-input:focus, select:focus, textarea:focus {
+input:focus, select:focus, textarea:focus, .cbi-dropdown:focus {
   border-color: var(--input-focus-border);
   box-shadow: 0 0 0 3px var(--input-focus-ring);
   background: var(--bg-card);
 }
 
 /* Buttons */
-.cbi-button, .btn {
+.cbi-button, .btn, button {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   color: var(--text-primary);
   font-weight: 600;
-  padding: 8px 16px;
+  padding: 7px 16px;
   border-radius: var(--btn-radius);
   cursor: pointer;
   font-size: 13px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  transition: all var(--transition-fast);
+  transition: all 0.2s ease;
 }
 
 .cbi-button:hover, .btn:hover {
@@ -339,80 +422,72 @@ input:focus, select:focus, textarea:focus {
   border-color: var(--text-secondary);
 }
 
-.cbi-button-apply, .cbi-button-save, .btn-primary {
+.cbi-button-apply, .cbi-button-save, .btn-primary, .cbi-button-action {
   background: var(--primary-blue);
-  color: #FFFFFF;
+  color: #FFFFFF !important;
   border-color: var(--primary-blue);
 }
 
 .cbi-button-apply:hover, .cbi-button-save:hover, .btn-primary:hover {
   background: var(--primary-blue-hover);
-  border-color: var(--primary-blue-hover);
-  box-shadow: var(--glow-primary);
 }
 
 .cbi-button-reset, .btn-danger {
+  background: var(--error-red-subtle);
+  color: var(--error-red) !important;
+  border-color: transparent;
+}
+
+/* Badges & Interface Indicators */
+.ifacebadge, .zonebadge, .temp-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  background: var(--input-bg);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+
+.temp-pill.cool {
+  background: var(--success-green-subtle);
+  color: var(--success-green);
+  border-color: transparent;
+}
+
+.temp-pill.warm {
+  background: var(--warning-orange-subtle);
+  color: var(--warning-orange);
+  border-color: transparent;
+}
+
+.temp-pill.hot {
   background: var(--error-red-subtle);
   color: var(--error-red);
   border-color: transparent;
 }
 
-.cbi-button-reset:hover, .btn-danger:hover {
-  background: var(--error-red);
-  color: #FFFFFF;
-}
-
-/* Tables */
-table.cbi-section-table, table.table {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  margin-top: 10px;
-}
-
-table.cbi-section-table th, table.table th {
-  background: var(--input-bg);
-  color: var(--text-secondary);
-  font-weight: 600;
-  font-size: 12.5px;
-  text-align: left;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-table.cbi-section-table th:first-child {
-  border-top-left-radius: 10px;
-  border-bottom-left-radius: 10px;
-}
-
-table.cbi-section-table th:last-child {
-  border-top-right-radius: 10px;
-  border-bottom-right-radius: 10px;
-}
-
-table.cbi-section-table td, table.table td {
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--border-color-subtle);
-  color: var(--text-primary);
-}
-
-/* Progress & Sliders */
+/* Progress Bars */
 .cbi-progressbar {
-  height: 10px;
+  height: 8px;
   background: var(--border-color-subtle);
   border-radius: 10px;
   overflow: hidden;
   position: relative;
+  margin: 6px 0;
 }
 
 .cbi-progressbar > div {
   height: 100%;
   background: linear-gradient(90deg, var(--primary-blue), var(--secondary-cyan));
   border-radius: 10px;
-  transition: width 0.4s ease;
+  transition: width 0.3s ease;
 }
 
-/* Athena Dashboard Extended Cards */
+/* ================= 4. Athena Dashboard Extended Cards ================= */
 .athena-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -428,15 +503,13 @@ table.cbi-section-table td, table.table td {
   padding: 18px;
   display: flex;
   flex-direction: column;
-  position: relative;
-  overflow: hidden;
 }
 
 .athena-stat-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .athena-stat-title {
@@ -446,7 +519,7 @@ table.cbi-section-table td, table.table td {
 }
 
 .athena-stat-value {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 700;
   color: var(--text-primary);
   margin-bottom: 4px;
@@ -457,35 +530,8 @@ table.cbi-section-table td, table.table td {
   color: var(--text-muted);
 }
 
-/* Tri-band Temperature Pill Badges */
-.temp-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
-  border-radius: 6px;
-  font-size: 11.5px;
-  font-weight: 600;
-}
-
-.temp-pill.cool {
-  background: var(--success-green-subtle);
-  color: var(--success-green);
-}
-
-.temp-pill.warm {
-  background: var(--warning-orange-subtle);
-  color: var(--warning-orange);
-}
-
-.temp-pill.hot {
-  background: var(--error-red-subtle);
-  color: var(--error-red);
-}
-
-/* Traffic Waveform Chart Container */
 .traffic-chart-box {
   width: 100%;
-  height: 120px;
-  margin-top: 10px;
+  height: 110px;
+  margin-top: 8px;
 }

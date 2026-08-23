@@ -6,6 +6,26 @@
 (function () {
   'use strict';
 
+  // 通用 UBUS 调用助手 (兼容所有 LuCI JS 版本)
+  function callUbus(object, method, params) {
+    const token = (window.L && L.env && L.env.ubus_token) || '00000000000000000000000000000000';
+    return fetch('/ubus', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: Math.floor(Math.random() * 10000),
+        method: 'call',
+        params: [token, object, method, params || {}]
+      })
+    }).then(r => r.json()).then(data => {
+      if (data && data.result && data.result[1]) {
+        return data.result[1];
+      }
+      return null;
+    }).catch(() => null);
+  }
+
   // ========== 1. 主题与明暗模式控制器 ==========
   const ThemeManager = {
     KEY: 'athena-theme-preference',
@@ -14,7 +34,7 @@
       const saved = localStorage.getItem(this.KEY) || 'auto';
       this.apply(saved);
 
-      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
         if (localStorage.getItem(this.KEY) === 'auto') {
           this.apply('auto');
         }
@@ -84,13 +104,16 @@
         this.injectDashboardCards();
         this.startPoll();
       });
+      // 兼容单页应用路由切换
+      window.addEventListener('load', () => {
+        this.injectDashboardCards();
+      });
     },
 
     injectDashboardCards() {
       const container = document.querySelector('.container') || document.getElementById('maincontent');
       if (!container || !location.pathname.includes('/admin/status/overview')) return;
 
-      // 仅在概览页顶部注入增强网速波形与雅典娜三频温控卡片
       if (document.getElementById('athena-enhanced-dashboard')) return;
 
       const dashboardHtml = `
@@ -176,13 +199,8 @@
     dropCaches(btn) {
       btn.disabled = true;
       btn.innerHTML = '正在释放...';
-      fetch('/cgi-bin/luci/admin/system/drop_caches', { method: 'POST' })
-        .catch(() => {})
+      callUbus('file', 'exec', { command: '/bin/sh', params: ['-c', 'sync && echo 3 > /proc/sys/vm/drop_caches'] })
         .finally(() => {
-          // 备用 ubus 执行 drop_caches
-          if (window.L && L.ws) {
-            L.ws.call('file', 'exec', { command: '/bin/sh', params: ['-c', 'sync && echo 3 > /proc/sys/vm/drop_caches'] });
-          }
           setTimeout(() => {
             btn.disabled = false;
             btn.innerHTML = '✅ 释放完成';
@@ -197,11 +215,10 @@
       setInterval(() => {
         this.fetchTemperatures();
         this.fetchTraffic();
-      }, 3000);
+      }, 2500);
     },
 
     fetchTemperatures() {
-      // 优先调用 luci / luci-rpc 的 getTempInfo
       const handleTempStr = (str) => {
         if (!str) return;
         const cpuM = str.match(/CPU[:\s]+([0-9.]+)/i);
@@ -219,7 +236,6 @@
         const wifiSection = str.substring(str.toLowerCase().indexOf('wifi:'));
         const wNums = wifiSection.match(/([0-9.]+)/g) || [];
         if (wNums.length >= 3) {
-          // Athena: phy0=5.8G, phy1=2.4G, phy2=5.2G
           const el58 = document.getElementById('athena-w58-temp');
           if (el58) el58.innerText = `${parseFloat(wNums[0]).toFixed(1)} °C`;
           const el24 = document.getElementById('athena-w24-temp');
@@ -232,16 +248,22 @@
         }
       };
 
-      if (window.L && L.resolveDefault && L.ws) {
-        L.resolveDefault(L.ws.call('luci', 'getTempInfo'), {})
-          .then((res) => handleTempStr(res.tempinfo || res.result || res.temp))
-          .catch(() => {});
-      }
+      callUbus('luci', 'getTempInfo').then(res => {
+        if (res && (res.tempinfo || res.result || res.temp)) {
+          handleTempStr(res.tempinfo || res.result || res.temp);
+        } else {
+          // 降级尝试 file.exec /sbin/tempinfo
+          callUbus('file', 'exec', { command: '/sbin/tempinfo' }).then(execRes => {
+            if (execRes && execRes.stdout) {
+              handleTempStr(execRes.stdout);
+            }
+          });
+        }
+      });
     },
 
     fetchTraffic() {
-      if (!window.L || !L.resolveDefault || !L.ws) return;
-      L.resolveDefault(L.ws.call('network.interface', 'dump'), {}).then((res) => {
+      callUbus('network.interface', 'dump').then(res => {
         let rxTotal = 0;
         let txTotal = 0;
         if (res && res.interface) {
@@ -275,7 +297,7 @@
         this.lastRxBytes = rxTotal;
         this.lastTxBytes = txTotal;
         this.lastTime = now;
-      }).catch(() => {});
+      });
     },
 
     formatSpeed(bps) {
@@ -300,9 +322,8 @@
       const h = rect.height;
       ctx.clearRect(0, 0, w, h);
 
-      const maxVal = Math.max(...this.historyRx, ...this.historyTx, 10240); // 最小刻度 10KB/s
+      const maxVal = Math.max(...this.historyRx, ...this.historyTx, 10240);
 
-      // 绘制平滑贝塞尔填充
       this.drawBezierPath(ctx, this.historyRx, w, h, maxVal, '#1E88E5', 'rgba(30, 136, 229, 0.15)');
       this.drawBezierPath(ctx, this.historyTx, w, h, maxVal, '#00BCD4', 'rgba(0, 188, 212, 0.12)');
     },
