@@ -411,23 +411,31 @@ a.showSide {
   color: var(--text-primary);
 }
 
-.cbi-tabmenu > li[data-tab].cbi-tab,
-.cbi-tabmenu > li[data-tab].cbi-tab-active,
-.cbi-tabmenu > li.cbi-tab,
-.cbi-tabmenu > li.cbi-tab-active {
-  background: var(--primary-blue);
-  color: #fff;
-  border-color: var(--primary-blue);
-  box-shadow: 0 2px 6px rgba(30, 136, 229, 0.3);
+.cbi-tabmenu > li.cbi-tab-active,
+.cbi-tabmenu > li.cbi-tab-active > a,
+.cbi-tabmenu > li[data-tab-active="true"],
+.cbi-tabmenu > li.active {
+  background: var(--primary-blue) !important;
+  color: #FFFFFF !important;
+  border-color: var(--primary-blue) !important;
+  box-shadow: 0 2px 6px rgba(30, 136, 229, 0.3) !important;
   border-radius: 8px;
 }
 
+/* Tab Panes & Container Hiding Rules */
 .cbi-tabcontainer {
   display: none;
 }
 
 .cbi-tabcontainer.cbi-tab-active {
   display: block;
+}
+
+.cbi-tabgroup > [data-tab]:not(.cbi-tab-active),
+.cbi-section[data-tab]:not(.cbi-tab-active),
+.cbi-section-node[data-tab]:not(.cbi-tab-active),
+[data-tab]:not(.cbi-tab-active):not(li):not(.cbi-tabmenu *):not(.cbi-tab) {
+  display: none !important;
 }
 
 .cbi-map-title, h2, h3, .cbi-section-legend {
