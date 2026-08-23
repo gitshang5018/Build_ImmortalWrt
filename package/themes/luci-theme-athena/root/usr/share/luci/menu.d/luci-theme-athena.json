@@ -1,0 +1,10 @@
+{
+	"admin/system/themes/athena": {
+		"title": "Athena",
+		"order": 30,
+		"action": {
+			"type": "theme",
+			"name": "athena"
+		}
+	}
+}

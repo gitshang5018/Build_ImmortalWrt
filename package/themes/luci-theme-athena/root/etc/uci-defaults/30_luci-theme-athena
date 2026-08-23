@@ -1,0 +1,8 @@
+#!/bin/sh
+
+uci -q batch <<-EOF >/dev/null
+	set luci.themes.Athena=/luci-static/athena
+	commit luci
+EOF
+
+exit 0
