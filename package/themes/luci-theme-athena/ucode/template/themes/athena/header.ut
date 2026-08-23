@@ -3,11 +3,8 @@
  Licensed to the public under the Apache License 2.0.
 -#}
 {%
-	import { readfile } from 'fs';
-
-	let node = menu.get_active_node();
-	let categories = menu.get_categories();
-	let hostname = uci.get('system', '@system[0]', 'hostname') || 'ImmortalWrt';
+	const boardinfo = ubus.call('system', 'board') ?? {};
+	const hostname = boardinfo.hostname ?? 'ImmortalWrt';
 
 	http.prepare_content('text/html; charset=UTF-8');
 -%}
@@ -15,7 +12,7 @@
 <html lang="{{ dispatcher.lang }}" data-theme="light">
 <head>
 	<meta charset="utf-8">
-	<title>{{ striptags(`${hostname}${node?.title ? ` - ${node.title}` : ''}`) }} - LuCI</title>
+	<title>{{ striptags(`${hostname}${dispatched?.title ? ` - ${_(dispatched.title)}` : ''}`) }} - LuCI</title>
 	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 	<meta name="theme-color" content="#1E88E5">
 	<meta name="apple-mobile-web-app-capable" content="yes">
@@ -29,7 +26,7 @@
 	<script src="{{ resource }}/luci.js"></script>
 	<script src="{{ media }}/js/theme.js"></script>
 </head>
-<body class="lang_{{ dispatcher.lang }} {{ entityencode(node?.name ?? '', true) }}">
+<body class="lang_{{ dispatcher.lang }} {{ entityencode(join('-', ctx.request_path ?? []), true) }}">
 	<div id="athena-backdrop" class="athena-mobile-backdrop"></div>
 	
 	<div id="maincontent">
@@ -40,32 +37,9 @@
 				<div class="title">{{ hostname }}</div>
 			</div>
 
-			<ul class="sidebar-menu">
-				{%
-					function render_menu(category, level) {
-						let entries = menu.get_menu_children(category);
-						if (!entries || !length(entries)) return;
-
-						for (let i, entry in entries) {
-							let has_children = length(menu.get_menu_children(entry.name)) > 0;
-							let is_active = (node?.name == entry.name || index(node?.name ?? '', entry.name) == 0);
-				%}
-					<li class="{{ is_active ? 'active' : '' }}">
-						<a href="{{ entry.url }}" class="{{ is_active ? 'active' : '' }}">
-							<span>{{ entry.title }}</span>
-						</a>
-						{% if (has_children && is_active): %}
-							<ul class="sub-menu">
-								{% render_menu(entry.name, level + 1); %}
-							</ul>
-						{% endif %}
-					</li>
-				{%
-						}
-					}
-					render_menu('', 0);
-				%}
-			</ul>
+			<div class="main-menu" id="mainmenu">
+				<!-- LuCI JS 客户端动态渲染菜单 -->
+			</div>
 		</aside>
 
 		<!-- 主内容右侧区 -->

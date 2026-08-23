@@ -3,7 +3,8 @@
  Licensed to the public under the Apache License 2.0.
 -#}
 {%
-	let hostname = uci.get('system', '@system[0]', 'hostname') || 'ImmortalWrt';
+	const boardinfo = ubus.call('system', 'board') ?? {};
+	const hostname = boardinfo.hostname ?? 'ImmortalWrt';
 	http.prepare_content('text/html; charset=UTF-8');
 -%}
 <!DOCTYPE html>
