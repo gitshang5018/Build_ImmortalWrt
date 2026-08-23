@@ -212,41 +212,13 @@
       this.fetchTemperatures();
       this.fetchTraffic();
       this.drawWaveform();
-      this.replaceIcons();
 
       if (!this._pollInterval) {
         this._pollInterval = setInterval(() => {
           this.fetchTemperatures();
           this.fetchTraffic();
-          this.replaceIcons();
         }, 1500);
       }
-    },
-
-    replaceIcons() {
-      document.querySelectorAll('.ifacebadge img, .port img, table.ports td img').forEach(img => {
-        if (img.dataset.replaced) return;
-        const src = img.getAttribute('src');
-        if (!src) return;
-        
-        let svg = '';
-        if (src.includes('port_up') || src.includes('eth')) {
-          svg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1E88E5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><path d="M6 18h.01"/><path d="M10 18h.01"/><path d="M12 14v-4"/><path d="M8 6h8"/><path d="M12 6V2"/></svg>';
-        } else if (src.includes('port_down')) {
-          svg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#9e9e9e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><path d="M6 18h.01"/><path d="M10 18h.01"/><path d="M12 14v-4"/><path d="M8 6h8"/><path d="M12 6V2"/></svg>';
-        } else if (src.includes('wifi')) {
-          svg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#00BCD4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>';
-        }
-
-        if (svg) {
-          const span = document.createElement('span');
-          span.innerHTML = svg;
-          span.className = 'modern-icon';
-          img.parentNode.replaceChild(span.firstChild, img);
-        } else {
-          img.dataset.replaced = 'true';
-        }
-      });
     },
 
     fetchTemperatures() {
