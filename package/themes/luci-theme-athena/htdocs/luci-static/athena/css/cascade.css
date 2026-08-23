@@ -382,32 +382,44 @@ a.showSide {
   margin-bottom: 20px;
 }
 
-.cbi-tabmenu > li > a {
-  display: block;
+.cbi-tabmenu > li {
+  border-radius: 8px;
+  transition: all 0.2s ease;
   padding: 8px 16px;
   font-size: 13.5px;
   font-weight: 500;
-  color: var(--text-secondary);
+  cursor: pointer;
   background: var(--input-bg);
-  border-radius: 8px;
+  color: var(--text-secondary);
+}
+
+.cbi-tabmenu > li > a {
+  display: block;
+  padding: 0;
+  font-size: inherit;
+  font-weight: inherit;
+  color: inherit;
+  background: transparent;
+  border-radius: 0;
   text-decoration: none;
-  border: 1px solid transparent;
+  border: none;
   transition: all 0.2s ease;
 }
 
+.cbi-tabmenu > li:hover,
 .cbi-tabmenu > li > a:hover {
-  background: var(--border-color-subtle);
   color: var(--text-primary);
 }
 
 .cbi-tabmenu > li[data-tab].cbi-tab,
 .cbi-tabmenu > li[data-tab].cbi-tab-active,
-.cbi-tabmenu > li.cbi-tab > a,
-.cbi-tabmenu > li.cbi-tab-active > a {
+.cbi-tabmenu > li.cbi-tab,
+.cbi-tabmenu > li.cbi-tab-active {
   background: var(--primary-blue);
   color: #fff;
   border-color: var(--primary-blue);
   box-shadow: 0 2px 6px rgba(30, 136, 229, 0.3);
+  border-radius: 8px;
 }
 
 .cbi-tabcontainer {
