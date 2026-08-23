@@ -534,35 +534,38 @@ input:focus, select:focus, textarea:focus, .cbi-dropdown:focus {
 
 /* Badges & Interface Indicators */
 .ifacebox {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: stretch;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  align-self: flex-start !important;
   gap: 8px;
   background: var(--input-bg);
   border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 12px;
   margin: 4px;
-  min-width: 210px;
-  vertical-align: top;
+  min-width: 220px !important;
+  vertical-align: top !important;
 }
 
 .ifacebox-head {
   text-align: center;
   font-weight: bold;
-  display: block;
-  width: 100%;
+  display: block !important;
+  width: 100% !important;
+  clear: both !important;
 }
 
 .ifacebox-body {
-  text-align: left;
+  text-align: left !important;
   font-size: 12.5px;
-  display: block;
-  width: 100%;
+  display: block !important;
+  width: 100% !important;
+  clear: both !important;
 }
 
 .network-status-table td, table td {
-  vertical-align: top;
+  vertical-align: top !important;
 }
 
 .ifacebadge, .zonebadge, .temp-pill {
@@ -618,14 +621,15 @@ img[src*="wifi"] {
 
 /* Progress Bars */
 .cbi-progressbar {
-  display: block;
-  width: 100%;
-  height: 8px;
-  background: var(--border-color-subtle);
-  border-radius: 10px;
-  overflow: hidden;
-  position: relative;
-  margin: 6px 0;
+  display: block !important;
+  width: 100% !important;
+  height: 8px !important;
+  background: var(--border-color-subtle) !important;
+  border-radius: 10px !important;
+  overflow: hidden !important;
+  position: relative !important;
+  margin: 10px 0 !important;
+  clear: both !important;
 }
 
 .cbi-progressbar > div {
