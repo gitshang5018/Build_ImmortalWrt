@@ -162,6 +162,14 @@ a:hover {
   text-decoration: none;
   cursor: pointer;
   transition: all 0.2s ease;
+  gap: 12px;
+}
+
+.menu-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: currentColor;
 }
 
 .main-left .nav > li > a:hover {
@@ -362,6 +370,52 @@ a.showSide {
   box-shadow: var(--card-shadow);
   padding: 20px;
   margin-bottom: 18px;
+}
+
+.cbi-tabmenu {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  border-bottom: 1px solid var(--border-color);
+  padding: 0 0 10px 0;
+  margin-bottom: 20px;
+}
+
+.cbi-tabmenu > li > a {
+  display: block;
+  padding: 8px 16px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--input-bg);
+  border-radius: 8px;
+  text-decoration: none;
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.cbi-tabmenu > li > a:hover {
+  background: var(--border-color-subtle);
+  color: var(--text-primary);
+}
+
+.cbi-tabmenu > li[data-tab].cbi-tab,
+.cbi-tabmenu > li[data-tab].cbi-tab-active,
+.cbi-tabmenu > li.cbi-tab > a,
+.cbi-tabmenu > li.cbi-tab-active > a {
+  background: var(--primary-blue);
+  color: #fff;
+  border-color: var(--primary-blue);
+  box-shadow: 0 2px 6px rgba(30, 136, 229, 0.3);
+}
+
+.cbi-tabcontainer {
+  display: none;
+}
+
+.cbi-tabcontainer.cbi-tab-active {
+  display: block;
 }
 
 .cbi-map-title, h2, h3, .cbi-section-legend {
