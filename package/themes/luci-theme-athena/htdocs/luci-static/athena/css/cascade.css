@@ -422,12 +422,18 @@ a.showSide {
   border-radius: 8px;
 }
 
-/* Tab Panes & Container Hiding Rules (Only hide inactive tab containers, do NOT hide form fields) */
-.cbi-tabcontainer:not(.cbi-tab-active) {
+/* Tab Panes & Container Hiding Rules
+   Only hide inactive tab containers (not individual form fields).
+   Keep rules specific so labels and inputs stay in the same hidden scope. */
+.cbi-tabcontainer:not(.cbi-tab-active),
+.cbi-section[data-tab]:not(.cbi-tab-active),
+.cbi-section-node[data-tab]:not(.cbi-tab-active) {
   display: none !important;
 }
 
-.cbi-tabcontainer.cbi-tab-active {
+.cbi-tabcontainer.cbi-tab-active,
+.cbi-section[data-tab].cbi-tab-active,
+.cbi-section-node[data-tab].cbi-tab-active {
   display: block;
 }
 
