@@ -801,7 +801,29 @@
       draw();
     }
 
+    // 可访问性修复：矫正不匹配的 label for 属性
+    function fixLabelFor() {
+      document.querySelectorAll('label[for]').forEach(function (label) {
+        const forId = label.getAttribute('for');
+        if (!forId) return;
+        if (document.getElementById(forId)) return;
+        const byName = document.querySelector('input[name="' + forId + '"], select[name="' + forId + '"], textarea[name="' + forId + '"]');
+        if (byName && byName.id) {
+          label.setAttribute('for', byName.id);
+          return;
+        }
+        const container = label.closest('.cbi-value, .cbi-tabcontainer, .cbi-section, form, fieldset');
+        if (container) {
+          const field = container.querySelector('input[id], select[id], textarea[id]');
+          if (field && field.id) {
+            label.setAttribute('for', field.id);
+          }
+        }
+      });
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
+      fixLabelFor();
       initWaveform();
     });
   </script>

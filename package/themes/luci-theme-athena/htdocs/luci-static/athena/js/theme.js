@@ -72,6 +72,35 @@
 
   ThemeManager.init();
 
+// ========== 1.5 可访问性修复：矫正不匹配的 label for 属性 ==========
+  function fixLabelFor() {
+    document.querySelectorAll('label[for]').forEach(function (label) {
+      var forId = label.getAttribute('for');
+      if (!forId) return;
+      var el = document.getElementById(forId);
+      if (el) return;
+
+      // 尝试按 name 属性查找（CBI 有时 for 指向 name 而非 id）
+      var byName = document.querySelector('input[name="' + forId + '"], select[name="' + forId + '"], textarea[name="' + forId + '"]');
+      if (byName && byName.id) {
+        label.setAttribute('for', byName.id);
+        return;
+      }
+
+      // 在 label 所在容器内找最近的可聚焦表单元素并补齐 id
+      var container = label.closest('.cbi-value, .cbi-tabcontainer, .cbi-section, form, fieldset');
+      if (container) {
+        var field = container.querySelector('input[id], select[id], textarea[id]');
+        if (field && field.id) {
+          label.setAttribute('for', field.id);
+        }
+      }
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', fixLabelFor);
+  window.addEventListener('load', fixLabelFor);
+
   // ========== 2. 状态概览页仪表盘增强 (波形图/三频温控/释放缓存) ==========
   const DashboardEnhancer = {
     historyRx: [200, 350, 420, 310, 500, 620, 480, 530, 410, 380, 490, 600, 520, 430, 390, 460, 550, 610, 500, 470, 520, 630, 540, 460, 420, 480, 580, 640, 510, 490],
