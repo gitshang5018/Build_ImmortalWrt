@@ -133,15 +133,31 @@ set_sysctl "net.core.netdev_max_backlog" "$netdev_backlog"
 set_sysctl "net.core.netdev_budget" "600"
 set_sysctl "net.core.netdev_budget_usecs" "4000"
 
+# 增大 UDP 缓冲区 (Xray QUIC / MosDNS 高频短查询)
+set_sysctl "net.core.rmem_default" "262144"
+set_sysctl "net.core.wmem_default" "262144"
+set_sysctl "net.core.rmem_max" "8388608"
+set_sysctl "net.core.wmem_max" "8388608"
+
+# NSS 已接管 L3 硬件转发，bridge 层旁路 iptables 节省 CPU
+set_sysctl "net.bridge.bridge-nf-call-iptables" "0"
+set_sysctl "net.bridge.bridge-nf-call-ip6tables" "0"
+
 # 启用 BBR 拥塞控制算法与 FQ 队列调度
 modprobe tcp_bbr 2>/dev/null
 modprobe sch_fq 2>/dev/null
 set_sysctl "net.core.default_qdisc" "fq"
 set_sysctl "net.ipv4.tcp_congestion_control" "bbr"
 
+
+# ZRAM swappiness 调优（sysctl -p 之前写入，本次启动即生效）
+sed -i "/vm.swappiness/d" "$SYSCTL_CONF" 2>/dev/null
+echo "vm.swappiness = 30" >> "$SYSCTL_CONF"
+
 if command -v sysctl >/dev/null 2>&1; then
     sysctl -p "$SYSCTL_CONF" >/dev/null 2>&1
 fi
+
 
 # Dnsmasq 缓存池自适应配置
 if [ -f /etc/config/dhcp ] && command -v uci >/dev/null 2>&1; then
@@ -152,8 +168,8 @@ commit dhcp
 EOF
 fi
 
+
 # 全局注入 Go 语言常驻进程内存限制 (PassWall/MosDNS/Xray/Sing-box/Lucky)
-# 1. 写入 /etc/environment (全局 procd 守护进程环境变量)
 env_file="$TARGET_ETC/environment"
 touch "$env_file" 2>/dev/null
 sed -i '/GOMEMLIMIT/d; /GOGC/d' "$env_file" 2>/dev/null
