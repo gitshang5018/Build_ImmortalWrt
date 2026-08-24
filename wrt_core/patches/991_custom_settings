@@ -63,8 +63,24 @@ elif [ "$mem_total_kb" -gt 1500000 ]; then
     dnsmasq_min_ttl=600
     go_memlimit="512MiB"
     go_gc=80
+elif [ "$mem_total_kb" -ge 1280000 ]; then
+    # === 真·大内存 (> 1.25GB, 亚瑟 1.5GB / 部分大 Flash 设备) ===
+    conntrack_max=196608
+    tcp_mem="196608 393216 786432"
+    tcp_rmem="4096 131072 12582912"
+    tcp_wmem="4096 131072 12582912"
+    somaxconn=8192
+    netdev_backlog=8192
+    vfs_cache_pressure=100
+    dirty_ratio=20
+    dirty_bg_ratio=5
+    dnsmasq_cachesize=15000
+    dnsmasq_min_ttl=600
+    go_memlimit="384MiB"
+    go_gc=75
 elif [ "$mem_total_kb" -ge 768000 ]; then
-    # === 高端档 (768MB ~ 1.5GB, 如京东云 AX6600 1GB / 亚瑟 1GB) ===
+    # === 高端档 (768MB ~ 1.25GB, 如 AX6600 1GB, 实际可用 ~850MB, 运行后剩余 ~400MB) ===
+    # Go 堆取 160MiB, 避免 OOM kill Xray/MosDNS
     conntrack_max=131072
     tcp_mem="131072 262144 524288"
     tcp_rmem="4096 131072 8388608"
@@ -76,8 +92,8 @@ elif [ "$mem_total_kb" -ge 768000 ]; then
     dirty_bg_ratio=5
     dnsmasq_cachesize=12000
     dnsmasq_min_ttl=450
-    go_memlimit="256MiB"
-    go_gc=70
+    go_memlimit="160MiB"
+    go_gc=60
 else
     # === 中内存档 (300MB ~ 768MB, 如京东云 AX1800 Pro 512MB / 360V6) ===
     conntrack_max=65535
