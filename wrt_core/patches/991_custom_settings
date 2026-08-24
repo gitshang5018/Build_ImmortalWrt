@@ -63,8 +63,23 @@ elif [ "$mem_total_kb" -gt 1500000 ]; then
     dnsmasq_min_ttl=600
     go_memlimit="512MiB"
     go_gc=80
+elif [ "$mem_total_kb" -ge 768000 ]; then
+    # === 高端档 (768MB ~ 1.5GB, 如京东云 AX6600 1GB / 亚瑟 1GB) ===
+    conntrack_max=131072
+    tcp_mem="131072 262144 524288"
+    tcp_rmem="4096 131072 8388608"
+    tcp_wmem="4096 87380 8388608"
+    somaxconn=8192
+    netdev_backlog=8192
+    vfs_cache_pressure=110
+    dirty_ratio=18
+    dirty_bg_ratio=5
+    dnsmasq_cachesize=12000
+    dnsmasq_min_ttl=450
+    go_memlimit="256MiB"
+    go_gc=70
 else
-    # === 中内存档 (300MB ~ 1.5GB, 如京东云 AX1800 Pro 512MB / AX6600 1GB) ===
+    # === 中内存档 (300MB ~ 768MB, 如京东云 AX1800 Pro 512MB / 360V6) ===
     conntrack_max=65535
     tcp_mem="65536 131072 262144"
     tcp_rmem="4096 87380 4194304"
@@ -143,3 +158,10 @@ if [ -f "$profile_file" ]; then
     echo "export GOMEMLIMIT=${go_memlimit}" >> "$profile_file"
     echo "export GOGC=${go_gc}" >> "$profile_file"
 fi
+
+# CPU 调速器设为 performance，消除 ondemand 带来的首包延迟
+for policy in /sys/devices/system/cpu/cpufreq/policy*; do
+    [ -f "$policy/scaling_governor" ] || continue
+    echo "performance" > "$policy/scaling_governor" 2>/dev/null
+    [ -f "$policy/scaling_min_freq" ] && cat "$policy/cpuinfo_max_freq" > "$policy/scaling_min_freq" 2>/dev/null
+done
