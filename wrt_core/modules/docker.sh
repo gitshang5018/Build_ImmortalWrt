@@ -308,16 +308,25 @@ _docker_stack_fix_dockerd_vendored_checks() {
 _docker_stack_fix_dockerd_binary_daemon_copy() {
     local mk_path="$1"
 
-    # 1. 在 Build/Prepare 中修补 hack/make/binary-daemon，禁止复制 host 上可能缺失的嵌套二进制 (解决 x86_64 宿主同架构下的 cp: cannot stat '' 错误)
+    # 清理可能存在的历史错误替换
+    sed -i 's|sed -i "s/copy_binaries/true # copy_binaries/g"|sed -i "s/copy_binaries() {/copy_binaries() { return 0;/g"|g' "$mk_path" 2>/dev/null || true
+
+    # 1. 在 Build/Prepare 中修补 hack/make/binary-daemon，将 copy_binaries() 函数转为直接 return 0，
+    # 彻底解决 x86_64 宿主同架构下的 "cp: cannot stat" 错误以及破坏函数体引发的 "1: parameter null or not set"
     if grep -q 'define Build/Prepare' "$mk_path"; then
         if ! grep -Fq 'hack/make/binary-daemon' "$mk_path"; then
-            sed -i '/define Build\/Prepare/a \	[ ! -f "$$(PKG_BUILD_DIR)/hack/make/binary-daemon" ] || sed -i "s/copy_binaries/true # copy_binaries/g" "$$(PKG_BUILD_DIR)/hack/make/binary-daemon"' "$mk_path"
+            sed -i '/define Build\/Prepare/a \	[ ! -f "$$(PKG_BUILD_DIR)/hack/make/binary-daemon" ] || sed -i "s/copy_binaries() {/copy_binaries() { return 0;/g" "$$(PKG_BUILD_DIR)/hack/make/binary-daemon"' "$mk_path"
+        else
+            sed -i 's|sed -i "s/copy_binaries/true # copy_binaries/g"|sed -i "s/copy_binaries() {/copy_binaries() { return 0;/g"|g' "$mk_path"
         fi
     fi
 
     # 2. 如果 Makefile 中有直接调用 ./hack/make.sh binary 的地方，也在编译前确保修补
-    if grep -Fq './hack/make.sh binary' "$mk_path" && ! grep -Fq 'sed -i "s/copy_binaries/true/' "$mk_path"; then
-        sed -i 's|\([[:space:]]*\)\(cd \$(PKG_BUILD_DIR);\)|\1\2 [ ! -f ./hack/make/binary-daemon ] \|\| sed -i "s/copy_binaries/true # copy_binaries/g" ./hack/make/binary-daemon; |g' "$mk_path"
+    if grep -Fq './hack/make.sh binary' "$mk_path"; then
+        sed -i 's|sed -i "s/copy_binaries/true # copy_binaries/g" ./hack/make/binary-daemon|sed -i "s/copy_binaries() {/copy_binaries() { return 0;/g" ./hack/make/binary-daemon|g' "$mk_path"
+        if ! grep -Fq 'sed -i "s/copy_binaries() {/copy_binaries() { return 0;/g"' "$mk_path"; then
+            sed -i 's|\([[:space:]]*\)\(cd \$(PKG_BUILD_DIR);\)|\1\2 [ ! -f ./hack/make/binary-daemon ] \|\| sed -i "s/copy_binaries() {/copy_binaries() { return 0;/g" ./hack/make/binary-daemon; |g' "$mk_path"
+        fi
     fi
 }
 
