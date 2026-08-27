@@ -24,7 +24,7 @@ remove_unwanted_packages() {
         "luci-app-passwall" "luci-app-ddns-go" "luci-app-rclone"
         "luci-app-vssr" "luci-app-daed" "luci-app-dae" "luci-app-alist" "luci-app-homeproxy"
         "luci-app-haproxy-tcp" "luci-app-mihomo" "luci-app-appfilter"
-        "luci-app-msd_lite" "luci-app-adguardhome"
+        "luci-app-msd_lite" "luci-app-adguardhome" "luci-app-openclash"
     )
     local packages_net=(
         "haproxy" "xray-core" "xray-plugin" "dns2socks" "alist" "hysteria"
@@ -39,7 +39,7 @@ remove_unwanted_packages() {
     local small8_packages=(
         "ppp" "firewall" "dae" "daed" "daed-next" "libnftnl" "nftables" "dnsmasq" "luci-app-alist"
         "alist" "opkg" "smartdns" "luci-app-smartdns" "easytier"
-        "v2ray-geodata" "v2dat" "mosdns" "luci-app-mosdns"
+        "v2ray-geodata" "v2dat" "mosdns" "luci-app-mosdns" "luci-app-openclash"
     )
 
     for pkg in "${luci_packages[@]}"; do
@@ -392,6 +392,60 @@ update_smartdns() {
         echo "错误：从 $LUCI_APP_SMARTDNS_REPO 克隆 luci-app-smartdns 仓库失败" >&2
         exit 1
     fi
+}
+
+update_openclash() {
+    if is_build_device "gehua_ghl-r-001_immwrt"; then
+        log_info "Gehua 32M profile: skip OpenClash update."
+        return 0
+    fi
+
+    local repo_url="https://github.com/vernesong/OpenClash.git"
+    local openclash_dir="$BUILD_DIR/package/luci-app-openclash"
+    local conflicting_paths=(
+        "$BUILD_DIR/feeds/small8/luci-app-openclash"
+        "$BUILD_DIR/feeds/luci/applications/luci-app-openclash"
+        "$BUILD_DIR/package/feeds/small8/luci-app-openclash"
+        "$BUILD_DIR/package/feeds/luci/luci-app-openclash"
+        "$openclash_dir"
+    )
+
+    log_info "正在更新/同步官方 OpenClash 源码 (vernesong/OpenClash)..."
+
+    local path
+    for path in "${conflicting_paths[@]}"; do
+        if [ -e "$path" ] || [ -L "$path" ]; then
+            rm -rf "$path" 2>/dev/null
+        fi
+    done
+
+    local tmp_dir
+    tmp_dir=$(mktemp -d) || return 1
+
+    if ! git_no_maintenance clone --depth 1 --filter=blob:none --no-checkout "$repo_url" "$tmp_dir"; then
+        echo "错误：从 $repo_url 克隆 OpenClash 仓库失败" >&2
+        cleanup_tmp_dir "$tmp_dir"
+        exit 1
+    fi
+
+    git_no_maintenance -C "$tmp_dir" sparse-checkout init --cone || { cleanup_tmp_dir "$tmp_dir"; return 1; }
+    git_no_maintenance -C "$tmp_dir" sparse-checkout set luci-app-openclash || { cleanup_tmp_dir "$tmp_dir"; return 1; }
+    git_no_maintenance -C "$tmp_dir" checkout --quiet || { cleanup_tmp_dir "$tmp_dir"; return 1; }
+
+    mkdir -p "$(dirname "$openclash_dir")"
+    mv "$tmp_dir/luci-app-openclash" "$openclash_dir" || { cleanup_tmp_dir "$tmp_dir"; return 1; }
+    cleanup_tmp_dir "$tmp_dir"
+
+    local makefile_path="$openclash_dir/Makefile"
+    if [ -f "$makefile_path" ]; then
+        sed -i 's/PKG_RELEASE:=beta/PKG_RELEASE:=1/g' "$makefile_path" 2>/dev/null || true
+    fi
+
+    if [ -d "$openclash_dir/root/etc/init.d" ]; then
+        chmod +x "$openclash_dir/root/etc/init.d/"* 2>/dev/null || true
+    fi
+
+    log_success "OpenClash 官方源码同步完成"
 }
 
 update_diskman() {
