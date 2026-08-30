@@ -191,7 +191,10 @@ if [ -f "$profile_file" ]; then
     echo "export GOGC=${go_gc}" >> "$profile_file"
 fi
 
-# CPU 调速器设为 performance，消除 ondemand 带来的首包延迟
+# CPU 调速器设为 performance，消除 ondemand 带来的首包延迟。
+# 职责划分：本段(uci-defaults)负责非 NSS 机型与首启阶段；
+# NSS(imm-nss) 机型每次开机的稳态策略由 qca-nss-pbuf(START=89) 按 pbuf.uci 应用，
+# 两处取值必须保持一致（当前均为 performance），单边改动会导致意图与运行时不符。
 for policy in /sys/devices/system/cpu/cpufreq/policy*; do
     [ -f "$policy/scaling_governor" ] || continue
     echo "performance" > "$policy/scaling_governor" 2>/dev/null
