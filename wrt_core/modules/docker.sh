@@ -308,26 +308,106 @@ _docker_stack_fix_dockerd_vendored_checks() {
 _docker_stack_fix_dockerd_binary_daemon_copy() {
     local mk_path="$1"
 
-    # 清理可能存在的历史错误替换
-    sed -i 's|sed -i "s/copy_binaries/true # copy_binaries/g"|sed -i "s/copy_binaries() {/copy_binaries() { return 0;/g"|g' "$mk_path" 2>/dev/null || true
+    # moby 29.x 的 hack/make/binary-daemon 在宿主机与目标架构相同时（典型：x86_64 宿主
+    # 编译 x86_64）会对空字符串执行 cp，触发 "cp: cannot stat ''" 使 dockerd 构建失败。
+    #
+    # 修复要点（历次迭代踩过的坑，勿回退）：
+    #  1. 注入点必须在 Build/Compile 配方中，且源码已解压：旧版注入到 define Build/Prepare
+    #     首行（解压动作之前）被 [ ! -f ... ] || 静默短路，从未生效。
+    #  2. 注入位置必须是语句边界：直接替换 ./hack/make.sh binary 调用会插到环境变量赋值
+    #     前缀（如 VERSION=$(PKG_VERSION)）后面，生成非法 shell 且破坏变量传递。
+    #     因此锚定 "cd \$(PKG_BUILD_DIR);" 的语句边界之后。
+    #  3. inj 文本经环境变量传给 awk，禁止用 awk -v（会吞掉 sed 正则里的反斜杠）。
+    #  4. 幂等：先按标记回滚旧注入再注入；重复执行结果稳定。
 
-    # 1. 在 Build/Prepare 中修补 hack/make/binary-daemon，将 copy_binaries() 函数转为直接 return 0，
-    # 彻底解决 x86_64 宿主同架构下的 "cp: cannot stat" 错误以及破坏函数体引发的 "1: parameter null or not set"
-    if grep -q 'define Build/Prepare' "$mk_path"; then
-        if ! grep -Fq 'hack/make/binary-daemon' "$mk_path"; then
-            sed -i '/define Build\/Prepare/a \	[ ! -f "$$(PKG_BUILD_DIR)/hack/make/binary-daemon" ] || sed -i "s/copy_binaries() {/copy_binaries() { return 0;/g" "$$(PKG_BUILD_DIR)/hack/make/binary-daemon"' "$mk_path"
-        else
-            sed -i 's|sed -i "s/copy_binaries/true # copy_binaries/g"|sed -i "s/copy_binaries() {/copy_binaries() { return 0;/g"|g' "$mk_path"
-        fi
-    fi
+    # 注入文本（单行；无 make 会展开的 $ 符号；sed 兼容 copy_binaries 的 4 种定义写法）
+    local inj
+    IFS= read -r -d '' inj <<'INJ_EOF' || true
+if [ -f "hack/make/binary-daemon" ]; then sed -i -E -e 's/^([[:space:]]*copy_binaries[[:space:]]*\(\)[[:space:]]*\{)/\1 return 0;/' -e 's/^([[:space:]]*function[[:space:]]+copy_binaries([[:space:]]*\(\))?[[:space:]]*\{)/\1 return 0;/' "hack/make/binary-daemon" && echo "[wrt-fix] dockerd: copy_binaries nested-copy disabled"; fi;
+INJ_EOF
+    inj="${inj%$'\n'}"
 
-    # 2. 如果 Makefile 中有直接调用 ./hack/make.sh binary 的地方，也在编译前确保修补
-    if grep -Fq './hack/make.sh binary' "$mk_path"; then
-        sed -i 's|sed -i "s/copy_binaries/true # copy_binaries/g" ./hack/make/binary-daemon|sed -i "s/copy_binaries() {/copy_binaries() { return 0;/g" ./hack/make/binary-daemon|g' "$mk_path"
-        if ! grep -Fq 'sed -i "s/copy_binaries() {/copy_binaries() { return 0;/g"' "$mk_path"; then
-            sed -i 's|\([[:space:]]*\)\(cd \$(PKG_BUILD_DIR);\)|\1\2 [ ! -f ./hack/make/binary-daemon ] \|\| sed -i "s/copy_binaries() {/copy_binaries() { return 0;/g" ./hack/make/binary-daemon; |g' "$mk_path"
-        fi
-    fi
+    local tmp_path
+    tmp_path=$(mktemp) || {
+        echo "错误：创建临时文件失败" >&2
+        return 1
+    }
+
+    WRT_INJ="$inj" WRT_MARKER='[wrt-fix] dockerd: copy_binaries' awk '
+        function rep(s, from, to,    pos, out) {
+            out = ""
+            while ((pos = index(s, from)) > 0) {
+                out = out substr(s, 1, pos - 1) to
+                s = substr(s, pos + length(from))
+            }
+            return out s
+        }
+        BEGIN {
+            inj    = ENVIRON["WRT_INJ"]
+            marker = ENVIRON["WRT_MARKER"]
+            anchor = "cd $" "(PKG_BUILD_DIR);"   # 拆开写，避免 shell 展开
+        }
+        {
+            # 1) 回滚本函数此前的注入（按标记识别）
+            if (index($0, marker) > 0) {
+                $0 = rep($0, anchor " " inj " ", anchor " ")
+                $0 = rep($0, anchor " " inj,   anchor " ")
+                $0 = rep($0, inj, "")
+            }
+
+            # 2) 删除历史遗留的独立注入行（含 copy_binaries，但无调用点、无本函数标记）
+            if (index($0, "copy_binaries") > 0 && index($0, "hack/make.sh binary") < 1 && index($0, marker) < 1) {
+                next
+            }
+
+            if (index($0, "hack/make.sh binary") > 0) {
+                has_inv = 1
+            }
+
+            # 3) 在 cd $(PKG_BUILD_DIR); 的语句边界后注入（此时源码已解压、cwd 已在源码根）
+            if (index($0, anchor) > 0) {
+                $0 = rep($0, anchor " ", anchor " " inj " ")
+                if (index($0, inj) < 1) {
+                    $0 = rep($0, anchor, anchor " " inj " ")
+                }
+                if (index($0, inj) > 0) {
+                    injected = 1
+                }
+            }
+
+            print
+        }
+        END {
+            if (injected != 1) {
+                if (has_inv == 1) {
+                    exit 3
+                }
+                exit 4
+            }
+        }
+    ' "$mk_path" > "$tmp_path"
+    local awk_rc=$?
+
+    case "$awk_rc" in
+        0)
+            mv -f "$tmp_path" "$mk_path"
+            ;;
+        3)
+            rm -f "$tmp_path"
+            echo "警告：$mk_path 存在 make.sh 调用但无 cd \$(PKG_BUILD_DIR); 锚点，修补未注入" >&2
+            return 1
+            ;;
+        4)
+            rm -f "$tmp_path"
+            echo "警告：$mk_path 中未找到 hack/make.sh binary 调用，跳过 copy_binaries 修补" >&2
+            return 0
+            ;;
+        *)
+            rm -f "$tmp_path"
+            echo "错误：重写 $mk_path 注入 copy_binaries 修补失败（awk exit=$awk_rc）" >&2
+            return 1
+            ;;
+    esac
 }
 
 _docker_stack_fix_dockerd_nftables_comment() {
