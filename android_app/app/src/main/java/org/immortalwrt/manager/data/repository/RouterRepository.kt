@@ -174,40 +174,33 @@ class RouterRepository(private val client: UbusClient) {
             var hasWirelessHw = false
             var cpuTemp: String? = null
 
-            // 源 1：优先调用 LuCI 标准 RPC 接口 (与网页端 Argon / Design 主题完全一致)
+            // 源 1：优先调用 LuCI 标准 RPC 接口 (与网页端完全一致)
+            // 无论是 getCPUInfo 还是 getTempInfo，直接把完整的 JSON 序列化为字符串进行暴力正则提取
             try {
-                for (service in listOf("luci", "luci-rpc", "autocore", "autocore.status", "luci.status")) {
-                    val tempInfoResp = client.callRaw(service, "getTempInfo").getOrNull()
-                    val rawStr = tempInfoResp?.get("tempinfo")?.asString
-                        ?: tempInfoResp?.get("result")?.asString
-                        ?: tempInfoResp?.get("temp")?.asString
-                    if (!rawStr.isNullOrBlank()) {
-                        val (c, w) = extractTemperaturesFromText(rawStr)
-                        c?.let { cpuCandidates.add(it) }
-                        if (w.isNotEmpty()) {
-                            wifiCandidates.addAll(w)
-                            hasWirelessHw = true
+                for (service in listOf("luci", "luci-rpc", "autocore")) {
+                    for (method in listOf("getCPUInfo", "getSystemInfo", "getTempInfo", "getBoardInfo")) {
+                        val resp = client.callRaw(service, method).getOrNull()
+                        if (resp != null) {
+                            val rawStr = resp.toString()
+                            
+                            // 只要返回的 JSON 里面包含了 HWE 或 ECM，就直接提取出来
+                            parseCpuUsageString(rawStr)
+                            
+                            // 提取各种温度 (CPU, WiFi)
+                            val (c, w) = extractTemperaturesFromText(rawStr)
+                            c?.let { cpuCandidates.add(it) }
+                            if (w.isNotEmpty()) {
+                                wifiCandidates.addAll(w)
+                                hasWirelessHw = true
+                            }
                         }
-                        if (c != null || w.isNotEmpty()) break
+                    }
+                    // 如果已经拿到了我们最关心的关键数据，就提前结束，不用浪费请求
+                    if (hweUsage != null && ecmStats != null && cpuCandidates.isNotEmpty()) {
+                        break
                     }
                 }
             } catch (_: Exception) {}
-
-            // 源 2：调用 LuCI 标准 CPU 信息接口 (包含 CPU 温度与主频)
-            if (cpuCandidates.isEmpty()) {
-                try {
-                    for (service in listOf("luci", "luci-rpc", "autocore")) {
-                        val cpuInfoResp = client.callRaw(service, "getCPUInfo").getOrNull()
-                        val rawStr = cpuInfoResp?.get("cpuinfo")?.asString
-                            ?: cpuInfoResp?.get("result")?.asString
-                        if (!rawStr.isNullOrBlank()) {
-                            val (c, _) = extractTemperaturesFromText(rawStr)
-                            c?.let { cpuCandidates.add(it) }
-                            if (c != null) break
-                        }
-                    }
-                } catch (_: Exception) {}
-            }
 
             // 源 3：通过 file.exec 执行标准 /sbin/tempinfo 或 /sbin/cpuinfo
             if (cpuCandidates.isEmpty() || wifiCandidates.isEmpty()) {

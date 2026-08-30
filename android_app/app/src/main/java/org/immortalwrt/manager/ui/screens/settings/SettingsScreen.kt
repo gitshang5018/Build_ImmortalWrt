@@ -568,7 +568,7 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text("客户端版本", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("v1.2.7 (Build 127)", fontWeight = FontWeight.Bold, color = PrimaryBlue)
+                        Text("v1.2.8 (Build 128)", fontWeight = FontWeight.Bold, color = PrimaryBlue)
                     }
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                     Row(
