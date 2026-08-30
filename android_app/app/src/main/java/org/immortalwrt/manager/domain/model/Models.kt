@@ -110,9 +110,9 @@ enum class ConnectionType {
 
 enum class WifiBandType(val displayName: String, val badgeText: String) {
     BAND_2_4G("2.4 GHz 基础频段", "2.4G"),
-    BAND_5_2G("5.2 GHz 电竞频道 (160M 游戏特快)", "5.2G 电竞"),
-    BAND_5_8G("5.8 GHz 扩展频段 (80M)", "5.8G"),
-    BAND_6G("6 GHz (Wi-Fi 6E/7)", "6G")
+    BAND_5_2G("5.2 GHz 电竞频道", "5.2G 电竞"),
+    BAND_5_8G("5.8 GHz 扩展频段", "5.8G"),
+    BAND_6G("6 GHz", "6G")
 }
 
 data class WifiInterfaceConfig(
