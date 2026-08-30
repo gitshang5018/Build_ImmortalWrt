@@ -104,6 +104,7 @@ enum class ConnectionType {
     WIRED_LAN,
     WIFI_2G,
     WIFI_5G,
+    WIFI_5_2G_GAME,
     WIFI_6G
 }
 

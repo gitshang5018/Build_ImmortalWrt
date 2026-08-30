@@ -228,6 +228,7 @@ fun ClientItemCard(
                                 ConnectionType.WIRED_LAN -> "LAN"
                                 ConnectionType.WIFI_2G -> "2.4G"
                                 ConnectionType.WIFI_5G -> "5G"
+                                ConnectionType.WIFI_5_2G_GAME -> "5.2G 电竞"
                                 ConnectionType.WIFI_6G -> "6G"
                             }
                             Text(

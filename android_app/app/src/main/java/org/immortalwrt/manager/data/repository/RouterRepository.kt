@@ -656,7 +656,12 @@ class RouterRepository(private val client: UbusClient) {
                         val txRate = obj.get("tx_rate")?.asFloat ?: 0f
 
                         val is2G = wDev.startsWith("phy1") || wDev == "wlan1" || wDev.contains("2g") || wDev.contains("2.4")
-                        val connType = if (is2G) ConnectionType.WIFI_2G else ConnectionType.WIFI_5G
+                        val is52G = wDev.startsWith("phy2") || wDev == "wlan2" || wDev.contains("5.2")
+                        val connType = when {
+                            is2G -> ConnectionType.WIFI_2G
+                            is52G -> ConnectionType.WIFI_5_2G_GAME
+                            else -> ConnectionType.WIFI_5G
+                        }
 
                         if (mac.length == 17) {
                             onlineMacs.add(mac)
