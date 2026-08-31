@@ -84,7 +84,6 @@ main() {
     fix_trojan_plus
     fix_rust_compile_error
     update_smartdns
-    update_openclash
     update_diskman
     if [[ "${DOCKER_STACK_REQUESTED:-1}" == "1" ]]; then
         update_dockerman
