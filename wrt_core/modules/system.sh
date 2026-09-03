@@ -12,7 +12,7 @@ fix_default_set() {
     fi
     install -Dm544 "$BASE_PATH/patches/991_custom_settings" "$BUILD_DIR/package/base-files/files/etc/uci-defaults/991_custom_settings"
     install -Dm544 "$BASE_PATH/patches/992_set-wifi-uci.sh" "$BUILD_DIR/package/base-files/files/etc/uci-defaults/992_set-wifi-uci.sh"
-    if is_build_device "x64_immwrt"; then
+    if is_build_device "x64_immwrt" || is_build_device "dell_wyse_3040_immwrt"; then
         install -Dm544 "$BASE_PATH/patches/993_x64_performance_defaults" "$BUILD_DIR/package/base-files/files/etc/uci-defaults/993_x64_performance_defaults"
     fi
 

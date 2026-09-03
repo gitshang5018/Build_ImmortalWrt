@@ -34,7 +34,7 @@ mem_total_kb=${mem_total_kb:-524288}
 
 # 根据内存大小智能分级 (低内存 <300MB, 中内存 300MB~1.5GB, 大内存 >1.5GB)
 if [ "$mem_total_kb" -lt 300000 ]; then
-    # === 低内存档 (< 300MB, 如歌华链 128MB / 竞斗云 128MB) ===
+    # === 低内存档 (< 300MB, 如歌华链 128MB 等极小内存设备) ===
     conntrack_max=32768
     tcp_mem="16384 32768 65536"
     tcp_rmem="4096 32768 1048576"
@@ -158,6 +158,12 @@ if command -v sysctl >/dev/null 2>&1; then
     sysctl -p "$SYSCTL_CONF" >/dev/null 2>&1
 fi
 
+
+# 启用多核软中断负载均衡 (Packet Steering)
+if [ -f /etc/config/network ] && command -v uci >/dev/null 2>&1; then
+    uci -q set network.@globals[0].packet_steering='1'
+    uci commit network
+fi
 
 # Dnsmasq 缓存池自适应配置
 if [ -f /etc/config/dhcp ] && command -v uci >/dev/null 2>&1; then

@@ -314,13 +314,11 @@ apply_config() {
         disable_docker_stack_packages "$BASE_PATH/../$BUILD_DIR/.config"
     fi
     
-# Remove heavy plugins for low-flash devices
-    if [[ "$Dev" == "p2w_r619ac-128m_immwrt" || "$Dev" == "gehua_ghl-r-001_immwrt" ]]; then
-        echo "Detect low-flash device ($Dev), removing heavy packages..."
-        
-        # 两款设备共同需要移除的 5 项插件
+    # Remove heavy plugins for specific devices
+    if [[ "$Dev" == "gehua_ghl-r-001_immwrt" ]]; then
+        echo "Detect low-flash device ($Dev, 32M), removing heavy and non-essential packages..."
+
         sed -i 's/CONFIG_PACKAGE_luci-app-smartdns=y/# CONFIG_PACKAGE_luci-app-smartdns is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
-        sed -i 's/CONFIG_PACKAGE_luci-app-passwall=y/# CONFIG_PACKAGE_luci-app-passwall is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
         sed -i 's/CONFIG_PACKAGE_luci-app-adguardhome=y/# CONFIG_PACKAGE_luci-app-adguardhome is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
         sed -i 's/CONFIG_PACKAGE_luci-app-dockerman=y/# CONFIG_PACKAGE_luci-app-dockerman is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
         sed -i 's/CONFIG_PACKAGE_luci-i18n-dockerman-zh-cn=y/# CONFIG_PACKAGE_luci-i18n-dockerman-zh-cn is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
@@ -329,44 +327,49 @@ apply_config() {
         echo "# CONFIG_PACKAGE_luci-app-dockerman is not set" >> "$BASE_PATH/../$BUILD_DIR/.config"
         echo "# CONFIG_PACKAGE_luci-i18n-dockerman-zh-cn is not set" >> "$BASE_PATH/../$BUILD_DIR/.config"
 
-        # 仅 gehua 需要额外移除的插件 (32M Flash 极端精简)
-        if [[ "$Dev" == "gehua_ghl-r-001_immwrt" ]]; then
-            disable_config_symbols "$BASE_PATH/../$BUILD_DIR/.config" \
-                CONFIG_PACKAGE_luci-app-lucky \
-                CONFIG_PACKAGE_luci-app-oaf \
-                CONFIG_PACKAGE_luci-app-easytier \
-                CONFIG_PACKAGE_luci-app-openclash \
-                CONFIG_PACKAGE_luci-app-passwall \
-                CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Haproxy \
-                CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Xray \
-                CONFIG_PACKAGE_luci-app-ssr-plus \
-                CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Xray \
-                CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Socks5_Proxy \
-                CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Socks_Server \
-                CONFIG_PACKAGE_luci-app-pbr \
-                CONFIG_PACKAGE_luci-app-smartdns \
-                CONFIG_PACKAGE_luci-app-unblockneteasemusic \
-                CONFIG_PACKAGE_luci-app-ttyd \
-                CONFIG_PACKAGE_luci-app-vlmcsd \
-                CONFIG_PACKAGE_luci-theme-argon \
-                CONFIG_PACKAGE_luci-theme-design \
-                CONFIG_PACKAGE_smartdns \
-                CONFIG_PACKAGE_v2ray-geodata \
-                CONFIG_PACKAGE_v2ray-geoip \
-                CONFIG_PACKAGE_v2ray-geosite \
-                CONFIG_PACKAGE_v2dat \
-                CONFIG_PACKAGE_xray-core \
-                CONFIG_PACKAGE_sing-box \
-                CONFIG_PACKAGE_mihomo \
-                CONFIG_PACKAGE_haproxy \
-                CONFIG_PACKAGE_easytier \
-                CONFIG_PACKAGE_lucky \
-                CONFIG_PACKAGE_oaf \
-                CONFIG_PACKAGE_open-app-filter \
-                CONFIG_PACKAGE_coremark \
-                CONFIG_COREMARK_OPTIMIZE_O3 \
-                CONFIG_COREMARK_ENABLE_MULTITHREADING
-        fi
+        disable_config_symbols "$BASE_PATH/../$BUILD_DIR/.config" \
+            CONFIG_PACKAGE_luci-app-lucky \
+            CONFIG_PACKAGE_luci-app-oaf \
+            CONFIG_PACKAGE_luci-app-easytier \
+            CONFIG_PACKAGE_luci-app-openclash \
+            CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Haproxy \
+            CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Xray \
+            CONFIG_PACKAGE_luci-app-ssr-plus \
+            CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Xray \
+            CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Socks5_Proxy \
+            CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Socks_Server \
+            CONFIG_PACKAGE_luci-app-pbr \
+            CONFIG_PACKAGE_luci-app-smartdns \
+            CONFIG_PACKAGE_luci-app-unblockneteasemusic \
+            CONFIG_PACKAGE_luci-app-ttyd \
+            CONFIG_PACKAGE_luci-app-vlmcsd \
+            CONFIG_PACKAGE_luci-theme-argon \
+            CONFIG_PACKAGE_luci-theme-design \
+            CONFIG_PACKAGE_smartdns \
+            CONFIG_PACKAGE_v2ray-geodata \
+            CONFIG_PACKAGE_v2ray-geoip \
+            CONFIG_PACKAGE_v2ray-geosite \
+            CONFIG_PACKAGE_v2dat \
+            CONFIG_PACKAGE_xray-core \
+            CONFIG_PACKAGE_mihomo \
+            CONFIG_PACKAGE_haproxy \
+            CONFIG_PACKAGE_easytier \
+            CONFIG_PACKAGE_lucky \
+            CONFIG_PACKAGE_oaf \
+            CONFIG_PACKAGE_open-app-filter \
+            CONFIG_PACKAGE_coremark \
+            CONFIG_COREMARK_OPTIMIZE_O3 \
+            CONFIG_COREMARK_ENABLE_MULTITHREADING
+    elif [[ "$Dev" == "p2w_r619ac-128m_immwrt" ]]; then
+        echo "Tune packages for p2w_r619ac-128m (128M NAND Flash, 512M RAM)..."
+        # 移除不适合 717MHz A7 弱算力平台的重型服务 (Docker/Samba/AdGuardHome)，保留实用轻量的 SmartDNS
+        sed -i 's/CONFIG_PACKAGE_luci-app-adguardhome=y/# CONFIG_PACKAGE_luci-app-adguardhome is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
+        sed -i 's/CONFIG_PACKAGE_luci-app-dockerman=y/# CONFIG_PACKAGE_luci-app-dockerman is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
+        sed -i 's/CONFIG_PACKAGE_luci-i18n-dockerman-zh-cn=y/# CONFIG_PACKAGE_luci-i18n-dockerman-zh-cn is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
+        sed -i 's/CONFIG_PACKAGE_luci-app-samba4=y/# CONFIG_PACKAGE_luci-app-samba4 is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
+        disable_docker_stack_packages "$BASE_PATH/../$BUILD_DIR/.config"
+        echo "# CONFIG_PACKAGE_luci-app-dockerman is not set" >> "$BASE_PATH/../$BUILD_DIR/.config"
+        echo "# CONFIG_PACKAGE_luci-i18n-dockerman-zh-cn is not set" >> "$BASE_PATH/../$BUILD_DIR/.config"
     fi
 }
 

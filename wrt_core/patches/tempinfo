@@ -131,13 +131,11 @@ else
 	wifi_temp="$(cat "$IEEE_PATH"/phy*/hwmon*/temp1_input 2>"/dev/null" | awk '{printf("%.1fC ", $0 / 1000)}' | awk '$1=$1')"
 fi
 
-if grep -q "ipq40xx" "/etc/openwrt_release"; then
-	if [ -e "$IEEE_PATH/phy0/hwmon0/temp1_input" ]; then
-		mt76_temp="$(awk -F ': ' '{print $2}' "$IEEE_PATH/phy0/hwmon0/temp1_input" 2>"/dev/null")°C"
-	fi
-	[ -z "$mt76_temp" ] || wifi_temp="${wifi_temp:+$wifi_temp }$mt76_temp"
-else
-	cpu_temp="$(read_cpu_temp)"
+cpu_temp="$(read_cpu_temp)"
+
+if [ -z "$wifi_temp" ] && [ -e "$IEEE_PATH/phy0/hwmon0/temp1_input" ]; then
+	extra_wifi="$(awk -F ': ' '{print $2}' "$IEEE_PATH/phy0/hwmon0/temp1_input" 2>"/dev/null")°C"
+	[ -z "$extra_wifi" ] || wifi_temp="$extra_wifi"
 fi
 
 if [ -n "$cpu_temp" ] && [ -z "$wifi_temp" ]; then

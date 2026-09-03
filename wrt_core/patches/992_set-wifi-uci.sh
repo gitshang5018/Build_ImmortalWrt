@@ -45,24 +45,25 @@ set wireless.default_radio${radio}.disassoc_low_ack='0'
 set wireless.default_radio${radio}.multicast_to_unicast='1'
 EOF
 
-	# 2.4G 频宽防降速
+	# 2.4G 频宽防降速与 256-QAM (TurboQAM)
 	if [ "$is_2g" -eq 1 ]; then
 		uci -q batch <<EOF
 set wireless.radio${radio}.noscan='1'
+set wireless.radio${radio}.qam256='1'
 EOF
 	fi
 }
 
 jdc_ax1800_pro_wifi_cfg() {
-	configure_wifi 0 149 HE80 23 'JDC_AX1800PRO_5G' '12345678'
-	configure_wifi 1 1 HE20 22 'JDC_AX1800PRO' '12345678'
+	configure_wifi 0 149 HE80 24 'JDC_AX1800PRO_5G' '12345678'
+	configure_wifi 1 1 HE40 23 'JDC_AX1800PRO' '12345678'
 }
 
 jdc_ax6600_wifi_cfg() {
 	# Radio0: IPQ6010 内置 QCN5052 5.8GHz 频段 (2x2 80MHz 1201Mbps, 149~165 信道)
-	configure_wifi 0 149 HE80 23 'JDC_AX6600_5G1' '12345678'
+	configure_wifi 0 149 HE80 24 'JDC_AX6600_5G1' '12345678'
 	# Radio1: IPQ6010 内置 QCN5022 2.4GHz 频段 (2x2 574Mbps, 1~13 信道)
-	configure_wifi 1 1 HE20 22 'JDC_AX6600' '12345678'
+	configure_wifi 1 1 HE40 23 'JDC_AX6600' '12345678'
 	# Radio2: QCN9074 外挂 5.2GHz 电竞高频宽独立网卡 (4x4 160MHz 4804Mbps, 36~64 信道)
 	configure_wifi 2 44 HE160 25 'JDC_AX6600_5G2' '12345678'
     # QCN9074 5.2GHz 固定信道 44 (非 DFS)，跳过信道扫描降低延迟
@@ -112,6 +113,30 @@ link_nn6000_wifi_cfg() {
 	configure_wifi 1 1 HT20 19 'Link_NN6000' '12345678'
 }
 
+p2w_r619ac_wifi_cfg() {
+	local r0_band
+	r0_band=$(uci get wireless.radio0.band 2>/dev/null || uci get wireless.radio0.hwmode 2>/dev/null)
+	if [ "$r0_band" = "5g" ] || [ "$r0_band" = "11a" ]; then
+		configure_wifi 0 149 VHT80 23 'P2W_R619AC_5G' '12345678'
+		configure_wifi 1 6 HT40 22 'P2W_R619AC' '12345678'
+	else
+		configure_wifi 0 6 HT40 22 'P2W_R619AC' '12345678'
+		configure_wifi 1 149 VHT80 23 'P2W_R619AC_5G' '12345678'
+	fi
+}
+
+gehua_ghl_r001_wifi_cfg() {
+	local r0_band
+	r0_band=$(uci get wireless.radio0.band 2>/dev/null || uci get wireless.radio0.hwmode 2>/dev/null)
+	if [ "$r0_band" = "5g" ] || [ "$r0_band" = "11a" ]; then
+		configure_wifi 0 149 VHT80 20 'Gehua_GHL_5G' '12345678'
+		configure_wifi 1 6 HT40 20 'Gehua_GHL' '12345678'
+	else
+		configure_wifi 0 6 HT40 20 'Gehua_GHL' '12345678'
+		configure_wifi 1 149 VHT80 20 'Gehua_GHL_5G' '12345678'
+	fi
+}
+
 case "${board_name}" in
 jdcloud,ax1800-pro | \
 	jdcloud,re-ss-01)
@@ -149,6 +174,13 @@ gemtek,w1701k)
 link,nn6000-v2)
     link_nn6000_wifi_cfg
     ;;
+p2w,r619ac | \
+p2w,r619ac-128m)
+	p2w_r619ac_wifi_cfg
+	;;
+gehua,ghl-r-001)
+	gehua_ghl_r001_wifi_cfg
+	;;
 *)
 	exit 0
 	;;
