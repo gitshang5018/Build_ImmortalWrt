@@ -320,6 +320,12 @@ a.showSide {
   margin: 12px 0;
 }
 
+.cbi-section-node,
+.cbi-section-table {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .tr, table tr {
   display: table-row;
 }
@@ -422,15 +428,7 @@ a.showSide {
   border-radius: 8px;
 }
 
-/* Tab Panes & Container Hiding Rules
-   Only hide inactive tab containers (not individual form fields).
-   Keep rules specific so labels and inputs stay in the same hidden scope. */
-.cbi-tabcontainer:not(.cbi-tab-active),
-.cbi-section[data-tab]:not(.cbi-tab-active),
-.cbi-section-node[data-tab]:not(.cbi-tab-active) {
-  display: none !important;
-}
-
+/* Tab Panes & Active State */
 .cbi-tabcontainer.cbi-tab-active,
 .cbi-section[data-tab].cbi-tab-active,
 .cbi-section-node[data-tab].cbi-tab-active {
@@ -456,7 +454,7 @@ a.showSide {
 /* Form Row (cbi-value) */
 .cbi-value {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   padding: 12px 0;
   border-bottom: 1px solid var(--border-color-subtle);
 }
@@ -470,16 +468,20 @@ a.showSide {
   flex-shrink: 0;
   font-weight: 600;
   color: var(--text-primary);
+  padding-top: 8px;
+  line-height: 1.4;
 }
 
 .cbi-value-field {
   flex: 1;
+  min-width: 0;
 }
 
 .cbi-value-description {
   font-size: 12px;
   color: var(--text-muted);
-  margin-top: 4px;
+  margin-top: 6px;
+  line-height: 1.4;
 }
 
 /* Form Controls */
@@ -494,6 +496,23 @@ input[type="text"], input[type="password"], input[type="number"], select, textar
   transition: all 0.2s ease;
   width: 100%;
   max-width: 440px;
+}
+
+input[type="checkbox"], input[type="radio"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--primary-blue);
+  cursor: pointer;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+.cbi-value-field > .cbi-input-checkbox,
+.cbi-value-field > label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  cursor: pointer;
 }
 
 input:focus, select:focus, textarea:focus {
@@ -550,74 +569,72 @@ input:focus, select:focus, textarea:focus {
   border-color: transparent !important;
 }
 
-/* LuCI Dropdown & Split Button Widget Engine */
-.cbi-dropdown {
-  display: inline-flex !important;
-  position: relative;
-  cursor: pointer;
-  vertical-align: middle;
-  padding: 0 !important;
-  border-radius: var(--btn-radius);
-  font-size: 13px;
-  font-weight: 600;
-  border: 1px solid var(--border-color);
-  background: var(--bg-card);
+/* LuCI Native Dropdown Styling */
+cbi-dropdown, .cbi-dropdown {
+  border-radius: var(--input-radius);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
   color: var(--text-primary);
-  user-select: none;
+  font-size: 13.5px;
+  min-height: 38px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
+cbi-dropdown:focus, .cbi-dropdown:focus,
+cbi-dropdown[open], .cbi-dropdown[open],
+cbi-dropdown.open, .cbi-dropdown.open {
+  border-color: var(--input-focus-border) !important;
+  box-shadow: 0 0 0 3px var(--input-focus-ring) !important;
+  background: var(--bg-card) !important;
+}
+
+/* Dropdown popup list menu */
+cbi-dropdown > ul.dropdown,
+.cbi-dropdown > ul.dropdown {
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: var(--input-radius) !important;
+  box-shadow: var(--card-shadow), 0 10px 25px rgba(0, 0, 0, 0.12) !important;
+  z-index: 1050 !important;
+  padding: 6px 0 !important;
+}
+
+cbi-dropdown > ul.dropdown > li,
+.cbi-dropdown > ul.dropdown > li {
+  color: var(--text-primary) !important;
+  padding: 8px 14px !important;
+  cursor: pointer !important;
+  transition: background 0.15s ease !important;
+}
+
+cbi-dropdown > ul.dropdown > li:hover,
+.cbi-dropdown > ul.dropdown > li:hover,
+cbi-dropdown > ul.dropdown > li[focus],
+.cbi-dropdown > ul.dropdown > li[focus] {
+  background: var(--primary-blue-subtle) !important;
+  color: var(--primary-blue) !important;
+}
+
+cbi-dropdown > ul.dropdown > li[selected],
+.cbi-dropdown > ul.dropdown > li[selected] {
+  background: var(--primary-blue-subtle) !important;
+  color: var(--primary-blue) !important;
+  font-weight: 600 !important;
+}
+
+/* Save & Apply Split Button in Page Actions */
+.cbi-page-actions .cbi-dropdown,
 .cbi-dropdown.cbi-button-apply {
   background: var(--primary-blue) !important;
-  border-color: var(--primary-blue) !important;
   color: #FFFFFF !important;
+  border-color: var(--primary-blue) !important;
+  border-radius: var(--btn-radius) !important;
+  font-weight: 600 !important;
 }
 
-.cbi-dropdown > ul {
-  margin: 0 !important;
-  padding: 0 !important;
-  list-style: none !important;
-  display: flex;
-  flex-direction: column;
-}
-
-.cbi-dropdown > ul > li {
-  display: flex;
-  align-items: center;
-  padding: 7px 16px;
-  white-space: nowrap;
-  color: inherit;
-}
-
-/* Closed state: only show the item that has the display attribute */
-.cbi-dropdown:not([open]):not(.open) > ul > li:not([display]) {
-  display: none !important;
-}
-
-/* Open state: floating dropdown menu */
-.cbi-dropdown[open] > ul,
-.cbi-dropdown.open > ul {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  min-width: 100%;
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: var(--btn-radius);
-  box-shadow: var(--card-shadow);
-  z-index: 1000;
-  padding: 4px 0 !important;
-}
-
-.cbi-dropdown[open] > ul > li,
-.cbi-dropdown.open > ul > li {
-  display: flex !important;
-  color: var(--text-primary) !important;
-  padding: 8px 16px;
-}
-
-.cbi-dropdown[open] > ul > li:hover,
-.cbi-dropdown.open > ul > li:hover {
-  background: var(--input-bg);
+.cbi-page-actions .cbi-dropdown > ul.preview,
+.cbi-dropdown.cbi-button-apply > ul.preview {
+  color: #FFFFFF !important;
 }
 
 /* Right-align the action buttons row */
@@ -927,30 +944,34 @@ img[src*="wifi"] {
 }
 
 /* ================= 6. Responsive Mobile Breakpoint ================= */
-@media (max-width: 854px) {
+@media (max-width: 992px) {
   a.showSide {
-    display: inline-block;
+    display: inline-flex !important;
   }
   .brand-badge {
     display: none;
   }
   .main-left {
     transform: translateX(-100%);
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.25);
   }
-  .main-left.active {
+  .main-left.active,
+  .main-left.open {
     transform: translateX(0);
   }
   .main-right {
     margin-left: 0;
   }
-  .darkMask.active {
-    display: block;
+  .darkMask.active,
+  .athena-mobile-backdrop.active {
+    display: block !important;
     position: fixed;
     top: 0;
     left: 0;
     right: 0;
     bottom: 0;
     background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
     z-index: 95;
   }
 }

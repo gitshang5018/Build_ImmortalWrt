@@ -101,6 +101,81 @@
   document.addEventListener('DOMContentLoaded', fixLabelFor);
   window.addEventListener('load', fixLabelFor);
 
+  // ========== 1.6 选项卡自适应同步器 (兼顾经典 CBI 与现代 LuCI JS) ==========
+  function syncTabs() {
+    document.querySelectorAll('.cbi-tabmenu').forEach(function (menu) {
+      if (menu.dataset.athenaBound) return;
+      menu.dataset.athenaBound = 'true';
+
+      menu.addEventListener('click', function (ev) {
+        var targetLi = ev.target.closest('li');
+        if (!targetLi) return;
+        var tabKey = targetLi.getAttribute('data-tab');
+        if (!tabKey) {
+          var a = targetLi.querySelector('a');
+          if (a && a.getAttribute('href')) {
+            var m = a.getAttribute('href').match(/#tab\.([^.]+)\.([^.]+)/) || a.getAttribute('href').match(/#([^.]+)/);
+            if (m) tabKey = m[m.length - 1];
+          }
+        }
+        if (!tabKey) return;
+
+        var scope = menu.closest('.cbi-map, .cbi-section, .panel') || menu.parentElement;
+        if (!scope) return;
+
+        scope.querySelectorAll('.cbi-tabcontainer, .cbi-section-node[data-tab]').forEach(function (pane) {
+          var paneKey = pane.getAttribute('data-tab');
+          if (!paneKey && pane.id) {
+            var m = pane.id.match(/\.([^.]+)$/);
+            if (m) paneKey = m[1];
+          }
+          if (paneKey) {
+            if (paneKey === tabKey) {
+              pane.classList.add('cbi-tab-active');
+              if (pane.style.display === 'none') pane.style.display = '';
+            } else {
+              pane.classList.remove('cbi-tab-active');
+              pane.style.display = 'none';
+            }
+          }
+        });
+      });
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', syncTabs);
+  window.addEventListener('load', syncTabs);
+
+  // ========== 1.7 移动端侧边栏遮罩点击快速收起 ==========
+  function initSidebarBackdrop() {
+    var closeSidebar = function () {
+      var sidebar = document.querySelector('.main-left');
+      var toggle = document.querySelector('a.showSide');
+      var mask = document.querySelector('.darkMask, .athena-mobile-backdrop');
+      if (sidebar) {
+        sidebar.classList.remove('active');
+        sidebar.classList.remove('open');
+      }
+      if (toggle) toggle.classList.remove('active');
+      if (mask) mask.classList.remove('active');
+    };
+
+    document.addEventListener('click', function (ev) {
+      if (ev.target.matches('.darkMask, .athena-mobile-backdrop')) {
+        closeSidebar();
+      }
+    });
+
+    document.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape') {
+        closeSidebar();
+      }
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', initSidebarBackdrop);
+  window.addEventListener('load', initSidebarBackdrop);
+
   // ========== 2. 状态概览页仪表盘增强 (波形图/三频温控/释放缓存) ==========
   const DashboardEnhancer = {
     historyRx: [200, 350, 420, 310, 500, 620, 480, 530, 410, 380, 490, 600, 520, 430, 390, 460, 550, 610, 500, 470, 520, 630, 540, 460, 420, 480, 580, 640, 510, 490],

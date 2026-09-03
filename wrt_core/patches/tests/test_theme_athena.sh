@@ -20,4 +20,10 @@ echo "=== 3. 验证 JS 核心交互接口 ==="
 grep -q -- "getTempInfo" "$THEME_DIR/htdocs/luci-static/athena/js/theme.js" || { echo "FAIL: 缺失温控获取逻辑"; exit 1; }
 grep -q -- "drop_caches" "$THEME_DIR/htdocs/luci-static/athena/js/theme.js" || { echo "FAIL: 缺失内存释放逻辑"; exit 1; }
 
-echo "PASS: test_theme_athena (主题文件结构与核心特性验证全部通过)"
+echo "=== 4. 验证核心布局兼容性与无破坏性样式 ==="
+grep -q "mobile.css" "$THEME_DIR/ucode/template/themes/athena/header.ut" || { echo "FAIL: header.ut 缺失 mobile.css 引入"; exit 1; }
+! grep -q "li:not(\[display\])" "$THEME_DIR/htdocs/luci-static/athena/css/cascade.css" || { echo "FAIL: 包含破坏 LuCI 原生下拉框的 li:not([display]) 规则"; exit 1; }
+! grep -q "\.cbi-tabcontainer:not(\.cbi-tab-active)" "$THEME_DIR/htdocs/luci-static/athena/css/cascade.css" || { echo "FAIL: 包含破坏 LuCI 原生 Tab 显隐的强制伪类规则"; exit 1; }
+grep -q "syncTabs" "$THEME_DIR/htdocs/luci-static/athena/js/theme.js" || { echo "FAIL: 缺失 syncTabs 逻辑"; exit 1; }
+
+echo "PASS: test_theme_athena (主题文件结构、核心特性与布局兼容性验证全部通过)"

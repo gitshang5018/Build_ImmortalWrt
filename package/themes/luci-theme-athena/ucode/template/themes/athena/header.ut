@@ -17,6 +17,7 @@
 	<meta name="theme-color" content="#1E88E5">
 	<link rel="stylesheet" href="{{ media }}/css/cascade.css">
 	<link rel="stylesheet" href="{{ media }}/css/dark.css">
+	<link rel="stylesheet" href="{{ media }}/css/mobile.css">
 	<link rel="shortcut icon" href="{{ media }}/img/logo.svg" type="image/svg+xml">
 	{% if (node?.css): %}
 	<link rel="stylesheet" href="{{ resource }}/{{ node.css }}">
@@ -45,7 +46,7 @@
 			<header class="athena-header">
 				<div class="header-left">
 					<a class="showSide">☰</a>
-					<div class="brand-badge">雅典娜 AX6600 · 三频满血加速</div>
+					<div class="brand-badge">{{ hostname }} · 系统在线</div>
 				</div>
 				<div class="header-right">
 					<div class="status" id="indicators"></div>
