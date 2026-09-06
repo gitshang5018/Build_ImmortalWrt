@@ -25,9 +25,14 @@ func TestGenerateSingboxConfigWithMosDNS(t *testing.T) {
 		t.Fatalf("GenerateSingboxConfig error: %v", err)
 	}
 
-	// 验证包含 MosDNS 端口
-	if !strings.Contains(configJSON, "127.0.0.1:5335") {
-		t.Errorf("expected MosDNS 127.0.0.1:5335 in DNS servers")
+	// 验证包含 MosDNS 端口与类型定义 (Sing-box 1.12+ 格式)
+	if !strings.Contains(configJSON, `"server": "127.0.0.1"`) || !strings.Contains(configJSON, `"server_port": 5335`) {
+		t.Errorf("expected MosDNS 127.0.0.1:5335 in DNS servers: %s", configJSON)
+	}
+
+	// 验证包含 hijack-dns 规则动作
+	if !strings.Contains(configJSON, `"action": "hijack-dns"`) {
+		t.Errorf("expected hijack-dns action in rules: %s", configJSON)
 	}
 
 	// 验证链式代理 detour 设置

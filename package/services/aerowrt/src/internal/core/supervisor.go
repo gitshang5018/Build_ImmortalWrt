@@ -156,6 +156,10 @@ func (s *Supervisor) Start() error {
 	s.cancel = cancel
 
 	cmd := exec.CommandContext(ctx, s.binPath, "run", "-c", s.configPath)
+	cmd.Env = append(os.Environ(),
+		"ENABLE_DEPRECATED_LEGACY_DNS_SERVERS=true",
+		"ENABLE_DEPRECATED_SPECIAL_OUTBOUNDS=true",
+	)
 
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {

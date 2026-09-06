@@ -15,9 +15,9 @@ func NewGenerator() *Generator {
 }
 
 func (g *Generator) GenerateSingboxConfig(settings model.SystemSettings, nodes []model.Node) (string, error) {
-	dnsServerAddr := "127.0.0.1:5335"
+	dnsPort := 5335
 	if settings.DNSMode == model.DNSModeMosDNS && settings.MosDNSPort > 0 {
-		dnsServerAddr = fmt.Sprintf("127.0.0.1:%d", settings.MosDNSPort)
+		dnsPort = settings.MosDNSPort
 	}
 
 	cfg := map[string]interface{}{
@@ -34,14 +34,18 @@ func (g *Generator) GenerateSingboxConfig(settings model.SystemSettings, nodes [
 		"dns": map[string]interface{}{
 			"servers": []map[string]interface{}{
 				{
-					"tag":     "dns-upstream",
-					"address": dnsServerAddr,
-					"detour":  "direct",
+					"type":        "udp",
+					"tag":         "dns-upstream",
+					"server":      "127.0.0.1",
+					"server_port": dnsPort,
+					"detour":      "direct",
 				},
 				{
-					"tag":     "dns-fallback",
-					"address": "223.5.5.5",
-					"detour":  "direct",
+					"type":        "udp",
+					"tag":         "dns-fallback",
+					"server":      "223.5.5.5",
+					"server_port": 53,
+					"detour":      "direct",
 				},
 			},
 			"strategy": "prefer_ipv4",
@@ -83,7 +87,6 @@ func (g *Generator) GenerateSingboxConfig(settings model.SystemSettings, nodes [
 func (g *Generator) buildOutbounds(settings model.SystemSettings, nodes []model.Node) []map[string]interface{} {
 	outbounds := []map[string]interface{}{
 		{"type": "direct", "tag": "direct"},
-		{"type": "dns", "tag": "dns-out"},
 	}
 
 	// 标签唯一性处理，避免因重复标签导致 Sing-box 解析崩溃
@@ -263,7 +266,7 @@ func (g *Generator) buildOutbounds(settings model.SystemSettings, nodes []model.
 
 func (g *Generator) buildRouteRules() []map[string]interface{} {
 	rules := []map[string]interface{}{
-		{"protocol": "dns", "outbound": "dns-out"},
+		{"protocol": "dns", "action": "hijack-dns"},
 		{"ip_is_private": true, "outbound": "direct"},
 	}
 
