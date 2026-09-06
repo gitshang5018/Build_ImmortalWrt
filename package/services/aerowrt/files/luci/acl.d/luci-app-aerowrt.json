@@ -1,0 +1,15 @@
+{
+	"luci-app-aerowrt": {
+		"description": "Grant access to AeroWrt LuCI app",
+		"read": {
+			"uci": [ "aerowrt" ],
+			"ubus": {
+				"service": [ "list" ]
+			}
+		},
+		"write": {
+			"uci": [ "aerowrt" ],
+			"service": [ "start", "stop", "restart", "reload" ]
+		}
+	}
+}

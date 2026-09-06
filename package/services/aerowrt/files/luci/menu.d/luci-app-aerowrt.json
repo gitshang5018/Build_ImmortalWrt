@@ -1,0 +1,13 @@
+{
+	"admin/services/aerowrt": {
+		"title": "AeroWrt",
+		"order": 50,
+		"action": {
+			"type": "view",
+			"path": "aerowrt/overview"
+		},
+		"depends": {
+			"uci": { "aerowrt": true }
+		}
+	}
+}

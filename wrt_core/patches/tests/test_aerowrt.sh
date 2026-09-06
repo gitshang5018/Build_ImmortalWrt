@@ -11,6 +11,11 @@ echo "=== 1. 检查 aerowrt 包结构完整性 ==="
 [ -f "$PKG_DIR/src/web/dist/index.html" ] || { echo "FAIL: WebUI index.html 缺失"; exit 1; }
 [ -f "$PKG_DIR/src/web/dist/app.css" ] || { echo "FAIL: WebUI app.css 缺失"; exit 1; }
 [ -f "$PKG_DIR/src/web/dist/app.js" ] || { echo "FAIL: WebUI app.js 缺失"; exit 1; }
+[ -f "$PKG_DIR/files/luci/menu.d/luci-app-aerowrt.json" ] || { echo "FAIL: LuCI menu.d 缺失"; exit 1; }
+[ -f "$PKG_DIR/files/luci/acl.d/luci-app-aerowrt.json" ] || { echo "FAIL: LuCI acl.d 缺失"; exit 1; }
+[ -f "$PKG_DIR/files/luci/view/overview.js" ] || { echo "FAIL: LuCI view 缺失"; exit 1; }
+[ -f "$PKG_DIR/files/luci/controller/aerowrt.lua" ] || { echo "FAIL: LuCI controller 缺失"; exit 1; }
+[ -f "$PKG_DIR/files/luci/cbi/aerowrt.lua" ] || { echo "FAIL: LuCI cbi 缺失"; exit 1; }
 
 echo "=== 2. 运行 Go 自动化单元测试 ==="
 pushd "$PKG_DIR/src" >/dev/null

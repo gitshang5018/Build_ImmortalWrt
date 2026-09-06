@@ -95,6 +95,19 @@ jobs:
 
             cp "$SRC_DIR/files/aerowrt.config" "$WORK_DIR/data/etc/config/aerowrt"
 
+            # 组装 LuCI 服务菜单、ACL 权限、JS 视图及 Lua 控制器
+            mkdir -p "$WORK_DIR/data/usr/share/luci/menu.d"
+            mkdir -p "$WORK_DIR/data/usr/share/rpcd/acl.d"
+            mkdir -p "$WORK_DIR/data/www/luci-static/resources/view/aerowrt"
+            mkdir -p "$WORK_DIR/data/usr/lib/lua/luci/controller"
+            mkdir -p "$WORK_DIR/data/usr/lib/lua/luci/model/cbi"
+
+            cp -r "$SRC_DIR/files/luci/menu.d/"* "$WORK_DIR/data/usr/share/luci/menu.d/"
+            cp -r "$SRC_DIR/files/luci/acl.d/"* "$WORK_DIR/data/usr/share/rpcd/acl.d/"
+            cp "$SRC_DIR/files/luci/view/overview.js" "$WORK_DIR/data/www/luci-static/resources/view/aerowrt/overview.js"
+            cp "$SRC_DIR/files/luci/controller/aerowrt.lua" "$WORK_DIR/data/usr/lib/lua/luci/controller/aerowrt.lua"
+            cp "$SRC_DIR/files/luci/cbi/aerowrt.lua" "$WORK_DIR/data/usr/lib/lua/luci/model/cbi/aerowrt.lua"
+
             # 3. 构造 control 控制信息
             {
               echo "Package: aerowrt"
@@ -113,6 +126,7 @@ jobs:
               echo '#!/bin/sh'
               echo '[ -n "$IPKG_INSTROOT" ] || {'
               echo '    /etc/init.d/aerowrt enable'
+              echo '    rm -f /tmp/luci-indexcache /tmp/luci-modulecache/* 2>/dev/null || true'
               echo '}'
               echo 'exit 0'
             } > "$WORK_DIR/control/postinst"
@@ -123,6 +137,7 @@ jobs:
               echo '[ -n "$IPKG_INSTROOT" ] || {'
               echo '    /etc/init.d/aerowrt stop'
               echo '    /etc/init.d/aerowrt disable'
+              echo '    rm -f /tmp/luci-indexcache /tmp/luci-modulecache/* 2>/dev/null || true'
               echo '}'
               echo 'exit 0'
             } > "$WORK_DIR/control/prerm"

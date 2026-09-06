@@ -44,6 +44,21 @@ define Package/aerowrt/install
 
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./files/aerowrt.config $(1)/etc/config/aerowrt
+
+	$(INSTALL_DIR) $(1)/usr/share/luci/menu.d
+	$(INSTALL_DATA) ./files/luci/menu.d/* $(1)/usr/share/luci/menu.d/
+
+	$(INSTALL_DIR) $(1)/usr/share/rpcd/acl.d
+	$(INSTALL_DATA) ./files/luci/acl.d/* $(1)/usr/share/rpcd/acl.d/
+
+	$(INSTALL_DIR) $(1)/www/luci-static/resources/view/aerowrt
+	$(INSTALL_DATA) ./files/luci/view/overview.js $(1)/www/luci-static/resources/view/aerowrt/overview.js
+
+	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/controller
+	$(INSTALL_DATA) ./files/luci/controller/aerowrt.lua $(1)/usr/lib/lua/luci/controller/aerowrt.lua
+
+	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/model/cbi
+	$(INSTALL_DATA) ./files/luci/cbi/aerowrt.lua $(1)/usr/lib/lua/luci/model/cbi/aerowrt.lua
 endef
 
 $(eval $(call GoPackage/GoSubMenuAnnotation,aerowrt))
