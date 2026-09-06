@@ -59,6 +59,7 @@ func (g *Generator) GenerateSingboxConfig(settings model.SystemSettings, nodes [
 				"strict_route":          false,
 				"stack":                 "system",
 				"route_exclude_address": getRouteExcludeAddresses(),
+				"exclude_interface":     getExcludeInterfaces(),
 			},
 			{
 				"type":        "mixed",
@@ -338,8 +339,30 @@ func getRouteExcludeAddresses() []string {
 			}
 			if v4 := ip.To4(); v4 != nil {
 				excludes = append(excludes, fmt.Sprintf("%s/32", v4.String()))
-			} else if v6 := ip.To16(); v6 != nil {
-				excludes = append(excludes, fmt.Sprintf("%s/128", v6.String()))
+			}
+		}
+	}
+	return excludes
+}
+
+func getExcludeInterfaces() []string {
+	excludes := []string{"pppoe-wan", "wan", "wan6"}
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return excludes
+	}
+	for _, iface := range ifaces {
+		name := strings.ToLower(iface.Name)
+		if (strings.Contains(name, "wan") || strings.HasPrefix(name, "ppp")) && !strings.HasPrefix(name, "tun") {
+			found := false
+			for _, ex := range excludes {
+				if ex == iface.Name {
+					found = true
+					break
+				}
+			}
+			if !found {
+				excludes = append(excludes, iface.Name)
 			}
 		}
 	}

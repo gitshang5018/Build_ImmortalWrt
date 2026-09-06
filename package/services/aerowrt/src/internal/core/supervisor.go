@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -322,9 +323,13 @@ func (s *Supervisor) SetRunning(r bool) {
 }
 
 func (s *Supervisor) applySourceRoutingRules() {
+	if runtime.GOOS != "linux" {
+		return
+	}
+
 	// 1. 设置系统所有接口为宽松反向路径校验 (Loose rp_filter = 2)
 	// 彻底防止 Linux 内核在 Sing-box TUN 建立 table 2022 默认路由后，
-	// 因 Strict rp_filter=1 将来自物理 WAN 口（如 117.136.x.x）的合法入站请求当成火星包 (martian) 静默丢弃
+	// 因 Strict rp_filter=1 将来自物理 WAN 口（如外网反代 VPS）的合法入站请求当成火星包 (martian) 静默丢弃
 	_ = exec.Command("sysctl", "-w", "net.ipv4.conf.all.rp_filter=2").Run()
 	_ = exec.Command("sysctl", "-w", "net.ipv4.conf.default.rp_filter=2").Run()
 	if files, err := filepath.Glob("/proc/sys/net/ipv4/conf/*/rp_filter"); err == nil {
@@ -333,7 +338,39 @@ func (s *Supervisor) applySourceRoutingRules() {
 		}
 	}
 
-	// 2. 注入源进源出策略路由 (ip rule from <IFACE_IP> table main pref 50)
+	// 2. 识别所有 WAN / 物理网卡并注入 iif 与 oif 路由策略 (pref 40)
+	// 确保从外部反向代理（VPS 反代/内网穿透）或 WAN 入站的所有流量及其回包，强制走 table main 物理网卡直出，彻底免疫 TUN 劫持
+	wanIfaces := []string{"pppoe-wan", "wan", "wan6"}
+	if ifaces, err := net.Interfaces(); err == nil {
+		for _, iface := range ifaces {
+			name := strings.ToLower(iface.Name)
+			if (strings.Contains(name, "wan") || strings.HasPrefix(name, "ppp")) && !strings.HasPrefix(name, "tun") {
+				found := false
+				for _, w := range wanIfaces {
+					if w == iface.Name {
+						found = true
+						break
+					}
+				}
+				if !found {
+					wanIfaces = append(wanIfaces, iface.Name)
+				}
+			}
+		}
+	}
+
+	for _, dev := range wanIfaces {
+		_ = exec.Command("ip", "rule", "del", "iif", dev, "table", "main", "pref", "40").Run()
+		_ = exec.Command("ip", "rule", "add", "iif", dev, "table", "main", "pref", "40").Run()
+		_ = exec.Command("ip", "rule", "del", "oif", dev, "table", "main", "pref", "40").Run()
+		_ = exec.Command("ip", "rule", "add", "oif", dev, "table", "main", "pref", "40").Run()
+		_ = exec.Command("ip", "-6", "rule", "del", "iif", dev, "table", "main", "pref", "40").Run()
+		_ = exec.Command("ip", "-6", "rule", "add", "iif", dev, "table", "main", "pref", "40").Run()
+		_ = exec.Command("ip", "-6", "rule", "del", "oif", dev, "table", "main", "pref", "40").Run()
+		_ = exec.Command("ip", "-6", "rule", "add", "oif", dev, "table", "main", "pref", "40").Run()
+	}
+
+	// 3. 注入源进源出策略路由 (ip rule from <IFACE_IP> table main pref 50)
 	// 确保从 WAN 或 LAN 接口入站的访问流量，回程时强制走 table main 物理网关原路返回，不被 TUN 劫持进入节点代理
 	ifaces, err := net.Interfaces()
 	if err != nil {
@@ -378,39 +415,66 @@ func (s *Supervisor) applySourceRoutingRules() {
 }
 
 func (s *Supervisor) cleanSourceRoutingRules() {
-	go func() {
-		ifaces, err := net.Interfaces()
-		if err != nil {
-			return
-		}
+	if runtime.GOOS != "linux" {
+		return
+	}
+
+	wanIfaces := []string{"pppoe-wan", "wan", "wan6"}
+	if ifaces, err := net.Interfaces(); err == nil {
 		for _, iface := range ifaces {
-			if iface.Flags&net.FlagLoopback != 0 || strings.HasPrefix(iface.Name, "tun") {
-				continue
-			}
-			addrs, err := iface.Addrs()
-			if err != nil {
-				continue
-			}
-			for _, addr := range addrs {
-				var ip net.IP
-				switch v := addr.(type) {
-				case *net.IPNet:
-					ip = v.IP
-				case *net.IPAddr:
-					ip = v.IP
+			name := strings.ToLower(iface.Name)
+			if (strings.Contains(name, "wan") || strings.HasPrefix(name, "ppp")) && !strings.HasPrefix(name, "tun") {
+				found := false
+				for _, w := range wanIfaces {
+					if w == iface.Name {
+						found = true
+						break
+					}
 				}
-				if ip == nil || ip.IsLoopback() || ip.IsMulticast() || ip.IsLinkLocalUnicast() {
-					continue
-				}
-				ipStr := ip.String()
-				if ip.To4() != nil {
-					_ = exec.Command("ip", "rule", "del", "from", ipStr, "table", "main", "pref", "50").Run()
-					_ = exec.Command("ip", "rule", "del", "from", ipStr, "table", "main", "pref", "100").Run()
-				} else {
-					_ = exec.Command("ip", "-6", "rule", "del", "from", ipStr, "table", "main", "pref", "50").Run()
-					_ = exec.Command("ip", "-6", "rule", "del", "from", ipStr, "table", "main", "pref", "100").Run()
+				if !found {
+					wanIfaces = append(wanIfaces, iface.Name)
 				}
 			}
 		}
-	}()
+	}
+	for _, dev := range wanIfaces {
+		_ = exec.Command("ip", "rule", "del", "iif", dev, "table", "main", "pref", "40").Run()
+		_ = exec.Command("ip", "rule", "del", "oif", dev, "table", "main", "pref", "40").Run()
+		_ = exec.Command("ip", "-6", "rule", "del", "iif", dev, "table", "main", "pref", "40").Run()
+		_ = exec.Command("ip", "-6", "rule", "del", "oif", dev, "table", "main", "pref", "40").Run()
+	}
+
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return
+	}
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagLoopback != 0 || strings.HasPrefix(iface.Name, "tun") {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			var ip net.IP
+			switch v := addr.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+			if ip == nil || ip.IsLoopback() || ip.IsMulticast() || ip.IsLinkLocalUnicast() {
+				continue
+			}
+			ipStr := ip.String()
+			if ip.To4() != nil {
+				_ = exec.Command("ip", "rule", "del", "from", ipStr, "table", "main", "pref", "50").Run()
+				_ = exec.Command("ip", "rule", "del", "from", ipStr, "table", "main", "pref", "100").Run()
+			} else {
+				_ = exec.Command("ip", "-6", "rule", "del", "from", ipStr, "table", "main", "pref", "50").Run()
+				_ = exec.Command("ip", "-6", "rule", "del", "from", ipStr, "table", "main", "pref", "100").Run()
+			}
+		}
+	}
 }
