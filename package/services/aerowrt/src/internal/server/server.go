@@ -33,7 +33,7 @@ func NewServer(settings model.SystemSettings) *Server {
 		nodes:         make([]model.Node, 0),
 		groups:        make([]model.OutboundGroup, 0),
 		subscriptions: make([]model.Subscription, 0),
-		pinger:        pinger.NewPinger(1500 * time.Millisecond),
+		pinger:        pinger.NewPinger(3500 * time.Millisecond),
 		updater:       updater.NewUpdater(),
 		supervisor:    core.NewSupervisor("", ""),
 	}
@@ -108,6 +108,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/logs", s.handleLogs)
 	mux.HandleFunc("/api/core/check", s.handleCoreCheck)
 	mux.HandleFunc("/api/core/upgrade", s.handleCoreUpgrade)
+	mux.HandleFunc("/api/core/restart", s.handleCoreRestart)
 	return mux
 }
 
@@ -164,7 +165,19 @@ func (s *Server) handlePing(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.RUnlock()
 
-	results := s.pinger.PingBatch(targetNodes)
+	results := make(map[string]int64)
+	var urlTestCount int
+	var tcpCount int
+
+	for _, n := range targetNodes {
+		delay, mode := s.pinger.PingNodeWithDetail(n)
+		results[n.ID] = delay
+		if mode == "URL-Test" {
+			urlTestCount++
+		} else {
+			tcpCount++
+		}
+	}
 
 	s.mu.Lock()
 	for i := range s.nodes {
@@ -176,7 +189,11 @@ func (s *Server) handlePing(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 
 	if s.supervisor != nil {
-		s.supervisor.AddLog("INFO", fmt.Sprintf("Ping completed for %d nodes (URL-Test/TCP)", len(targetNodes)))
+		if urlTestCount > 0 {
+			s.supervisor.AddLog("SUCCESS", fmt.Sprintf("Ping completed for %d nodes (URL-Test via Sing-box: %d, TCP fallback: %d)", len(targetNodes), urlTestCount, tcpCount))
+		} else {
+			s.supervisor.AddLog("WARN", fmt.Sprintf("Ping completed for %d nodes via direct TCP (Sing-box Clash API on 127.0.0.1:9090 not ready)", len(targetNodes)))
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -198,20 +215,74 @@ func (s *Server) handleSwitch(w http.ResponseWriter, r *http.Request) {
 
 	s.mu.Lock()
 	s.settings.ActiveNodeID = req.NodeID
+	var targetTag string
+	for _, n := range s.nodes {
+		if n.ID == req.NodeID {
+			targetTag = n.Tag
+			break
+		}
+	}
 	s.saveToStorageLocked()
 	s.mu.Unlock()
 
-	if s.supervisor != nil {
+	switchedViaClash := false
+	if s.supervisor != nil && targetTag != "" {
+		switchedViaClash = s.supervisor.SwitchViaClash(targetTag)
+	}
+
+	if !switchedViaClash && s.supervisor != nil {
 		s.mu.RLock()
 		_ = s.supervisor.ApplyConfig(s.settings, s.nodes)
-		s.supervisor.AddLog("SUCCESS", fmt.Sprintf("Switched active outbound node to %s", req.NodeID))
 		s.mu.RUnlock()
+	}
+
+	if s.supervisor != nil {
+		if switchedViaClash {
+			s.supervisor.AddLog("SUCCESS", fmt.Sprintf("Switched active node to [%s] instantly via Clash API (1ms)", targetTag))
+		} else {
+			s.supervisor.AddLog("SUCCESS", fmt.Sprintf("Switched active node to %s (config applied)", req.NodeID))
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success":     true,
 		"active_node": req.NodeID,
+		"via_clash":   switchedViaClash,
+	})
+}
+
+func (s *Server) handleCoreRestart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	s.mu.RLock()
+	nodes := make([]model.Node, len(s.nodes))
+	copy(nodes, s.nodes)
+	settings := s.settings
+	s.mu.RUnlock()
+
+	var err error
+	if s.supervisor != nil {
+		err = s.supervisor.ApplyConfig(settings, nodes)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Sing-box 核心已成功重启/启动",
+		"running": s.supervisor != nil && s.supervisor.IsRunning(),
 	})
 }
 

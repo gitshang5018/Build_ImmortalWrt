@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"aerowrt/internal/model"
 )
 
@@ -14,11 +15,6 @@ func NewGenerator() *Generator {
 }
 
 func (g *Generator) GenerateSingboxConfig(settings model.SystemSettings, nodes []model.Node) (string, error) {
-	nodeMap := make(map[string]model.Node)
-	for _, n := range nodes {
-		nodeMap[n.ID] = n
-	}
-
 	dnsServerAddr := "127.0.0.1:5335"
 	if settings.DNSMode == model.DNSModeMosDNS && settings.MosDNSPort > 0 {
 		dnsServerAddr = fmt.Sprintf("127.0.0.1:%d", settings.MosDNSPort)
@@ -32,6 +28,7 @@ func (g *Generator) GenerateSingboxConfig(settings model.SystemSettings, nodes [
 		"experimental": map[string]interface{}{
 			"clash_api": map[string]interface{}{
 				"external_controller": "127.0.0.1:9090",
+				"default_mode":        "rule",
 			},
 		},
 		"dns": map[string]interface{}{
@@ -41,21 +38,34 @@ func (g *Generator) GenerateSingboxConfig(settings model.SystemSettings, nodes [
 					"address": dnsServerAddr,
 					"detour":  "direct",
 				},
+				{
+					"tag":     "dns-fallback",
+					"address": "223.5.5.5",
+					"detour":  "direct",
+				},
 			},
+			"strategy": "prefer_ipv4",
 		},
 		"inbounds": []map[string]interface{}{
 			{
 				"type":           "tun",
 				"tag":            "tun-in",
 				"interface_name": "tun0",
-				"inet4_address":  "172.19.0.1/30",
+				"address":        []string{"172.19.0.1/30"},
 				"auto_route":     true,
 				"strict_route":   false,
 				"stack":          "system",
 				"sniff":          true,
 			},
+			{
+				"type":        "mixed",
+				"tag":         "mixed-in",
+				"listen":      "127.0.0.1",
+				"listen_port": 2080,
+				"sniff":       true,
+			},
 		},
-		"outbounds": g.buildOutbounds(settings, nodes, nodeMap),
+		"outbounds": g.buildOutbounds(settings, nodes),
 		"route": map[string]interface{}{
 			"auto_detect_interface": true,
 			"final":                 "proxy",
@@ -70,13 +80,34 @@ func (g *Generator) GenerateSingboxConfig(settings model.SystemSettings, nodes [
 	return string(data), nil
 }
 
-func (g *Generator) buildOutbounds(settings model.SystemSettings, nodes []model.Node, nodeMap map[string]model.Node) []map[string]interface{} {
+func (g *Generator) buildOutbounds(settings model.SystemSettings, nodes []model.Node) []map[string]interface{} {
 	outbounds := []map[string]interface{}{
 		{"type": "direct", "tag": "direct"},
 		{"type": "dns", "tag": "dns-out"},
 	}
 
-	for _, n := range nodes {
+	// 标签唯一性处理，避免因重复标签导致 Sing-box 解析崩溃
+	usedTags := make(map[string]int)
+	processedNodes := make([]model.Node, len(nodes))
+	copy(processedNodes, nodes)
+	nodeTagMap := make(map[string]string)
+
+	for i := range processedNodes {
+		tag := strings.TrimSpace(processedNodes[i].Tag)
+		if tag == "" {
+			tag = fmt.Sprintf("node-%d", i+1)
+		}
+		if count, exists := usedTags[tag]; exists {
+			usedTags[tag] = count + 1
+			tag = fmt.Sprintf("%s-%d", tag, count+1)
+		} else {
+			usedTags[tag] = 1
+		}
+		processedNodes[i].Tag = tag
+		nodeTagMap[processedNodes[i].ID] = tag
+	}
+
+	for _, n := range processedNodes {
 		ob := map[string]interface{}{
 			"tag":         n.Tag,
 			"server":      n.Server,
@@ -84,42 +115,140 @@ func (g *Generator) buildOutbounds(settings model.SystemSettings, nodes []model.
 		}
 
 		if n.ChainNode != "" {
-			if parent, exists := nodeMap[n.ChainNode]; exists {
-				ob["detour"] = parent.Tag
+			if parentTag, exists := nodeTagMap[n.ChainNode]; exists {
+				ob["detour"] = parentTag
 			}
+		}
+
+		sni := n.SNI
+		if sni == "" {
+			sni = n.Server
 		}
 
 		switch n.Protocol {
 		case model.ProtocolVLESS:
 			ob["type"] = "vless"
 			ob["uuid"] = n.UUID
+			if n.Security == "reality" || n.PublicKey != "" {
+				ob["tls"] = map[string]interface{}{
+					"enabled":     true,
+					"server_name": sni,
+					"reality": map[string]interface{}{
+						"enabled":    true,
+						"public_key": n.PublicKey,
+						"short_id":   n.ShortID,
+					},
+					"utls": map[string]interface{}{
+						"enabled":     true,
+						"fingerprint": "chrome",
+					},
+				}
+			} else if n.Security == "tls" {
+				ob["tls"] = map[string]interface{}{
+					"enabled":     true,
+					"server_name": sni,
+				}
+			}
+			if n.Network == "ws" {
+				path := n.Path
+				if path == "" {
+					path = "/"
+				}
+				ob["transport"] = map[string]interface{}{
+					"type": "ws",
+					"path": path,
+					"headers": map[string]string{
+						"Host": sni,
+					},
+				}
+			} else if n.Network == "grpc" {
+				ob["transport"] = map[string]interface{}{
+					"type":         "grpc",
+					"service_name": n.Path,
+				}
+			}
+
 		case model.ProtocolTrojan:
 			ob["type"] = "trojan"
 			ob["password"] = n.Password
+			// Sing-box 规范强制 Trojan 必须配置 tls
+			ob["tls"] = map[string]interface{}{
+				"enabled":     true,
+				"server_name": sni,
+			}
+			if n.Network == "ws" {
+				path := n.Path
+				if path == "" {
+					path = "/"
+				}
+				ob["transport"] = map[string]interface{}{
+					"type": "ws",
+					"path": path,
+					"headers": map[string]string{
+						"Host": sni,
+					},
+				}
+			}
+
+		case model.ProtocolVMess:
+			ob["type"] = "vmess"
+			ob["uuid"] = n.UUID
+			ob["security"] = "auto"
+			if n.Security == "tls" {
+				ob["tls"] = map[string]interface{}{
+					"enabled":     true,
+					"server_name": sni,
+				}
+			}
+			if n.Network == "ws" {
+				path := n.Path
+				if path == "" {
+					path = "/"
+				}
+				ob["transport"] = map[string]interface{}{
+					"type": "ws",
+					"path": path,
+					"headers": map[string]string{
+						"Host": sni,
+					},
+				}
+			}
+
+		case model.ProtocolHysteria2:
+			ob["type"] = "hysteria2"
+			ob["password"] = n.Password
+			ob["tls"] = map[string]interface{}{
+				"enabled":     true,
+				"server_name": sni,
+			}
+
 		case model.ProtocolSS:
 			ob["type"] = "shadowsocks"
 			ob["password"] = n.Password
-			ob["method"] = "aes-128-gcm"
+			method := n.Method
+			if method == "" {
+				method = "aes-128-gcm"
+			}
+			ob["method"] = method
+
 		default:
 			ob["type"] = "vless"
+			ob["uuid"] = n.UUID
 		}
 		outbounds = append(outbounds, ob)
 	}
 
-	// 组装所有节点标签供 selector 与 clash_api 调度使用
-	allTags := make([]string, 0, len(nodes))
-	for _, n := range nodes {
+	allTags := make([]string, 0, len(processedNodes))
+	for _, n := range processedNodes {
 		allTags = append(allTags, n.Tag)
 	}
 	if len(allTags) == 0 {
 		allTags = append(allTags, "direct")
 	}
 
-	activeTag := "direct"
-	if active, ok := nodeMap[settings.ActiveNodeID]; ok {
-		activeTag = active.Tag
-	} else if len(allTags) > 0 {
-		activeTag = allTags[0]
+	activeTag := allTags[0]
+	if mappedTag, ok := nodeTagMap[settings.ActiveNodeID]; ok {
+		activeTag = mappedTag
 	}
 
 	outbounds = append(outbounds, map[string]interface{}{

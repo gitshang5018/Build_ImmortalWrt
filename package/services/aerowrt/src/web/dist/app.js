@@ -92,7 +92,18 @@ async function loadStatus() {
     // 更新网关与状态卡片
     const gatewayStatus = document.getElementById('gateway-status');
     if (gatewayStatus) {
-      gatewayStatus.textContent = data.core_running ? '运行中 (Sing-box)' : '就绪 (Sing-box)';
+      if (data.core_running) {
+        gatewayStatus.textContent = '🟢 运行中 (Sing-box 内核)';
+        gatewayStatus.className = 'pill pill-success';
+        gatewayStatus.style.cursor = 'default';
+        gatewayStatus.onclick = null;
+      } else {
+        gatewayStatus.textContent = '🔴 内核未运行 (点击启动)';
+        gatewayStatus.className = 'pill pill-danger';
+        gatewayStatus.style.cursor = 'pointer';
+        gatewayStatus.title = '点击尝试启动 / 重启 Sing-box 核心进程';
+        gatewayStatus.onclick = () => restartCoreProcess();
+      }
     }
 
     const mosdnsBadge = document.getElementById('dns-badge');
@@ -601,6 +612,25 @@ async function triggerCoreUpgrade() {
     }
   } finally {
     if (btn) btn.disabled = false;
+  }
+}
+
+async function restartCoreProcess() {
+  const gatewayStatus = document.getElementById('gateway-status');
+  if (gatewayStatus) gatewayStatus.textContent = '⏳ 启动内核中...';
+  try {
+    const res = await fetch('/api/core/restart', { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      loadStatus();
+      loadLogs();
+    } else {
+      alert('启动失败: ' + (data.error || '未知错误'));
+      loadStatus();
+    }
+  } catch (err) {
+    alert('请求失败: ' + err.message);
+    loadStatus();
   }
 }
 

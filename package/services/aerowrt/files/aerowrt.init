@@ -26,16 +26,15 @@ start_service() {
 
 	mkdir -p /etc/aerowrt
 
-	# 确保只清理后台残留的守护进程，排除当前运行的 init 脚本自身 ($$)
-	for p in $(pidof aerowrt 2>/dev/null); do
-		if [ "$p" != "$$" ]; then
-			kill -9 "$p" 2>/dev/null || true
-		fi
-	done
+	# 确保 /dev/net/tun 字符设备与 tun 模块就绪
+	[ -c /dev/net/tun ] || {
+		mkdir -p /dev/net
+		mknod /dev/net/tun c 10 200 2>/dev/null || true
+		modprobe tun 2>/dev/null || true
+	}
 
 	procd_open_instance
 	procd_set_param command "$PROG" -port "$port" -mosdns "$mosdns_port"
-	procd_set_param env GOMEMLIMIT=20MiB GODEBUG=madvdontneed=1
 	procd_set_param respawn 3600 5 5
 	procd_set_param stdout 1
 	procd_set_param stderr 1
@@ -43,11 +42,8 @@ start_service() {
 }
 
 stop_service() {
-	for p in $(pidof aerowrt 2>/dev/null); do
-		if [ "$p" != "$$" ]; then
-			kill -9 "$p" 2>/dev/null || true
-		fi
-	done
+	# 清理可能遗留的 sing-box 核心进程
+	killall -9 sing-box 2>/dev/null || true
 }
 
 reload_service() {

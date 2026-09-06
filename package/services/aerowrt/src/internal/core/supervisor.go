@@ -132,8 +132,17 @@ func (s *Supervisor) Start() error {
 		return fmt.Errorf("config not found: %w", err)
 	}
 
-	// 3. 停止已在运行的旧实例
+	// 3. 停止已在运行的旧实例并清理遗留孤儿进程，释放 9090 端口与 tun0 设备
 	s.stopProcessLocked()
+	_ = exec.Command("killall", "-9", "sing-box").Run()
+	time.Sleep(100 * time.Millisecond)
+
+	// 确保 /dev/net/tun 字符设备与 tun 模块就绪
+	if _, err := os.Stat("/dev/net/tun"); os.IsNotExist(err) {
+		_ = os.MkdirAll("/dev/net", 0755)
+		_ = exec.Command("mknod", "/dev/net/tun", "c", "10", "200").Run()
+		_ = exec.Command("modprobe", "tun").Run()
+	}
 
 	// 4. 创建子进程并启动
 	ctx, cancel := context.WithCancel(context.Background())
@@ -174,7 +183,7 @@ func (s *Supervisor) Start() error {
 		s.mu.Lock()
 		s.isRunning = false
 		if waitErr != nil {
-			s.addLogLocked("WARN", fmt.Sprintf("Sing-box process exited: %v", waitErr))
+			s.addLogLocked("WARN", fmt.Sprintf("Sing-box process exited: %v (Run 'sing-box run -c %s' in terminal for detail)", waitErr, s.configPath))
 		} else {
 			s.addLogLocked("INFO", "Sing-box process exited cleanly.")
 		}

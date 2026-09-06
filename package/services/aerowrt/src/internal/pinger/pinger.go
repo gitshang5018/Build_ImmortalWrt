@@ -29,15 +29,20 @@ func NewPinger(timeout time.Duration) *Pinger {
 // 1. 优先通过 Sing-box 内核的 Clash API 进行真实代理握手与端到端访问 (URL-Test)；
 // 2. 如果内核 API 未就绪或测速报错，回退到 TCP 握手直连测试。
 func (p *Pinger) PingNode(node model.Node) int64 {
+	delay, _ := p.PingNodeWithDetail(node)
+	return delay
+}
+
+func (p *Pinger) PingNodeWithDetail(node model.Node) (int64, string) {
 	// 尝试真实 URL-Test (通过代理到目标网站的往返握手延迟)
 	if p.ClashAddr != "" && node.Tag != "" {
 		if delay := p.pingViaClash(node.Tag); delay > 0 {
-			return delay
+			return delay, "URL-Test"
 		}
 	}
 
 	// 备选回退：TCP 端口连通性握手测试
-	return p.tcpPing(node)
+	return p.tcpPing(node), "TCP"
 }
 
 func (p *Pinger) pingViaClash(tag string) int64 {

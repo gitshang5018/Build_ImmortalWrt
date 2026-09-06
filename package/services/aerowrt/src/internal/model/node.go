@@ -18,7 +18,9 @@ type Node struct {
 	Port      int          `json:"port"`
 	UUID      string       `json:"uuid,omitempty"`
 	Password  string       `json:"password,omitempty"`
+	Method    string       `json:"method,omitempty"`
 	Network   string       `json:"network,omitempty"`
+	Path      string       `json:"path,omitempty"`
 	Security  string       `json:"security,omitempty"`
 	SNI       string       `json:"sni,omitempty"`
 	PublicKey string       `json:"public_key,omitempty"`

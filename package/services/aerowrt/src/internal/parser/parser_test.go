@@ -34,3 +34,28 @@ func TestParseBase64Subscription(t *testing.T) {
 		t.Errorf("second node mismatch: %+v", nodes[1])
 	}
 }
+
+func TestParseVMessAndSSLink(t *testing.T) {
+	// VMess test
+	vmessJSON := `{"v":"2","ps":"新加坡01","add":"sg.node.com","port":443,"id":"11111111-2222-3333-4444-555555555555","net":"ws","path":"/ws","tls":"tls","host":"sg.node.com"}`
+	vmessLink := "vmess://" + base64.StdEncoding.EncodeToString([]byte(vmessJSON))
+
+	vNode, err := ParseNodeLink(vmessLink)
+	if err != nil {
+		t.Fatalf("Parse VMess error: %v", err)
+	}
+	if vNode.Protocol != model.ProtocolVMess || vNode.Tag != "新加坡01" || vNode.Server != "sg.node.com" || vNode.Path != "/ws" {
+		t.Errorf("unexpected vmess node: %+v", vNode)
+	}
+
+	// SS test
+	ssLink := "ss://YWVzLTEyOC1nY206cGFzczEyMw==@ss.node.com:8388#%E7%BE%8E%E5%9B%BD01"
+	sNode, err := ParseNodeLink(ssLink)
+	if err != nil {
+		t.Fatalf("Parse SS error: %v", err)
+	}
+	if sNode.Protocol != model.ProtocolSS || sNode.Method != "aes-128-gcm" || sNode.Password != "pass123" || sNode.Tag != "美国01" {
+		t.Errorf("unexpected SS node: %+v", sNode)
+	}
+}
+
