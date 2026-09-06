@@ -9,7 +9,10 @@
 		},
 		"write": {
 			"uci": [ "aerowrt" ],
-			"service": [ "start", "stop", "restart", "reload" ]
+			"ubus": {
+				"luci": [ "setInitAction" ],
+				"file": [ "exec" ]
+			}
 		}
 	}
 }
