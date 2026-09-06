@@ -3,6 +3,7 @@ package core
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"strings"
 	"aerowrt/internal/model"
@@ -50,19 +51,14 @@ func (g *Generator) GenerateSingboxConfig(settings model.SystemSettings, nodes [
 		},
 		"inbounds": []map[string]interface{}{
 			{
-				"type":           "tun",
-				"tag":            "tun-in",
-				"interface_name": "tun0",
-				"address":        []string{"172.19.0.1/30"},
-				"auto_route":     true,
-				"strict_route":   false,
-				"stack":          "system",
-				"route_exclude_address": []string{
-					"192.168.0.0/16",
-					"10.0.0.0/8",
-					"172.16.0.0/12",
-					"127.0.0.0/8",
-				},
+				"type":                  "tun",
+				"tag":                   "tun-in",
+				"interface_name":        "tun0",
+				"address":               []string{"172.19.0.1/30"},
+				"auto_route":            true,
+				"strict_route":          false,
+				"stack":                 "system",
+				"route_exclude_address": getRouteExcludeAddresses(),
 			},
 			{
 				"type":        "mixed",
@@ -280,14 +276,8 @@ func (g *Generator) buildRouteRules(settings model.SystemSettings) []map[string]
 		{"action": "sniff"},
 		{"protocol": "dns", "action": "hijack-dns"},
 		{"ip_is_private": true, "outbound": "direct"},
+		{"port": mgmtPorts, "outbound": "direct"},
 		{"source_port": mgmtPorts, "outbound": "direct"},
-	}
-
-	if settings.HttpPort > 0 {
-		rules = append(rules, map[string]interface{}{
-			"port":     []int{settings.HttpPort},
-			"outbound": "direct",
-		})
 	}
 
 	// 仅在路由器存在 geoip.db 时启用 geoip 规则，防止因缺少数据库文件导致 Sing-box 启动闪退
@@ -314,4 +304,44 @@ func hasGeoIPDB() bool {
 		}
 	}
 	return false
+}
+
+func getRouteExcludeAddresses() []string {
+	excludes := []string{
+		"192.168.0.0/16",
+		"10.0.0.0/8",
+		"172.16.0.0/12",
+		"127.0.0.0/8",
+	}
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return excludes
+	}
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagLoopback != 0 || strings.HasPrefix(iface.Name, "tun") {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			var ip net.IP
+			switch v := addr.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+			if ip == nil || ip.IsLoopback() || ip.IsMulticast() || ip.IsLinkLocalUnicast() {
+				continue
+			}
+			if v4 := ip.To4(); v4 != nil {
+				excludes = append(excludes, fmt.Sprintf("%s/32", v4.String()))
+			} else if v6 := ip.To16(); v6 != nil {
+				excludes = append(excludes, fmt.Sprintf("%s/128", v6.String()))
+			}
+		}
+	}
+	return excludes
 }

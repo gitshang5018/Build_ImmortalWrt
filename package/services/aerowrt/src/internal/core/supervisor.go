@@ -190,8 +190,16 @@ func (s *Supervisor) Start() error {
 		s.addLogLocked("SUCCESS", fmt.Sprintf("Sing-box core process started (PID: %d)", cmd.Process.Pid))
 	}
 
-	// 应用源进源出策略路由，确保物理接口 (WAN/LAN) 入站访问流量原路返回，不被 TUN 劫持
+	// 应用源进源出策略路由与宽松 rp_filter，确保物理接口 (WAN/LAN) 入站访问流量原路返回，不被 TUN 劫持
 	s.applySourceRoutingRules()
+
+	// 异步延时重试应用，确保 Sing-box 建立 tun0 与策略路由后持续生效
+	go func() {
+		time.Sleep(1 * time.Second)
+		s.applySourceRoutingRules()
+		time.Sleep(2 * time.Second)
+		s.applySourceRoutingRules()
+	}()
 
 	// 异步读取标准输出与错误日志流
 	go s.streamLogs(stdoutPipe, "CORE")
@@ -259,7 +267,7 @@ func (s *Supervisor) Stop() {
 	defer s.mu.Unlock()
 	s.userStopped = true
 	s.stopProcessLocked()
-	s.addLogLocked("INFO", "Sing-box core process stopped by user/system.")
+	s.addLogLocked("INFO", "Sing-box stopped by user.")
 }
 
 func (s *Supervisor) Restart() error {
@@ -311,6 +319,19 @@ func (s *Supervisor) SetRunning(r bool) {
 }
 
 func (s *Supervisor) applySourceRoutingRules() {
+	// 1. 设置系统所有接口为宽松反向路径校验 (Loose rp_filter = 2)
+	// 彻底防止 Linux 内核在 Sing-box TUN 建立 table 2022 默认路由后，
+	// 因 Strict rp_filter=1 将来自物理 WAN 口（如 117.136.x.x）的合法入站请求当成火星包 (martian) 静默丢弃
+	_ = exec.Command("sysctl", "-w", "net.ipv4.conf.all.rp_filter=2").Run()
+	_ = exec.Command("sysctl", "-w", "net.ipv4.conf.default.rp_filter=2").Run()
+	if files, err := filepath.Glob("/proc/sys/net/ipv4/conf/*/rp_filter"); err == nil {
+		for _, f := range files {
+			_ = os.WriteFile(f, []byte("2\n"), 0644)
+		}
+	}
+
+	// 2. 注入源进源出策略路由 (ip rule from <IFACE_IP> table main pref 50)
+	// 确保从 WAN 或 LAN 接口入站的访问流量，回程时强制走 table main 物理网关原路返回，不被 TUN 劫持进入节点代理
 	ifaces, err := net.Interfaces()
 	if err != nil {
 		return
@@ -335,40 +356,58 @@ func (s *Supervisor) applySourceRoutingRules() {
 				continue
 			}
 			ipStr := ip.String()
-			_ = exec.Command("ip", "rule", "del", "from", ipStr, "table", "main", "pref", "100").Run()
-			if err := exec.Command("ip", "rule", "add", "from", ipStr, "table", "main", "pref", "100").Run(); err == nil {
-				s.addLogLocked("INFO", fmt.Sprintf("Applied return routing rule for IP %s (table main, pref 100)", ipStr))
+			isV4 := (ip.To4() != nil)
+			if isV4 {
+				_ = exec.Command("ip", "rule", "del", "from", ipStr, "table", "main", "pref", "50").Run()
+				_ = exec.Command("ip", "rule", "del", "from", ipStr, "table", "main", "pref", "100").Run()
+				if err := exec.Command("ip", "rule", "add", "from", ipStr, "table", "main", "pref", "50").Run(); err == nil {
+					s.AddLog("INFO", fmt.Sprintf("Applied return routing rule for IPv4 %s (table main, pref 50)", ipStr))
+				}
+			} else {
+				_ = exec.Command("ip", "-6", "rule", "del", "from", ipStr, "table", "main", "pref", "50").Run()
+				_ = exec.Command("ip", "-6", "rule", "del", "from", ipStr, "table", "main", "pref", "100").Run()
+				if err := exec.Command("ip", "-6", "rule", "add", "from", ipStr, "table", "main", "pref", "50").Run(); err == nil {
+					s.AddLog("INFO", fmt.Sprintf("Applied return routing rule for IPv6 %s (table main, pref 50)", ipStr))
+				}
 			}
 		}
 	}
 }
 
 func (s *Supervisor) cleanSourceRoutingRules() {
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		return
-	}
-	for _, iface := range ifaces {
-		if iface.Flags&net.FlagLoopback != 0 || strings.HasPrefix(iface.Name, "tun") {
-			continue
-		}
-		addrs, err := iface.Addrs()
+	go func() {
+		ifaces, err := net.Interfaces()
 		if err != nil {
-			continue
+			return
 		}
-		for _, addr := range addrs {
-			var ip net.IP
-			switch v := addr.(type) {
-			case *net.IPNet:
-				ip = v.IP
-			case *net.IPAddr:
-				ip = v.IP
-			}
-			if ip == nil || ip.IsLoopback() || ip.IsMulticast() || ip.IsLinkLocalUnicast() {
+		for _, iface := range ifaces {
+			if iface.Flags&net.FlagLoopback != 0 || strings.HasPrefix(iface.Name, "tun") {
 				continue
 			}
-			ipStr := ip.String()
-			_ = exec.Command("ip", "rule", "del", "from", ipStr, "table", "main", "pref", "100").Run()
+			addrs, err := iface.Addrs()
+			if err != nil {
+				continue
+			}
+			for _, addr := range addrs {
+				var ip net.IP
+				switch v := addr.(type) {
+				case *net.IPNet:
+					ip = v.IP
+				case *net.IPAddr:
+					ip = v.IP
+				}
+				if ip == nil || ip.IsLoopback() || ip.IsMulticast() || ip.IsLinkLocalUnicast() {
+					continue
+				}
+				ipStr := ip.String()
+				if ip.To4() != nil {
+					_ = exec.Command("ip", "rule", "del", "from", ipStr, "table", "main", "pref", "50").Run()
+					_ = exec.Command("ip", "rule", "del", "from", ipStr, "table", "main", "pref", "100").Run()
+				} else {
+					_ = exec.Command("ip", "-6", "rule", "del", "from", ipStr, "table", "main", "pref", "50").Run()
+					_ = exec.Command("ip", "-6", "rule", "del", "from", ipStr, "table", "main", "pref", "100").Run()
+				}
+			}
 		}
-	}
+	}()
 }
