@@ -415,3 +415,17 @@ func (s *Server) handleCoreUpgrade(w http.ResponseWriter, r *http.Request) {
 		"status":  "upgraded",
 	})
 }
+
+func (s *Server) GetNodes() []model.Node {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	res := make([]model.Node, len(s.nodes))
+	copy(res, s.nodes)
+	return res
+}
+
+func (s *Server) GetSettings() model.SystemSettings {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.settings
+}

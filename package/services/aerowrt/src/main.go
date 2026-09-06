@@ -39,6 +39,14 @@ func main() {
 		log.Printf("[WARN] Failed to load from storage: %v, using defaults", err)
 	}
 
+	// 启动时如果已有保存的节点，自动拉起 Sing-box 核心进程与透明代理
+	initialNodes := apiServer.GetNodes()
+	if len(initialNodes) > 0 {
+		if err := supervisor.ApplyConfig(apiServer.GetSettings(), initialNodes); err != nil {
+			log.Printf("[WARN] Failed to start Sing-box core: %v", err)
+		}
+	}
+
 
 	mux := http.NewServeMux()
 

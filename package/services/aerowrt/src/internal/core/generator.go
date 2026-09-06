@@ -3,6 +3,7 @@ package core
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"aerowrt/internal/model"
 )
 
@@ -58,11 +59,7 @@ func (g *Generator) GenerateSingboxConfig(settings model.SystemSettings, nodes [
 		"route": map[string]interface{}{
 			"auto_detect_interface": true,
 			"final":                 "proxy",
-			"rules": []map[string]interface{}{
-				{"protocol": "dns", "outbound": "dns-out"},
-				{"ip_is_private": true, "outbound": "direct"},
-				{"geoip": []string{"cn"}, "outbound": "direct"},
-			},
+			"rules":                 g.buildRouteRules(),
 		},
 	}
 
@@ -133,4 +130,36 @@ func (g *Generator) buildOutbounds(settings model.SystemSettings, nodes []model.
 	})
 
 	return outbounds
+}
+
+func (g *Generator) buildRouteRules() []map[string]interface{} {
+	rules := []map[string]interface{}{
+		{"protocol": "dns", "outbound": "dns-out"},
+		{"ip_is_private": true, "outbound": "direct"},
+	}
+
+	// 仅在路由器存在 geoip.db 时启用 geoip 规则，防止因缺少数据库文件导致 Sing-box 启动闪退
+	if hasGeoIPDB() {
+		rules = append(rules, map[string]interface{}{
+			"geoip":    []string{"cn"},
+			"outbound": "direct",
+		})
+	}
+
+	return rules
+}
+
+func hasGeoIPDB() bool {
+	paths := []string{
+		"/var/run/sing-box/geoip.db",
+		"/usr/share/sing-box/geoip.db",
+		"/etc/sing-box/geoip.db",
+		"/etc/aerowrt/geoip.db",
+	}
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			return true
+		}
+	}
+	return false
 }
