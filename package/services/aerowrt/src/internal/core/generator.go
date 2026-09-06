@@ -58,8 +58,13 @@ func (g *Generator) GenerateSingboxConfig(settings model.SystemSettings, nodes [
 				"auto_route":            true,
 				"strict_route":          false,
 				"stack":                 "system",
-				"route_exclude_address": getRouteExcludeAddresses(),
-				"exclude_interface":     getExcludeInterfaces(),
+				"route_exclude_address": []string{
+					"192.168.0.0/16",
+					"10.0.0.0/8",
+					"172.16.0.0/12",
+					"127.0.0.0/8",
+				},
+				"include_interface":     getIncludeInterfaces(),
 			},
 			{
 				"type":        "mixed",
@@ -307,64 +312,27 @@ func hasGeoIPDB() bool {
 	return false
 }
 
-func getRouteExcludeAddresses() []string {
-	excludes := []string{
-		"192.168.0.0/16",
-		"10.0.0.0/8",
-		"172.16.0.0/12",
-		"127.0.0.0/8",
-	}
+func getIncludeInterfaces() []string {
+	lanIfaces := []string{"br-lan"}
 	ifaces, err := net.Interfaces()
 	if err != nil {
-		return excludes
+		return lanIfaces
 	}
+	hasBrLan := false
 	for _, iface := range ifaces {
-		if iface.Flags&net.FlagLoopback != 0 || strings.HasPrefix(iface.Name, "tun") {
-			continue
-		}
-		addrs, err := iface.Addrs()
-		if err != nil {
-			continue
-		}
-		for _, addr := range addrs {
-			var ip net.IP
-			switch v := addr.(type) {
-			case *net.IPNet:
-				ip = v.IP
-			case *net.IPAddr:
-				ip = v.IP
-			}
-			if ip == nil || ip.IsLoopback() || ip.IsMulticast() || ip.IsLinkLocalUnicast() {
-				continue
-			}
-			if v4 := ip.To4(); v4 != nil {
-				excludes = append(excludes, fmt.Sprintf("%s/32", v4.String()))
-			}
+		if iface.Name == "br-lan" {
+			hasBrLan = true
+			break
 		}
 	}
-	return excludes
-}
-
-func getExcludeInterfaces() []string {
-	excludes := []string{"pppoe-wan", "wan", "wan6"}
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		return excludes
+	if hasBrLan {
+		return lanIfaces
 	}
 	for _, iface := range ifaces {
 		name := strings.ToLower(iface.Name)
-		if (strings.Contains(name, "wan") || strings.HasPrefix(name, "ppp")) && !strings.HasPrefix(name, "tun") {
-			found := false
-			for _, ex := range excludes {
-				if ex == iface.Name {
-					found = true
-					break
-				}
-			}
-			if !found {
-				excludes = append(excludes, iface.Name)
-			}
+		if (strings.HasPrefix(name, "br-") || strings.Contains(name, "lan")) && !strings.HasPrefix(name, "tun") && !strings.Contains(name, "wan") {
+			return []string{iface.Name}
 		}
 	}
-	return excludes
+	return lanIfaces
 }
