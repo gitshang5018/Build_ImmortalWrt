@@ -136,12 +136,35 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePing(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost && r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		ID      string `json:"id"`
+		TestURL string `json:"test_url"`
+	}
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&req)
+	}
+
 	s.mu.RLock()
-	nodes := make([]model.Node, len(s.nodes))
-	copy(nodes, s.nodes)
+	var targetNodes []model.Node
+	if req.ID != "" {
+		for _, n := range s.nodes {
+			if n.ID == req.ID {
+				targetNodes = append(targetNodes, n)
+				break
+			}
+		}
+	} else {
+		targetNodes = make([]model.Node, len(s.nodes))
+		copy(targetNodes, s.nodes)
+	}
 	s.mu.RUnlock()
 
-	results := s.pinger.PingBatch(nodes)
+	results := s.pinger.PingBatch(targetNodes)
 
 	s.mu.Lock()
 	for i := range s.nodes {
@@ -153,7 +176,7 @@ func (s *Server) handlePing(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 
 	if s.supervisor != nil {
-		s.supervisor.AddLog("INFO", fmt.Sprintf("Ping batch completed for %d nodes", len(nodes)))
+		s.supervisor.AddLog("INFO", fmt.Sprintf("Ping completed for %d nodes (URL-Test/TCP)", len(targetNodes)))
 	}
 
 	w.Header().Set("Content-Type", "application/json")

@@ -133,6 +133,17 @@ async function loadNodes() {
   }
 }
 
+function formatDelayBadge(delay) {
+  if (delay > 0) {
+    const cls = delay < 120 ? 'pill-success' : (delay < 280 ? 'pill-warning' : 'pill-danger');
+    return `<span class="pill ${cls}">${delay} ms</span>`;
+  }
+  if (delay === -1) {
+    return '<span class="pill pill-danger" title="无法通过代理连通目标网络或握手超时">超时 / 失败</span>';
+  }
+  return '<span class="text-muted">未测速</span>';
+}
+
 function updateActiveNodeDisplay() {
   const activeNode = currentNodes.find(n => n.id === activeNodeId) || currentNodes[0];
   const activeNameEl = document.getElementById('active-node-name');
@@ -142,8 +153,16 @@ function updateActiveNodeDisplay() {
   if (activeNode) {
     if (activeNameEl) activeNameEl.textContent = activeNode.tag || activeNode.server;
     if (activeDelayEl) {
-      activeDelayEl.textContent = activeNode.delay_ms > 0 ? `${activeNode.delay_ms} ms` : '未测速';
-      activeDelayEl.className = activeNode.delay_ms > 0 && activeNode.delay_ms < 150 ? 'pill pill-success' : 'pill pill-warning';
+      if (activeNode.delay_ms > 0) {
+        activeDelayEl.textContent = `${activeNode.delay_ms} ms (真延迟)`;
+        activeDelayEl.className = activeNode.delay_ms < 150 ? 'pill pill-success' : 'pill pill-warning';
+      } else if (activeNode.delay_ms === -1) {
+        activeDelayEl.textContent = '节点异常 (超时)';
+        activeDelayEl.className = 'pill pill-danger';
+      } else {
+        activeDelayEl.textContent = '未测速';
+        activeDelayEl.className = 'pill pill-warning';
+      }
     }
     if (activeProtoEl) activeProtoEl.textContent = (activeNode.protocol || 'VLESS').toUpperCase();
   } else {
@@ -168,11 +187,7 @@ function renderQuickNodes() {
     card.className = `node-card ${isActive ? 'active' : ''}`;
     card.onclick = () => switchNode(node.id);
 
-    let delayBadge = '<span class="pill pill-warning">--</span>';
-    if (node.delay_ms > 0) {
-      const cls = node.delay_ms < 100 ? 'pill-success' : (node.delay_ms < 250 ? 'pill-warning' : 'pill-danger');
-      delayBadge = `<span class="pill ${cls}">${node.delay_ms} ms</span>`;
-    }
+    let delayBadge = formatDelayBadge(node.delay_ms);
 
     card.innerHTML = `
       <div class="node-header">
@@ -209,11 +224,12 @@ function renderNodesTable() {
       <td><span class="pill">${(node.protocol || 'vless').toUpperCase()}</span></td>
       <td><code>${escapeHtml(node.server)}</code></td>
       <td>${node.port}</td>
-      <td>${node.delay_ms > 0 ? `<span class="text-success">${node.delay_ms} ms</span>` : '<span class="text-muted">未测速</span>'}</td>
+      <td>${formatDelayBadge(node.delay_ms)}</td>
       <td>${isActive ? '<span class="text-success" style="font-weight:600;">🟢 活跃中</span>' : '<span class="text-muted">备用</span>'}</td>
       <td>
         <button class="btn btn-secondary btn-sm" onclick="switchNode('${node.id}')" ${isActive ? 'disabled' : ''}>设为主节点</button>
-        <button class="btn btn-secondary btn-sm" style="color: var(--danger); margin-left: 6px;" onclick="deleteNode('${node.id}')">删除</button>
+        <button class="btn btn-secondary btn-sm" onclick="pingSingleNode('${node.id}', this)" title="通过代理真实端到端连接 Cloudflare 测真延迟">⚡ 测速</button>
+        <button class="btn btn-secondary btn-sm" style="color: var(--danger); margin-left: 4px;" onclick="deleteNode('${node.id}')">删除</button>
       </td>
     `;
     tbody.appendChild(tr);
@@ -325,11 +341,42 @@ async function deleteNode(nodeId) {
   }
 }
 
+async function pingSingleNode(nodeId, btn) {
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳...';
+  }
+  try {
+    const res = await fetch('/api/nodes/ping', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: nodeId })
+    });
+    const results = await res.json();
+    if (results[nodeId] !== undefined) {
+      const node = currentNodes.find(n => n.id === nodeId);
+      if (node) {
+        node.delay_ms = results[nodeId];
+        renderQuickNodes();
+        renderNodesTable();
+        updateActiveNodeDisplay();
+      }
+    }
+  } catch (err) {
+    alert('单节点测速失败: ' + err.message);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '⚡ 测速';
+    }
+  }
+}
+
 async function pingAllNodes() {
   const btn = document.getElementById('btn-ping-all');
   if (btn) {
     btn.disabled = true;
-    btn.textContent = '⏳ 正在测速中...';
+    btn.textContent = '⏳ 真延迟测速中...';
   }
 
   try {

@@ -28,6 +28,11 @@ func (g *Generator) GenerateSingboxConfig(settings model.SystemSettings, nodes [
 			"level":     "info",
 			"timestamp": true,
 		},
+		"experimental": map[string]interface{}{
+			"clash_api": map[string]interface{}{
+				"external_controller": "127.0.0.1:9090",
+			},
+		},
 		"dns": map[string]interface{}{
 			"servers": []map[string]interface{}{
 				{
@@ -104,15 +109,26 @@ func (g *Generator) buildOutbounds(settings model.SystemSettings, nodes []model.
 		outbounds = append(outbounds, ob)
 	}
 
-	// 默认出站代理标签
+	// 组装所有节点标签供 selector 与 clash_api 调度使用
+	allTags := make([]string, 0, len(nodes))
+	for _, n := range nodes {
+		allTags = append(allTags, n.Tag)
+	}
+	if len(allTags) == 0 {
+		allTags = append(allTags, "direct")
+	}
+
 	activeTag := "direct"
 	if active, ok := nodeMap[settings.ActiveNodeID]; ok {
 		activeTag = active.Tag
+	} else if len(allTags) > 0 {
+		activeTag = allTags[0]
 	}
+
 	outbounds = append(outbounds, map[string]interface{}{
 		"type":      "selector",
 		"tag":       "proxy",
-		"outbounds": []string{activeTag},
+		"outbounds": allTags,
 		"default":   activeTag,
 	})
 
