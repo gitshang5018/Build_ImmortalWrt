@@ -128,9 +128,9 @@ jobs:
             {
               echo '#!/bin/sh'
               echo '[ -n "$IPKG_INSTROOT" ] || {'
-              echo '    /etc/init.d/aerowrt enable'
-              echo '    /etc/init.d/aerowrt restart || true'
-              echo '    rm -f /tmp/luci-indexcache /tmp/luci-modulecache/* 2>/dev/null || true'
+              echo '    /etc/init.d/aerowrt enable >/dev/null 2>&1 || true'
+              echo '    # 异步后台重启服务与清理缓存，彻底避免阻塞 LuCI 网页软件包管理器导致超时 Killed / Terminated'
+              echo '    ( sleep 1; /etc/init.d/aerowrt restart; rm -f /tmp/luci-indexcache /tmp/luci-modulecache/* ) >/dev/null 2>&1 &'
               echo '}'
               echo 'exit 0'
             } > "$WORK_DIR/control/postinst"
@@ -139,9 +139,8 @@ jobs:
             {
               echo '#!/bin/sh'
               echo '[ -n "$IPKG_INSTROOT" ] || {'
-              echo '    /etc/init.d/aerowrt stop'
-              echo '    /etc/init.d/aerowrt disable'
-              echo '    rm -f /tmp/luci-indexcache /tmp/luci-modulecache/* 2>/dev/null || true'
+              echo '    /etc/init.d/aerowrt stop >/dev/null 2>&1 || true'
+              echo '    /etc/init.d/aerowrt disable >/dev/null 2>&1 || true'
               echo '}'
               echo 'exit 0'
             } > "$WORK_DIR/control/prerm"
@@ -153,7 +152,7 @@ jobs:
             echo "2.0" > "$WORK_DIR/debian-binary"
 
             # 6. 生成标准 IPK 安装包
-            IPK_NAME="aerowrt_${PKG_VERSION}-1_${IPK_ARCH}.ipk"
+            IPK_NAME="aerowrt_${PKG_VERSION}-2_${IPK_ARCH}.ipk"
             tar -czf "bin/packages/$IPK_NAME" -C "$WORK_DIR" debian-binary control.tar.gz data.tar.gz
 
             # 7. 生成独立免包解压版 (Standalone Tarball)
