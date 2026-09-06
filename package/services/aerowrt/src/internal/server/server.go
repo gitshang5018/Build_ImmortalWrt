@@ -72,9 +72,6 @@ func (s *Server) LoadFromStorage() error {
 	if data.Settings.MosDNSPort > 0 {
 		s.settings.MosDNSPort = data.Settings.MosDNSPort
 	}
-	if s.supervisor != nil {
-		_ = s.supervisor.ApplyConfig(s.settings, s.nodes)
-	}
 	return nil
 }
 

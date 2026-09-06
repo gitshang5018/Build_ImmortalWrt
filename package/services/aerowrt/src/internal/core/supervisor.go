@@ -177,18 +177,21 @@ func (s *Supervisor) Start() error {
 	go s.streamLogs(stdoutPipe, "CORE")
 	go s.streamLogs(stderrPipe, "CORE")
 
-	// 监控进程退出
-	go func() {
-		waitErr := cmd.Wait()
+	// 监控进程退出 (单一责任退出回收，防止并发调用 cmd.Wait 发生死锁)
+	go func(targetCmd *exec.Cmd) {
+		waitErr := targetCmd.Wait()
 		s.mu.Lock()
-		s.isRunning = false
+		if s.cmd == targetCmd {
+			s.isRunning = false
+			s.cmd = nil
+		}
 		if waitErr != nil {
 			s.addLogLocked("WARN", fmt.Sprintf("Sing-box process exited: %v (Run 'sing-box run -c %s' in terminal for detail)", waitErr, s.configPath))
 		} else {
 			s.addLogLocked("INFO", "Sing-box process exited cleanly.")
 		}
 		s.mu.Unlock()
-	}()
+	}(cmd)
 
 	return nil
 }
@@ -210,7 +213,6 @@ func (s *Supervisor) stopProcessLocked() {
 	}
 	if s.cmd != nil && s.cmd.Process != nil {
 		_ = s.cmd.Process.Kill()
-		_ = s.cmd.Wait()
 		s.cmd = nil
 	}
 	s.isRunning = false
