@@ -43,8 +43,8 @@ start_service() {
 }
 
 stop_service() {
-	# 清理可能遗留的 sing-box 核心进程
-	killall -9 sing-box 2>/dev/null || true
+	# 发送 SIGTERM 给 aerowrt 主进程，由其内部优雅关闭 sing-box 核心进程
+	killall -15 aerowrt 2>/dev/null || true
 }
 
 reload_service() {

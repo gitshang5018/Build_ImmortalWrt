@@ -12,21 +12,23 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 	"aerowrt/internal/model"
 )
 
 type Supervisor struct {
-	mu         sync.RWMutex
-	binPath    string
-	configPath string
-	generator  *Generator
-	logs       []string
-	maxLogs    int
-	cmd        *exec.Cmd
-	cancel     context.CancelFunc
-	isRunning  bool
+	mu          sync.RWMutex
+	binPath     string
+	configPath  string
+	generator   *Generator
+	logs        []string
+	maxLogs     int
+	cmd         *exec.Cmd
+	cancel      context.CancelFunc
+	isRunning   bool
+	userStopped bool
 }
 
 func NewSupervisor(binPath, configPath string) *Supervisor {
@@ -37,12 +39,13 @@ func NewSupervisor(binPath, configPath string) *Supervisor {
 		configPath = "/etc/aerowrt/config.json"
 	}
 	s := &Supervisor{
-		binPath:    binPath,
-		configPath: configPath,
-		generator:  NewGenerator(),
-		logs:       make([]string, 0, 200),
-		maxLogs:    200,
-		isRunning:  false,
+		binPath:     binPath,
+		configPath:  configPath,
+		generator:   NewGenerator(),
+		logs:        make([]string, 0, 200),
+		maxLogs:     200,
+		isRunning:   false,
+		userStopped: false,
 	}
 	s.AddLog("INFO", fmt.Sprintf("AeroWrt Core Supervisor initialized (sing-box: %s)", binPath))
 	return s
@@ -139,9 +142,9 @@ func (s *Supervisor) Start() error {
 		return fmt.Errorf("config not found: %w", err)
 	}
 
-	// 3. 停止已在运行的旧实例并清理遗留孤儿进程，释放 9090 端口与 tun0 设备
+	// 3. 停止已在运行的旧实例，释放 9090 端口与 tun0 设备
+	s.userStopped = false
 	s.stopProcessLocked()
-	_ = exec.Command("killall", "-9", "sing-box").Run()
 	time.Sleep(100 * time.Millisecond)
 
 	// 确保 /dev/net/tun 字符设备与 tun 模块就绪
@@ -194,16 +197,31 @@ func (s *Supervisor) Start() error {
 	go func(targetCmd *exec.Cmd) {
 		waitErr := targetCmd.Wait()
 		s.mu.Lock()
-		if s.cmd == targetCmd {
+		wasCurrent := (s.cmd == targetCmd)
+		if wasCurrent {
 			s.isRunning = false
 			s.cmd = nil
 		}
+		userStopped := s.userStopped
 		if waitErr != nil {
 			s.addLogLocked("WARN", fmt.Sprintf("Sing-box process exited: %v (Run 'sing-box run -c %s' in terminal for detail)", waitErr, s.configPath))
 		} else {
 			s.addLogLocked("INFO", "Sing-box process exited cleanly.")
 		}
 		s.mu.Unlock()
+
+		// 核心守护自愈机制 (Watchdog): 若非主动停止或新进程替换，在 2 秒后自动重新拉起
+		if wasCurrent && !userStopped {
+			time.Sleep(2 * time.Second)
+			s.mu.Lock()
+			if !s.isRunning && !s.userStopped && s.cmd == nil {
+				s.addLogLocked("INFO", "Sing-box watchdog: unexpected termination detected, auto-restarting core...")
+				s.mu.Unlock()
+				_ = s.Start()
+				return
+			}
+			s.mu.Unlock()
+		}
 	}(cmd)
 
 	return nil
@@ -234,8 +252,9 @@ func (s *Supervisor) stopProcessLocked() {
 func (s *Supervisor) Stop() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.userStopped = true
 	s.stopProcessLocked()
-	s.addLogLocked("INFO", "Sing-box core process stopped.")
+	s.addLogLocked("INFO", "Sing-box core process stopped by user/system.")
 }
 
 func (s *Supervisor) Restart() error {
@@ -244,12 +263,13 @@ func (s *Supervisor) Restart() error {
 
 // SwitchViaClash 尝试通过 Sing-box 的 Clash API 动态切换当前代理节点 (1毫秒无感切换)
 func (s *Supervisor) SwitchViaClash(nodeTag string) bool {
-	if !s.IsRunning() || nodeTag == "" {
+	cleanTag := strings.TrimSpace(nodeTag)
+	if !s.IsRunning() || cleanTag == "" {
 		return false
 	}
 
 	url := "http://127.0.0.1:9090/proxies/proxy"
-	payload, _ := json.Marshal(map[string]string{"name": nodeTag})
+	payload, _ := json.Marshal(map[string]string{"name": cleanTag})
 	req, err := http.NewRequest(http.MethodPut, url, bytes.NewBuffer(payload))
 	if err != nil {
 		return false
@@ -259,14 +279,17 @@ func (s *Supervisor) SwitchViaClash(nodeTag string) bool {
 	client := &http.Client{Timeout: 1 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
+		s.AddLog("WARN", fmt.Sprintf("Clash API switch connection error: %v", err))
 		return false
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent {
-		s.AddLog("SUCCESS", fmt.Sprintf("Switched active proxy outbound to [%s] via Clash API", nodeTag))
+		s.AddLog("SUCCESS", fmt.Sprintf("Switched active proxy outbound to [%s] via Clash API", cleanTag))
 		return true
 	}
+	body, _ := io.ReadAll(resp.Body)
+	s.AddLog("WARN", fmt.Sprintf("Clash API switch to [%s] failed (%d): %s", cleanTag, resp.StatusCode, strings.TrimSpace(string(body))))
 	return false
 }
 

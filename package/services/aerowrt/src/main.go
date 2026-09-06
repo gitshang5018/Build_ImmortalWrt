@@ -1,10 +1,16 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
 	"aerowrt/internal/core"
 	"aerowrt/internal/model"
 	"aerowrt/internal/server"
@@ -47,7 +53,6 @@ func main() {
 		}
 	}
 
-
 	mux := http.NewServeMux()
 
 	// 挂载 API 端点
@@ -63,7 +68,25 @@ func main() {
 	log.Printf("  MosDNS Linkage:  127.0.0.1:%d", settings.MosDNSPort)
 	log.Printf("=====================================================")
 
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: mux,
+	}
+
+	// 监听系统信号平滑退出，确保退出时清理 Sing-box 子核心并释放 tun0 设备
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		sig := <-sigChan
+		log.Printf("[INFO] Received signal %v, gracefully shutting down AeroWrt...", sig)
+		supervisor.Stop()
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(ctx)
+		os.Exit(0)
+	}()
+
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("Server error: %v", err)
 	}
 }

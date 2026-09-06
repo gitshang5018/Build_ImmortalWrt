@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 	"aerowrt/internal/model"
@@ -27,25 +28,32 @@ func NewPinger(timeout time.Duration) *Pinger {
 
 // PingNode 测速逻辑：
 // 1. 优先通过 Sing-box 内核的 Clash API 进行真实代理握手与端到端访问 (URL-Test)；
-// 2. 如果内核 API 未就绪或测速报错，回退到 TCP 握手直连测试。
+// 2. 如果内核 API 完全未启动，回退到 TCP 握手直连测试。
 func (p *Pinger) PingNode(node model.Node) int64 {
 	delay, _ := p.PingNodeWithDetail(node)
 	return delay
 }
 
 func (p *Pinger) PingNodeWithDetail(node model.Node) (int64, string) {
-	// 尝试真实 URL-Test (通过代理到目标网站的往返握手延迟)
-	if p.ClashAddr != "" && node.Tag != "" {
-		if delay := p.pingViaClash(node.Tag); delay > 0 {
+	tag := strings.TrimSpace(node.Tag)
+	if tag == "" {
+		tag = node.ID
+	}
+
+	// 1. 如果配置了 Clash API 地址，优先通过 Sing-box Clash API 进行真实代理握手与端到端访问 (URL-Test)
+	if p.ClashAddr != "" && tag != "" {
+		delay, err := p.pingViaClashWithErr(tag)
+		if err == nil {
+			// Clash API 正常响应（无论是具体延迟还是测速超时 -1），这就是真实的 URL-Test
 			return delay, "URL-Test"
 		}
 	}
 
-	// 备选回退：TCP 端口连通性握手测试
+	// 2. 仅在 Sing-box Clash API 完全不可达时（如内核未启动），回退到 TCP 端口连通性握手测试
 	return p.tcpPing(node), "TCP"
 }
 
-func (p *Pinger) pingViaClash(tag string) int64 {
+func (p *Pinger) pingViaClashWithErr(tag string) (int64, error) {
 	testURL := p.TestURL
 	if testURL == "" {
 		testURL = "http://cp.cloudflare.com/generate_204"
@@ -61,21 +69,20 @@ func (p *Pinger) pingViaClash(tag string) int64 {
 	client := http.Client{Timeout: p.Timeout + 500*time.Millisecond}
 	resp, err := client.Get(reqURL)
 	if err != nil {
-		return -1
+		return -1, err
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return -1
+	if resp.StatusCode == http.StatusOK {
+		var data struct {
+			Delay int64 `json:"delay"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&data); err == nil && data.Delay > 0 {
+			return data.Delay, nil
+		}
 	}
 
-	var data struct {
-		Delay int64 `json:"delay"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil || data.Delay <= 0 {
-		return -1
-	}
-	return data.Delay
+	return -1, nil
 }
 
 func (p *Pinger) tcpPing(node model.Node) int64 {

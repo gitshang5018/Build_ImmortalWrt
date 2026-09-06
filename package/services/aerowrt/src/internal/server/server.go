@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 	"aerowrt/internal/core"
@@ -62,6 +63,12 @@ func (s *Server) LoadFromStorage() error {
 		return err
 	}
 	s.nodes = data.Nodes
+	for i := range s.nodes {
+		s.nodes[i].Tag = strings.TrimSpace(s.nodes[i].Tag)
+		if s.nodes[i].Tag == "" {
+			s.nodes[i].Tag = fmt.Sprintf("node-%d", i+1)
+		}
+	}
 	s.subscriptions = data.Subscriptions
 	if data.Settings.ActiveNodeID != "" {
 		s.settings.ActiveNodeID = data.Settings.ActiveNodeID
@@ -162,6 +169,15 @@ func (s *Server) handlePing(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.RUnlock()
 
+	// 若检测到 Sing-box 内核未运行，自动启动内核，确保可以使用 Clash API 进行真实代理 URL-Test 测速
+	if s.supervisor != nil && !s.supervisor.IsRunning() && len(targetNodes) > 0 {
+		s.supervisor.AddLog("INFO", "Sing-box core not running, auto-starting for URL-Test proxy ping...")
+		s.mu.RLock()
+		_ = s.supervisor.ApplyConfig(s.settings, s.nodes)
+		s.mu.RUnlock()
+		time.Sleep(500 * time.Millisecond) // 等待 Sing-box 内核及 Clash API (9090) 就绪
+	}
+
 	results := make(map[string]int64)
 	var urlTestCount int
 	var tcpCount int
@@ -215,9 +231,12 @@ func (s *Server) handleSwitch(w http.ResponseWriter, r *http.Request) {
 	var targetTag string
 	for _, n := range s.nodes {
 		if n.ID == req.NodeID {
-			targetTag = n.Tag
+			targetTag = strings.TrimSpace(n.Tag)
 			break
 		}
+	}
+	if targetTag == "" && req.NodeID != "" {
+		targetTag = req.NodeID
 	}
 	s.saveToStorageLocked()
 	s.mu.Unlock()
@@ -333,6 +352,10 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 	nowStr := time.Now().Format("2006-01-02 15:04:05")
 	for i := range parsedNodes {
 		parsedNodes[i].ID = fmt.Sprintf("node-%d-%d", time.Now().Unix(), i+1)
+		parsedNodes[i].Tag = strings.TrimSpace(parsedNodes[i].Tag)
+		if parsedNodes[i].Tag == "" {
+			parsedNodes[i].Tag = fmt.Sprintf("node-%d", len(s.nodes)+i+1)
+		}
 		s.nodes = append(s.nodes, parsedNodes[i])
 	}
 
