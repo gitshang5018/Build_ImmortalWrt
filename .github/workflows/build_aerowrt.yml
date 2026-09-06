@@ -71,11 +71,11 @@ jobs:
             # 1. 跨平台静态编译 Go 单二进制
             pushd "$SRC_DIR/src" >/dev/null
             if [ "$GOARCH" == "mipsle" ]; then
-              CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH GOMIPS=$EXTRA_FLAG go build -ldflags="-s -w" -o "$BIN_OUT" main.go
+              CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH GOMIPS=$EXTRA_FLAG go build -trimpath -ldflags="-s -w" -o "$BIN_OUT" main.go
             elif [ "$GOARCH" == "arm" ]; then
-              CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH GOARM=$EXTRA_FLAG go build -ldflags="-s -w" -o "$BIN_OUT" main.go
+              CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH GOARM=$EXTRA_FLAG go build -trimpath -ldflags="-s -w" -o "$BIN_OUT" main.go
             else
-              CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="-s -w" -o "$BIN_OUT" main.go
+              CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH go build -trimpath -ldflags="-s -w" -o "$BIN_OUT" main.go
             fi
             popd >/dev/null
 
@@ -113,7 +113,6 @@ jobs:
               echo '#!/bin/sh'
               echo '[ -n "$IPKG_INSTROOT" ] || {'
               echo '    /etc/init.d/aerowrt enable'
-              echo '    /etc/init.d/aerowrt restart'
               echo '}'
               echo 'exit 0'
             } > "$WORK_DIR/control/postinst"
