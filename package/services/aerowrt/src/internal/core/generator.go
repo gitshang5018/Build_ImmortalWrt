@@ -59,14 +59,12 @@ func (g *Generator) GenerateSingboxConfig(settings model.SystemSettings, nodes [
 				"auto_route":     true,
 				"strict_route":   false,
 				"stack":          "system",
-				"sniff":          true,
 			},
 			{
 				"type":        "mixed",
 				"tag":         "mixed-in",
 				"listen":      "127.0.0.1",
 				"listen_port": 2080,
-				"sniff":       true,
 			},
 		},
 		"outbounds": g.buildOutbounds(settings, nodes),
@@ -266,6 +264,7 @@ func (g *Generator) buildOutbounds(settings model.SystemSettings, nodes []model.
 
 func (g *Generator) buildRouteRules() []map[string]interface{} {
 	rules := []map[string]interface{}{
+		{"action": "sniff"},
 		{"protocol": "dns", "action": "hijack-dns"},
 		{"ip_is_private": true, "outbound": "direct"},
 	}

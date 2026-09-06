@@ -159,6 +159,7 @@ func (s *Supervisor) Start() error {
 	cmd.Env = append(os.Environ(),
 		"ENABLE_DEPRECATED_LEGACY_DNS_SERVERS=true",
 		"ENABLE_DEPRECATED_SPECIAL_OUTBOUNDS=true",
+		"ENABLE_DEPRECATED_LEGACY_INBOUND_OPTIONS=true",
 	)
 
 	stdoutPipe, err := cmd.StdoutPipe()
