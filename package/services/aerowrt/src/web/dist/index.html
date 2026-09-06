@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AeroWrt - OpenWrt 现代透明代理管理台</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Top Header Bar -->
+    <header class="top-header">
+      <div class="brand">
+        <div class="brand-logo">AW</div>
+        <div>
+          <h1 class="brand-title">AeroWrt</h1>
+          <p class="brand-sub">OpenWrt 现代透明网关控制中心</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <div class="badge badge-success">
+          <span class="dot"></span>
+          <span>透明网关: <strong id="gateway-status">运行中 (Sing-box)</strong></span>
+        </div>
+        <div class="badge badge-info">
+          <span>DNS: <strong id="dns-badge">MosDNS (5335)</strong></span>
+        </div>
+        <button id="btn-ping-all" class="btn btn-primary" onclick="pingAllNodes()">
+          ⚡ 批量真延迟测速
+        </button>
+        <!-- Theme Mode Toggle Button -->
+        <button id="btn-theme-toggle" class="btn btn-secondary btn-icon" title="切换色彩模式 (跟随系统/深色/浅色)" onclick="cycleTheme()">
+          🌓 <span id="theme-text">自动</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Container -->
+    <div class="main-body">
+      <!-- Sidebar Nav -->
+      <aside class="sidebar">
+        <nav class="nav-menu">
+          <a class="nav-item active" href="#dashboard">
+            <span class="icon">📊</span>
+            <span>概览仪表盘</span>
+          </a>
+          <a class="nav-item" href="#nodes">
+            <span class="icon">🌐</span>
+            <span>节点管理</span>
+          </a>
+          <a class="nav-item" href="#groups">
+            <span class="icon">🔀</span>
+            <span>策略组与分流</span>
+          </a>
+          <a class="nav-item" href="#subscription">
+            <span class="icon">📦</span>
+            <span>订阅管理</span>
+          </a>
+          <a class="nav-item" href="#dns">
+            <span class="icon">🛡️</span>
+            <span>MosDNS 设置</span>
+          </a>
+          <a class="nav-item" href="#logs">
+            <span class="icon">📑</span>
+            <span>实时日志</span>
+          </a>
+        </nav>
+
+        <!-- System Core Box with Upgrade Trigger -->
+        <div class="system-box">
+          <div class="system-box-header">
+            <span class="system-box-title">内核信息</span>
+            <button class="btn btn-secondary btn-sm" onclick="openUpgradeModal()" title="检查并在线更新内核">
+              🔄 升级
+            </button>
+          </div>
+          <div class="system-row">
+            <span>引擎:</span> <span class="text-success" id="core-engine-tag">Sing-box v1.9.3</span>
+          </div>
+          <div class="system-row">
+            <span>内存占用:</span> <span class="text-primary">18.2 MB</span>
+          </div>
+          <div class="system-row">
+            <span>驱动模式:</span> <span>TUN (Auto-Route)</span>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Content Area -->
+      <main class="content-area">
+        <!-- Stats Cards Grid -->
+        <section class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">当前活跃出站</div>
+            <div class="stat-value" id="active-node-name">香港 01 [BGP专线]</div>
+            <div class="stat-meta">
+              <span class="pill pill-success" id="active-node-delay">28 ms</span>
+              <span class="text-muted">VLESS Reality</span>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-label">分流策略</div>
+            <div class="stat-value text-success">绕过中国大陆 (白名单)</div>
+            <div class="stat-meta">
+              <span class="text-muted">国内直连 / 海外走代理</span>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-label">实时全网速率</div>
+            <div class="stat-value text-accent" id="traffic-rate">↓ 2.1 MB/s <span class="sub-unit">/ ↑ 78 KB/s</span></div>
+            <div class="stat-meta">
+              <span class="text-muted">活跃连接: 36 个设备请求</span>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-label">MosDNS 本地联动</div>
+            <div class="stat-value text-warning">127.0.0.1:5335</div>
+            <div class="stat-meta">
+              <span class="pill pill-warning">防污染已生效</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Quick Switch Nodes Grid -->
+        <section class="section-card">
+          <div class="section-header">
+            <div class="section-title">
+              <h2>常用出站节点</h2>
+              <span class="text-muted">点击卡片即可将局域网流量切换至该节点</span>
+            </div>
+            <div class="section-tools">
+              <button class="btn btn-secondary btn-sm" onclick="openImportModal()">+ 导入订阅</button>
+            </div>
+          </div>
+
+          <div class="nodes-grid" id="nodes-container">
+            <!-- Node cards injected dynamically -->
+          </div>
+        </section>
+
+        <!-- Live Log Console -->
+        <section class="section-card">
+          <div class="section-header">
+            <div class="section-title">
+              <h3>核心运行日志</h3>
+            </div>
+            <span class="badge badge-info">实时流</span>
+          </div>
+          <div class="log-console" id="log-console">
+            <div class="log-line"><span class="log-time">[10:14:02]</span> <span class="log-info">[INFO]</span> sing-box inbound/tun[tun-in]: initialized auto_route with stack=system</div>
+            <div class="log-line"><span class="log-time">[10:14:03]</span> <span class="log-info">[INFO]</span> dns: forwarding local queries to MosDNS at 127.0.0.1:5335</div>
+            <div class="log-line"><span class="log-time">[10:14:05]</span> <span class="log-success">[SUCCESS]</span> proxy outbound ready: 香港 01 [BGP专线] (TCP 28ms)</div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <!-- Core Upgrade Modal -->
+  <div class="modal-overlay" id="modal-upgrade">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>在线升级内核 (Sing-box / Xray)</h3>
+        <button class="modal-close" onclick="closeUpgradeModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">当前运行版本</label>
+          <div style="font-weight: 600;" id="modal-curr-version">Sing-box v1.9.3</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">GitHub 官方最新版本</label>
+          <div style="font-weight: 600; color: var(--success);" id="modal-latest-version">检测中...</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">GitHub 加速代理镜像源</label>
+          <select class="form-select" id="proxy-select" onchange="handleProxyChange()">
+            <option value="https://ghproxy.net/">https://ghproxy.net/ (推荐)</option>
+            <option value="https://ghfast.top/">https://ghfast.top/ (高速镜像)</option>
+            <option value="https://gh.ddlc.top/">https://gh.ddlc.top/ (备用镜像)</option>
+            <option value="direct">直连官方 GitHub (海外/已翻墙路由)</option>
+            <option value="custom">自定义代理前缀...</option>
+          </select>
+        </div>
+
+        <div class="form-group" id="custom-proxy-group" style="display: none;">
+          <label class="form-label">自定义代理前缀 URL</label>
+          <input type="text" class="form-input" id="custom-proxy-input" placeholder="例如: https://my-gh-proxy.com/">
+        </div>
+
+        <div id="upgrade-status-msg" style="font-size: 11px; color: var(--text-muted); padding-top: 4px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="checkUpdateNow()">重新检测</button>
+        <button class="btn btn-primary" id="btn-do-upgrade" onclick="triggerCoreUpgrade()">🚀 一键升级</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
