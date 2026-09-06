@@ -129,6 +129,11 @@ main() {
     install_pbr_cmcc
     fix_pbr_ip_forward
     fix_ath11k_nss_timer_api
+    if [ -d "$BASE_PATH/../package" ]; then
+        log_info "正在同步本地自定义软件包 (v2rayn-wrt 等) 至构建树: $BUILD_DIR/package"
+        mkdir -p "$BUILD_DIR/package"
+        cp -rf "$BASE_PATH/../package/"* "$BUILD_DIR/package/"
+    fi
     # apply_hash_fixes
     log_success "所有组件更新完成"
     group_end
