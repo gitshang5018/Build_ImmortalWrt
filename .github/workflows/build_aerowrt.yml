@@ -11,7 +11,7 @@ on:
   push:
     paths:
       - 'package/services/aerowrt/**'
-      - '.github/workflows/build_v2rayn.yml'
+      - '.github/workflows/build_aerowrt.yml'
       - 'wrt_core/patches/tests/test_aerowrt.sh'
 
 permissions:
@@ -19,7 +19,7 @@ permissions:
   actions: write
 
 jobs:
-  build-v2rayn:
+  build-aerowrt:
     name: Build AeroWrt Standalone Packages
     runs-on: ubuntu-24.04
 
@@ -96,38 +96,37 @@ jobs:
             cp "$SRC_DIR/files/aerowrt.config" "$WORK_DIR/data/etc/config/aerowrt"
 
             # 3. 构造 control 控制信息
-            cat << EOF > "$WORK_DIR/control/control"
-Package: aerowrt
-Version: ${PKG_VERSION}-1
-Depends: libc, ca-bundle, sing-box, kmod-tun, mosdns
-Section: net
-Category: Network
-Title: AeroWrt Modern Transparent Proxy Suite for OpenWrt
-Maintainer: AeroWrt Developers
-Architecture: ${IPK_ARCH}
-Description: A modern, lightweight, standalone WebUI transparent proxy suite for OpenWrt with Sing-box core, strategy groups, chain proxy, and MosDNS integration.
-EOF
-            sed -i 's/^[ \t]*//' "$WORK_DIR/control/control"
+            {
+              echo "Package: aerowrt"
+              echo "Version: ${PKG_VERSION}-1"
+              echo "Depends: libc, ca-bundle, sing-box, kmod-tun, mosdns"
+              echo "Section: net"
+              echo "Category: Network"
+              echo "Title: AeroWrt Modern Transparent Proxy Suite for OpenWrt"
+              echo "Maintainer: AeroWrt Developers"
+              echo "Architecture: ${IPK_ARCH}"
+              echo "Description: A modern, lightweight, standalone WebUI transparent proxy suite for OpenWrt with Sing-box core, strategy groups, chain proxy, and MosDNS integration."
+            } > "$WORK_DIR/control/control"
 
             # 4. 编写 postinst 与 prerm 自动化启停服务脚本
-            cat << 'EOF' > "$WORK_DIR/control/postinst"
-#!/bin/sh
-[ -n "$IPKG_INSTROOT" ] || {
-    /etc/init.d/aerowrt enable
-    /etc/init.d/aerowrt restart
-}
-exit 0
-EOF
+            {
+              echo '#!/bin/sh'
+              echo '[ -n "$IPKG_INSTROOT" ] || {'
+              echo '    /etc/init.d/aerowrt enable'
+              echo '    /etc/init.d/aerowrt restart'
+              echo '}'
+              echo 'exit 0'
+            } > "$WORK_DIR/control/postinst"
             chmod 755 "$WORK_DIR/control/postinst"
 
-            cat << 'EOF' > "$WORK_DIR/control/prerm"
-#!/bin/sh
-[ -n "$IPKG_INSTROOT" ] || {
-    /etc/init.d/aerowrt stop
-    /etc/init.d/aerowrt disable
-}
-exit 0
-EOF
+            {
+              echo '#!/bin/sh'
+              echo '[ -n "$IPKG_INSTROOT" ] || {'
+              echo '    /etc/init.d/aerowrt stop'
+              echo '    /etc/init.d/aerowrt disable'
+              echo '}'
+              echo 'exit 0'
+            } > "$WORK_DIR/control/prerm"
             chmod 755 "$WORK_DIR/control/prerm"
 
             # 5. 生成 data.tar.gz 与 control.tar.gz
