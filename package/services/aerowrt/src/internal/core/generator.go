@@ -69,9 +69,10 @@ func (g *Generator) GenerateSingboxConfig(settings model.SystemSettings, nodes [
 		},
 		"outbounds": g.buildOutbounds(settings, nodes),
 		"route": map[string]interface{}{
-			"auto_detect_interface": true,
-			"final":                 "proxy",
-			"rules":                 g.buildRouteRules(),
+			"default_domain_resolver": "dns-upstream",
+			"auto_detect_interface":   true,
+			"final":                   "proxy",
+			"rules":                   g.buildRouteRules(),
 		},
 	}
 

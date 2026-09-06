@@ -160,6 +160,7 @@ func (s *Supervisor) Start() error {
 		"ENABLE_DEPRECATED_LEGACY_DNS_SERVERS=true",
 		"ENABLE_DEPRECATED_SPECIAL_OUTBOUNDS=true",
 		"ENABLE_DEPRECATED_LEGACY_INBOUND_OPTIONS=true",
+		"ENABLE_DEPRECATED_MISSING_DOMAIN_RESOLVER=true",
 	)
 
 	stdoutPipe, err := cmd.StdoutPipe()
