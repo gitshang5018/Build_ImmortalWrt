@@ -127,12 +127,12 @@ func (s *Supervisor) ApplyConfig(settings model.SystemSettings, nodes []model.No
 // Start 启动或重启 Sing-box 核心进程
 func (s *Supervisor) Start() error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	// 1. 检查二进制文件是否存在
 	if _, err := os.Stat(s.binPath); err != nil {
 		s.isRunning = false
 		s.addLogLocked("ERROR", fmt.Sprintf("Sing-box binary not found at %s. Please install with: opkg install sing-box", s.binPath))
+		s.mu.Unlock()
 		return fmt.Errorf("sing-box binary not found: %w", err)
 	}
 
@@ -140,6 +140,7 @@ func (s *Supervisor) Start() error {
 	if _, err := os.Stat(s.configPath); err != nil {
 		s.isRunning = false
 		s.addLogLocked("WARN", fmt.Sprintf("Sing-box config file not found at %s yet.", s.configPath))
+		s.mu.Unlock()
 		return fmt.Errorf("config not found: %w", err)
 	}
 
@@ -170,17 +171,20 @@ func (s *Supervisor) Start() error {
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
 		s.addLogLocked("ERROR", fmt.Sprintf("Failed to create stdout pipe: %v", err))
+		s.mu.Unlock()
 		return err
 	}
 	stderrPipe, err := cmd.StderrPipe()
 	if err != nil {
 		s.addLogLocked("ERROR", fmt.Sprintf("Failed to create stderr pipe: %v", err))
+		s.mu.Unlock()
 		return err
 	}
 
 	if err := cmd.Start(); err != nil {
 		s.isRunning = false
 		s.addLogLocked("ERROR", fmt.Sprintf("Failed to start Sing-box: %v", err))
+		s.mu.Unlock()
 		return err
 	}
 
@@ -189,17 +193,7 @@ func (s *Supervisor) Start() error {
 	if cmd.Process != nil {
 		s.addLogLocked("SUCCESS", fmt.Sprintf("Sing-box core process started (PID: %d)", cmd.Process.Pid))
 	}
-
-	// 应用源进源出策略路由与宽松 rp_filter，确保物理接口 (WAN/LAN) 入站访问流量原路返回，不被 TUN 劫持
-	s.applySourceRoutingRules()
-
-	// 异步延时重试应用，确保 Sing-box 建立 tun0 与策略路由后持续生效
-	go func() {
-		time.Sleep(1 * time.Second)
-		s.applySourceRoutingRules()
-		time.Sleep(2 * time.Second)
-		s.applySourceRoutingRules()
-	}()
+	s.mu.Unlock()
 
 	// 异步读取标准输出与错误日志流
 	go s.streamLogs(stdoutPipe, "CORE")
@@ -235,6 +229,15 @@ func (s *Supervisor) Start() error {
 			s.mu.Unlock()
 		}
 	}(cmd)
+
+	// 在锁外部安全应用源进源出策略路由与宽松 rp_filter，确保物理接口 (WAN/LAN) 入站访问流量原路返回，不被 TUN 劫持
+	go func() {
+		s.applySourceRoutingRules()
+		time.Sleep(1 * time.Second)
+		s.applySourceRoutingRules()
+		time.Sleep(2 * time.Second)
+		s.applySourceRoutingRules()
+	}()
 
 	return nil
 }
