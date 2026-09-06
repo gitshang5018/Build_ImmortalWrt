@@ -1,13 +1,20 @@
 'use strict';
 'require form';
 'require view';
-'require ubus';
+'require rpc';
 'require uci';
+
+var callServiceList = rpc.declare({
+	object: 'service',
+	method: 'list',
+	params: ['name'],
+	expect: { '': {} }
+});
 
 return view.extend({
 	load: function() {
 		return Promise.all([
-			ubus.call('service', 'list', { name: 'aerowrt' }),
+			callServiceList('aerowrt'),
 			uci.load('aerowrt')
 		]);
 	},
