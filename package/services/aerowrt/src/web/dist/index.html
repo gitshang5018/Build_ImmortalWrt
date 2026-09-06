@@ -40,27 +40,23 @@
       <!-- Sidebar Nav -->
       <aside class="sidebar">
         <nav class="nav-menu">
-          <a class="nav-item active" href="#dashboard">
+          <a class="nav-item active" data-tab="dashboard" onclick="switchTab('dashboard')">
             <span class="icon">📊</span>
             <span>概览仪表盘</span>
           </a>
-          <a class="nav-item" href="#nodes">
+          <a class="nav-item" data-tab="nodes" onclick="switchTab('nodes')">
             <span class="icon">🌐</span>
             <span>节点管理</span>
           </a>
-          <a class="nav-item" href="#groups">
-            <span class="icon">🔀</span>
-            <span>策略组与分流</span>
-          </a>
-          <a class="nav-item" href="#subscription">
+          <a class="nav-item" data-tab="subscription" onclick="switchTab('subscription')">
             <span class="icon">📦</span>
             <span>订阅管理</span>
           </a>
-          <a class="nav-item" href="#dns">
+          <a class="nav-item" data-tab="dns" onclick="switchTab('dns')">
             <span class="icon">🛡️</span>
             <span>MosDNS 设置</span>
           </a>
-          <a class="nav-item" href="#logs">
+          <a class="nav-item" data-tab="logs" onclick="switchTab('logs')">
             <span class="icon">📑</span>
             <span>实时日志</span>
           </a>
@@ -78,7 +74,7 @@
             <span>引擎:</span> <span class="text-success" id="core-engine-tag">Sing-box v1.9.3</span>
           </div>
           <div class="system-row">
-            <span>内存占用:</span> <span class="text-primary">18.2 MB</span>
+            <span>内存保护:</span> <span class="text-primary">GOMEMLIMIT 20MB</span>
           </div>
           <div class="system-row">
             <span>驱动模式:</span> <span>TUN (Auto-Route)</span>
@@ -86,76 +82,235 @@
         </div>
       </aside>
 
-      <!-- Content Area -->
+      <!-- Content Area with Multi-tab panals -->
       <main class="content-area">
-        <!-- Stats Cards Grid -->
-        <section class="stats-grid">
-          <div class="stat-card">
-            <div class="stat-label">当前活跃出站</div>
-            <div class="stat-value" id="active-node-name">香港 01 [BGP专线]</div>
-            <div class="stat-meta">
-              <span class="pill pill-success" id="active-node-delay">28 ms</span>
-              <span class="text-muted">VLESS Reality</span>
+        
+        <!-- Tab 1: Dashboard -->
+        <div id="tab-dashboard" class="tab-pane active">
+          <!-- Stats Cards Grid -->
+          <section class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-label">当前活跃出站</div>
+              <div class="stat-value" id="active-node-name">未选择</div>
+              <div class="stat-meta">
+                <span class="pill pill-success" id="active-node-delay">-- ms</span>
+                <span class="text-muted" id="active-node-proto">VLESS Reality</span>
+              </div>
             </div>
-          </div>
 
-          <div class="stat-card">
-            <div class="stat-label">分流策略</div>
-            <div class="stat-value text-success">绕过中国大陆 (白名单)</div>
-            <div class="stat-meta">
-              <span class="text-muted">国内直连 / 海外走代理</span>
+            <div class="stat-card">
+              <div class="stat-label">分流策略</div>
+              <div class="stat-value text-success">绕过中国大陆 (白名单)</div>
+              <div class="stat-meta">
+                <span class="text-muted">国内直连 / 海外走代理</span>
+              </div>
             </div>
-          </div>
 
-          <div class="stat-card">
-            <div class="stat-label">实时全网速率</div>
-            <div class="stat-value text-accent" id="traffic-rate">↓ 2.1 MB/s <span class="sub-unit">/ ↑ 78 KB/s</span></div>
-            <div class="stat-meta">
-              <span class="text-muted">活跃连接: 36 个设备请求</span>
+            <div class="stat-card">
+              <div class="stat-label">可用节点总数</div>
+              <div class="stat-value text-accent" id="stats-node-count">0 个节点</div>
+              <div class="stat-meta">
+                <span class="text-muted" id="stats-sub-count">0 个已保存订阅</span>
+              </div>
             </div>
-          </div>
 
-          <div class="stat-card">
-            <div class="stat-label">MosDNS 本地联动</div>
-            <div class="stat-value text-warning">127.0.0.1:5335</div>
-            <div class="stat-meta">
-              <span class="pill pill-warning">防污染已生效</span>
+            <div class="stat-card">
+              <div class="stat-label">MosDNS 本地联动</div>
+              <div class="stat-value text-warning" id="stats-mosdns-port">127.0.0.1:5335</div>
+              <div class="stat-meta">
+                <span class="pill pill-warning">防污染已生效</span>
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
 
-        <!-- Quick Switch Nodes Grid -->
-        <section class="section-card">
-          <div class="section-header">
-            <div class="section-title">
-              <h2>常用出站节点</h2>
-              <span class="text-muted">点击卡片即可将局域网流量切换至该节点</span>
+          <!-- Quick Switch Nodes Grid -->
+          <section class="section-card">
+            <div class="section-header">
+              <div class="section-title">
+                <h2>常用出站节点</h2>
+                <span class="text-muted">点击卡片即可将局域网流量切换至该节点</span>
+              </div>
+              <div class="section-tools">
+                <button class="btn btn-primary btn-sm" onclick="openImportModal()">+ 导入订阅 / 节点</button>
+              </div>
             </div>
-            <div class="section-tools">
-              <button class="btn btn-secondary btn-sm" onclick="openImportModal()">+ 导入订阅</button>
-            </div>
-          </div>
 
-          <div class="nodes-grid" id="nodes-container">
-            <!-- Node cards injected dynamically -->
-          </div>
-        </section>
-
-        <!-- Live Log Console -->
-        <section class="section-card">
-          <div class="section-header">
-            <div class="section-title">
-              <h3>核心运行日志</h3>
+            <div class="nodes-grid" id="nodes-container">
+              <!-- Node cards injected dynamically -->
             </div>
-            <span class="badge badge-info">实时流</span>
-          </div>
-          <div class="log-console" id="log-console">
-            <div class="log-line"><span class="log-time">[10:14:02]</span> <span class="log-info">[INFO]</span> sing-box inbound/tun[tun-in]: initialized auto_route with stack=system</div>
-            <div class="log-line"><span class="log-time">[10:14:03]</span> <span class="log-info">[INFO]</span> dns: forwarding local queries to MosDNS at 127.0.0.1:5335</div>
-            <div class="log-line"><span class="log-time">[10:14:05]</span> <span class="log-success">[SUCCESS]</span> proxy outbound ready: 香港 01 [BGP专线] (TCP 28ms)</div>
-          </div>
-        </section>
+          </section>
+
+          <!-- Live Log Console -->
+          <section class="section-card">
+            <div class="section-header">
+              <div class="section-title">
+                <h3>核心运行日志</h3>
+              </div>
+              <button class="btn btn-secondary btn-sm" onclick="switchTab('logs')">查看完整日志</button>
+            </div>
+            <div class="log-console" id="log-console-mini">
+              <!-- Logs stream -->
+            </div>
+          </section>
+        </div>
+
+        <!-- Tab 2: Nodes Management -->
+        <div id="tab-nodes" class="tab-pane">
+          <section class="section-card">
+            <div class="section-header">
+              <div class="section-title">
+                <h2>所有节点管理</h2>
+                <span class="text-muted">查看、切换活跃节点或删除失效节点</span>
+              </div>
+              <div class="section-tools">
+                <button class="btn btn-primary btn-sm" onclick="openImportModal()">+ 导入节点</button>
+                <button class="btn btn-secondary btn-sm" onclick="pingAllNodes()">⚡ 批量测速</button>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>节点名称</th>
+                    <th>协议</th>
+                    <th>服务器地址</th>
+                    <th>端口</th>
+                    <th>延迟</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="nodes-table-body">
+                  <!-- Nodes table rows -->
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        <!-- Tab 3: Subscriptions Management -->
+        <div id="tab-subscription" class="tab-pane">
+          <section class="section-card">
+            <div class="section-header">
+              <div class="section-title">
+                <h2>订阅源管理</h2>
+                <span class="text-muted">管理已保存的订阅链接，支持自动定时与手动一键同步</span>
+              </div>
+              <div class="section-tools">
+                <button class="btn btn-primary btn-sm" onclick="openImportModal()">+ 添加订阅</button>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>订阅名称</th>
+                    <th>订阅链接</th>
+                    <th>节点数量</th>
+                    <th>最后同步时间</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="subs-table-body">
+                  <!-- Subscriptions rows -->
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        <!-- Tab 4: MosDNS & Routing Settings -->
+        <div id="tab-dns" class="tab-pane">
+          <section class="section-card">
+            <div class="section-header">
+              <div class="section-title">
+                <h2>MosDNS 联动与分流模式</h2>
+                <span class="text-muted">配置 TUN 网卡截获的 DNS 请求转发目标与国内白名单分流</span>
+              </div>
+            </div>
+            <div style="max-width: 600px;">
+              <div class="form-group">
+                <label class="form-label">本地 MosDNS 端口</label>
+                <input type="number" class="form-input" id="setting-mosdns-port" value="5335">
+                <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+                  默认 5335，Sing-box TUN 虚拟网卡将会把所有 53 端口 DNS 请求转到此端口
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">路由分流模式</label>
+                <select class="form-select" id="setting-routing-mode">
+                  <option value="bypass_cn">绕过中国大陆 (推荐: 国内直连，海外代理)</option>
+                  <option value="global">全局代理 (所有流量均走选中的代理节点)</option>
+                  <option value="direct">全局直连 (暂时不通过代理转发流量)</option>
+                </select>
+              </div>
+              <button class="btn btn-primary" onclick="saveDnsSettings()">💾 保存并应用设置</button>
+            </div>
+          </section>
+        </div>
+
+        <!-- Tab 5: Real-time Logs -->
+        <div id="tab-logs" class="tab-pane">
+          <section class="section-card">
+            <div class="section-header">
+              <div class="section-title">
+                <h2>Sing-box 核心运行控制台</h2>
+                <span class="text-muted">实时监控代理流量与连接建立状态</span>
+              </div>
+              <div class="section-tools">
+                <button class="btn btn-secondary btn-sm" onclick="refreshLogs()">🔄 刷新日志</button>
+                <button class="btn btn-secondary btn-sm" onclick="clearLogsConsole()">🧹 清屏</button>
+              </div>
+            </div>
+            <div class="log-console log-console-large" id="log-console-full">
+              <!-- Large logs stream -->
+            </div>
+          </section>
+        </div>
+
       </main>
+    </div>
+  </div>
+
+  <!-- Real Node & Subscription Import Modal -->
+  <div class="modal-overlay" id="modal-import">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>导入代理节点 / 订阅链接</h3>
+        <button class="modal-close" onclick="closeImportModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-tabs">
+          <button class="modal-tab-btn active" id="tab-btn-url" onclick="switchImportTab('url')">URL 订阅链接导入</button>
+          <button class="modal-tab-btn" id="tab-btn-text" onclick="switchImportTab('text')">单节点/Base64文本导入</button>
+        </div>
+
+        <!-- URL Import Pane -->
+        <div id="import-pane-url">
+          <div class="form-group">
+            <label class="form-label">订阅名称 (可选)</label>
+            <input type="text" class="form-input" id="import-sub-name" placeholder="例如: 优质机场 01">
+          </div>
+          <div class="form-group">
+            <label class="form-label">订阅链接 (HTTP / HTTPS)</label>
+            <input type="url" class="form-input" id="import-sub-url" placeholder="https://example.com/api/v1/client/subscribe?token=...">
+          </div>
+        </div>
+
+        <!-- Text Import Pane -->
+        <div id="import-pane-text" style="display: none;">
+          <div class="form-group">
+            <label class="form-label">粘贴订阅 Base64 文本或单节点链接</label>
+            <textarea class="form-input" id="import-sub-content" rows="6" placeholder="支持 vless://, trojan://, ss://, 或 Base64 订阅全文..."></textarea>
+          </div>
+        </div>
+
+        <div id="import-status-msg" style="font-size: 12px; margin-top: 8px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeImportModal()">取消</button>
+        <button class="btn btn-primary" id="btn-do-import" onclick="doImportSubscription()">📥 立即导入</button>
+      </div>
     </div>
   </div>
 

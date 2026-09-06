@@ -5,14 +5,19 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"aerowrt/internal/core"
 	"aerowrt/internal/model"
 	"aerowrt/internal/server"
+	"aerowrt/internal/storage"
 	"aerowrt/web"
 )
 
 func main() {
 	httpPort := flag.Int("port", 9099, "HTTP port for WebUI and API")
 	mosdnsPort := flag.Int("mosdns", 5335, "Local MosDNS port to forward DNS queries")
+	storePath := flag.String("store", "/etc/aerowrt/store.json", "Path to JSON persistent storage")
+	configPath := flag.String("config", "/etc/aerowrt/config.json", "Path to generated Sing-box config")
+	binPath := flag.String("singbox", "/usr/bin/sing-box", "Path to Sing-box executable")
 	flag.Parse()
 
 	settings := model.SystemSettings{
@@ -24,33 +29,16 @@ func main() {
 	}
 
 	apiServer := server.NewServer(settings)
+	store := storage.NewStorage(*storePath)
+	supervisor := core.NewSupervisor(*binPath, *configPath)
 
-	// 添加预置体验节点
-	apiServer.AddNode(model.Node{
-		ID:       "node-hk",
-		Tag:      "🇭🇰 香港 01 [BGP专线]",
-		Protocol: model.ProtocolVLESS,
-		Server:   "hk.node.com",
-		Port:     443,
-		Security: "reality",
-		DelayMs:  28,
-	})
-	apiServer.AddNode(model.Node{
-		ID:       "node-jp",
-		Tag:      "🇯🇵 日本 02 [原生流媒体]",
-		Protocol: model.ProtocolSS,
-		Server:   "jp.node.com",
-		Port:     8388,
-		DelayMs:  52,
-	})
-	apiServer.AddNode(model.Node{
-		ID:       "node-sg",
-		Tag:      "🇸🇬 新加坡 01 [优质线路]",
-		Protocol: model.ProtocolTrojan,
-		Server:   "sg.node.com",
-		Port:     443,
-		DelayMs:  64,
-	})
+	apiServer.SetStorage(store)
+	apiServer.SetSupervisor(supervisor)
+
+	if err := apiServer.LoadFromStorage(); err != nil {
+		log.Printf("[WARN] Failed to load from storage: %v, using defaults", err)
+	}
+
 
 	mux := http.NewServeMux()
 

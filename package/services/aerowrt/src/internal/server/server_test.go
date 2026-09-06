@@ -109,3 +109,66 @@ func TestCoreCheckAndUpgradeAPI(t *testing.T) {
 		t.Fatalf("expected 200 on upgrade, got %d", wUpgrade.Code)
 	}
 }
+
+func TestImportAndManageNodesAPI(t *testing.T) {
+	srv := NewServer(model.SystemSettings{HttpPort: 9099})
+
+	// 1. POST /api/nodes/import with direct link content
+	rawVless := "vless://uuid-123@hk.server.com:443?security=reality&sni=yahoo.com&pbk=pubkey#HK-Reality"
+	importBody, _ := json.Marshal(map[string]string{
+		"content": rawVless,
+	})
+	reqImport := httptest.NewRequest("POST", "/api/nodes/import", bytes.NewReader(importBody))
+	wImport := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(wImport, reqImport)
+
+	if wImport.Code != http.StatusOK {
+		t.Fatalf("expected 200 on import, got %d: %s", wImport.Code, wImport.Body.String())
+	}
+
+	var importResp map[string]interface{}
+	if err := json.NewDecoder(wImport.Body).Decode(&importResp); err != nil {
+		t.Fatalf("decode import failed: %v", err)
+	}
+	if importResp["imported"] != float64(1) {
+		t.Errorf("expected 1 imported node, got %v", importResp["imported"])
+	}
+
+	// 2. GET /api/nodes
+	reqNodes := httptest.NewRequest("GET", "/api/nodes", nil)
+	wNodes := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(wNodes, reqNodes)
+
+	var nodes []model.Node
+	_ = json.NewDecoder(wNodes.Body).Decode(&nodes)
+	if len(nodes) != 1 || nodes[0].Server != "hk.server.com" {
+		t.Errorf("expected imported node in list, got %+v", nodes)
+	}
+
+	// 3. DELETE /api/nodes/delete
+	delBody, _ := json.Marshal(map[string]string{
+		"id": nodes[0].ID,
+	})
+	reqDel := httptest.NewRequest("POST", "/api/nodes/delete", bytes.NewReader(delBody))
+	wDel := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(wDel, reqDel)
+
+	if wDel.Code != http.StatusOK {
+		t.Fatalf("expected 200 on delete, got %d", wDel.Code)
+	}
+
+	// 4. GET /api/logs
+	reqLogs := httptest.NewRequest("GET", "/api/logs", nil)
+	wLogs := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(wLogs, reqLogs)
+
+	if wLogs.Code != http.StatusOK {
+		t.Fatalf("expected 200 on logs, got %d", wLogs.Code)
+	}
+	var logsResp map[string][]string
+	_ = json.NewDecoder(wLogs.Body).Decode(&logsResp)
+	if len(logsResp["logs"]) == 0 {
+		t.Errorf("expected logs to be non-empty")
+	}
+}
+

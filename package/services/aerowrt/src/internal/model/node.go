@@ -62,3 +62,12 @@ type SystemSettings struct {
 	MosDNSPort   int     `json:"mosdns_port"` // 默认 5335
 	HttpPort     int     `json:"http_port"`   // 默认 9099
 }
+
+type Subscription struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	URL       string `json:"url"`
+	UpdatedAt string `json:"updated_at"`
+	NodeCount int    `json:"node_count"`
+}
+
