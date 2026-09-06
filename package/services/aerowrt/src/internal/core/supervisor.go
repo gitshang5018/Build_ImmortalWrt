@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -29,7 +30,7 @@ type Supervisor struct {
 }
 
 func NewSupervisor(binPath, configPath string) *Supervisor {
-	if binPath == "" {
+	if binPath == "" || !fileExists(binPath) {
 		binPath = findSingboxBinary()
 	}
 	if configPath == "" {
@@ -43,8 +44,13 @@ func NewSupervisor(binPath, configPath string) *Supervisor {
 		maxLogs:    200,
 		isRunning:  false,
 	}
-	s.AddLog("INFO", "AeroWrt Core Supervisor initialized.")
+	s.AddLog("INFO", fmt.Sprintf("AeroWrt Core Supervisor initialized (sing-box: %s)", binPath))
 	return s
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 func findSingboxBinary() string {
@@ -74,6 +80,7 @@ func (s *Supervisor) addLogLocked(level, msg string) {
 		s.logs = s.logs[1:]
 	}
 	s.logs = append(s.logs, entry)
+	log.Printf("[%s] %s", level, msg)
 }
 
 func (s *Supervisor) GetLogs() []string {
