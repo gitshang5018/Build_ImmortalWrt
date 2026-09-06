@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -57,5 +58,54 @@ func TestNodesAndPingAPI(t *testing.T) {
 
 	if wPing.Code != http.StatusOK {
 		t.Fatalf("expected 200 on ping, got %d", wPing.Code)
+	}
+}
+
+func TestCoreCheckAndUpgradeAPI(t *testing.T) {
+	mockRelease := map[string]interface{}{
+		"tag_name": "v1.9.4",
+		"assets": []map[string]interface{}{
+			{
+				"name":                 "sing-box-1.9.4-linux-amd64.tar.gz",
+				"browser_download_url": "https://github.com/SagerNet/sing-box/releases/download/v1.9.4/sing-box-1.9.4-linux-amd64.tar.gz",
+			},
+		},
+	}
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(mockRelease)
+	}))
+	defer ts.Close()
+
+	srv := NewServer(model.SystemSettings{HttpPort: 9099})
+	srv.updater.BaseURL = ts.URL
+
+	// 1. GET /api/core/check
+	reqCheck := httptest.NewRequest("GET", "/api/core/check?core=sing-box&proxy=https://ghproxy.net/", nil)
+	wCheck := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(wCheck, reqCheck)
+
+	if wCheck.Code != http.StatusOK {
+		t.Fatalf("expected 200 on check, got %d", wCheck.Code)
+	}
+
+	var checkResp map[string]interface{}
+	if err := json.NewDecoder(wCheck.Body).Decode(&checkResp); err != nil {
+		t.Fatalf("decode check failed: %v", err)
+	}
+	if checkResp["latest_version"] != "v1.9.4" {
+		t.Errorf("expected latest version v1.9.4, got %v", checkResp["latest_version"])
+	}
+
+	// 2. POST /api/core/upgrade
+	body, _ := json.Marshal(map[string]string{
+		"core":  "sing-box",
+		"proxy": "https://ghproxy.net/",
+	})
+	reqUpgrade := httptest.NewRequest("POST", "/api/core/upgrade", bytes.NewReader(body))
+	wUpgrade := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(wUpgrade, reqUpgrade)
+
+	if wUpgrade.Code != http.StatusOK {
+		t.Fatalf("expected 200 on upgrade, got %d", wUpgrade.Code)
 	}
 }

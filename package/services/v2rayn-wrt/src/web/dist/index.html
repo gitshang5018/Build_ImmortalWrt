@@ -28,6 +28,10 @@
         <button id="btn-ping-all" class="btn btn-primary" onclick="pingAllNodes()">
           ⚡ 批量真延迟测速
         </button>
+        <!-- Theme Mode Toggle Button -->
+        <button id="btn-theme-toggle" class="btn btn-secondary btn-icon" title="切换色彩模式 (跟随系统/深色/浅色)" onclick="cycleTheme()">
+          🌓 <span id="theme-text">自动</span>
+        </button>
       </div>
     </header>
 
@@ -62,10 +66,16 @@
           </a>
         </nav>
 
+        <!-- System Core Box with Upgrade Trigger -->
         <div class="system-box">
-          <div class="system-box-title">内核信息</div>
+          <div class="system-box-header">
+            <span class="system-box-title">内核信息</span>
+            <button class="btn btn-secondary btn-sm" onclick="openUpgradeModal()" title="检查并在线更新内核">
+              🔄 升级
+            </button>
+          </div>
           <div class="system-row">
-            <span>引擎:</span> <span class="text-success">Sing-box v1.9.3</span>
+            <span>引擎:</span> <span class="text-success" id="core-engine-tag">Sing-box v1.9.3</span>
           </div>
           <div class="system-row">
             <span>内存占用:</span> <span class="text-primary">18.2 MB</span>
@@ -146,6 +156,49 @@
           </div>
         </section>
       </main>
+    </div>
+  </div>
+
+  <!-- Core Upgrade Modal -->
+  <div class="modal-overlay" id="modal-upgrade">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>在线升级内核 (Sing-box / Xray)</h3>
+        <button class="modal-close" onclick="closeUpgradeModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">当前运行版本</label>
+          <div style="font-weight: 600;" id="modal-curr-version">Sing-box v1.9.3</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">GitHub 官方最新版本</label>
+          <div style="font-weight: 600; color: var(--success);" id="modal-latest-version">检测中...</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">GitHub 加速代理镜像源</label>
+          <select class="form-select" id="proxy-select" onchange="handleProxyChange()">
+            <option value="https://ghproxy.net/">https://ghproxy.net/ (推荐)</option>
+            <option value="https://ghfast.top/">https://ghfast.top/ (高速镜像)</option>
+            <option value="https://gh.ddlc.top/">https://gh.ddlc.top/ (备用镜像)</option>
+            <option value="direct">直连官方 GitHub (海外/已翻墙路由)</option>
+            <option value="custom">自定义代理前缀...</option>
+          </select>
+        </div>
+
+        <div class="form-group" id="custom-proxy-group" style="display: none;">
+          <label class="form-label">自定义代理前缀 URL</label>
+          <input type="text" class="form-input" id="custom-proxy-input" placeholder="例如: https://my-gh-proxy.com/">
+        </div>
+
+        <div id="upgrade-status-msg" style="font-size: 11px; color: var(--text-muted); padding-top: 4px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="checkUpdateNow()">重新检测</button>
+        <button class="btn btn-primary" id="btn-do-upgrade" onclick="triggerCoreUpgrade()">🚀 一键升级</button>
+      </div>
     </div>
   </div>
 
