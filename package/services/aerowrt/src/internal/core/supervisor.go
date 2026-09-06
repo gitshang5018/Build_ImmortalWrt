@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -189,6 +190,9 @@ func (s *Supervisor) Start() error {
 		s.addLogLocked("SUCCESS", fmt.Sprintf("Sing-box core process started (PID: %d)", cmd.Process.Pid))
 	}
 
+	// 应用源进源出策略路由，确保物理接口 (WAN/LAN) 入站访问流量原路返回，不被 TUN 劫持
+	s.applySourceRoutingRules()
+
 	// 异步读取标准输出与错误日志流
 	go s.streamLogs(stdoutPipe, "CORE")
 	go s.streamLogs(stderrPipe, "CORE")
@@ -238,6 +242,7 @@ func (s *Supervisor) streamLogs(r io.Reader, level string) {
 }
 
 func (s *Supervisor) stopProcessLocked() {
+	s.cleanSourceRoutingRules()
 	if s.cancel != nil {
 		s.cancel()
 		s.cancel = nil
@@ -303,4 +308,67 @@ func (s *Supervisor) SetRunning(r bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.isRunning = r
+}
+
+func (s *Supervisor) applySourceRoutingRules() {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return
+	}
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagLoopback != 0 || strings.HasPrefix(iface.Name, "tun") {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			var ip net.IP
+			switch v := addr.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+			if ip == nil || ip.IsLoopback() || ip.IsMulticast() || ip.IsLinkLocalUnicast() {
+				continue
+			}
+			ipStr := ip.String()
+			_ = exec.Command("ip", "rule", "del", "from", ipStr, "table", "main", "pref", "100").Run()
+			if err := exec.Command("ip", "rule", "add", "from", ipStr, "table", "main", "pref", "100").Run(); err == nil {
+				s.addLogLocked("INFO", fmt.Sprintf("Applied return routing rule for IP %s (table main, pref 100)", ipStr))
+			}
+		}
+	}
+}
+
+func (s *Supervisor) cleanSourceRoutingRules() {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return
+	}
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagLoopback != 0 || strings.HasPrefix(iface.Name, "tun") {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			var ip net.IP
+			switch v := addr.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+			if ip == nil || ip.IsLoopback() || ip.IsMulticast() || ip.IsLinkLocalUnicast() {
+				continue
+			}
+			ipStr := ip.String()
+			_ = exec.Command("ip", "rule", "del", "from", ipStr, "table", "main", "pref", "100").Run()
+		}
+	}
 }

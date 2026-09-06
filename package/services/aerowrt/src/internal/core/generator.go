@@ -57,6 +57,12 @@ func (g *Generator) GenerateSingboxConfig(settings model.SystemSettings, nodes [
 				"auto_route":     true,
 				"strict_route":   false,
 				"stack":          "system",
+				"route_exclude_address": []string{
+					"192.168.0.0/16",
+					"10.0.0.0/8",
+					"172.16.0.0/12",
+					"127.0.0.0/8",
+				},
 			},
 			{
 				"type":        "mixed",
@@ -70,7 +76,7 @@ func (g *Generator) GenerateSingboxConfig(settings model.SystemSettings, nodes [
 			"default_domain_resolver": "dns-upstream",
 			"auto_detect_interface":   true,
 			"final":                   "proxy",
-			"rules":                   g.buildRouteRules(),
+			"rules":                   g.buildRouteRules(settings),
 		},
 	}
 
@@ -261,11 +267,27 @@ func (g *Generator) buildOutbounds(settings model.SystemSettings, nodes []model.
 	return outbounds
 }
 
-func (g *Generator) buildRouteRules() []map[string]interface{} {
+func (g *Generator) buildRouteRules(settings model.SystemSettings) []map[string]interface{} {
+	mgmtPorts := []int{22, 53, 80, 443, 8080, 8443, 9090}
+	if settings.HttpPort > 0 {
+		mgmtPorts = append(mgmtPorts, settings.HttpPort)
+	}
+	if settings.MosDNSPort > 0 {
+		mgmtPorts = append(mgmtPorts, settings.MosDNSPort)
+	}
+
 	rules := []map[string]interface{}{
 		{"action": "sniff"},
 		{"protocol": "dns", "action": "hijack-dns"},
 		{"ip_is_private": true, "outbound": "direct"},
+		{"source_port": mgmtPorts, "outbound": "direct"},
+	}
+
+	if settings.HttpPort > 0 {
+		rules = append(rules, map[string]interface{}{
+			"port":     []int{settings.HttpPort},
+			"outbound": "direct",
+		})
 	}
 
 	// 仅在路由器存在 geoip.db 时启用 geoip 规则，防止因缺少数据库文件导致 Sing-box 启动闪退
