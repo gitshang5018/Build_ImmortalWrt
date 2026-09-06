@@ -36,7 +36,7 @@ return view.extend({
 		m = new form.Map('aerowrt', _('AeroWrt 透明代理套件'),
 			_('AeroWrt 是一款现代化、超低内存常驻的独立 WebUI 透明网关管理套件，支持出站策略组、链式代理与本地 MosDNS 联动。'));
 
-		s = m.section(form.NamedSection, 'main', 'aerowrt', _('服务状态与快捷入口'));
+		s = m.section(form.NamedSection, 'main', 'aerowrt', _('服务控制与设置'));
 
 		o = s.option(form.DummyValue, '_status', _('运行状态'));
 		o.rawhtml = true;
@@ -55,8 +55,6 @@ return view.extend({
 					'<div style="margin-top: 8px; color: #666; font-size: 12px;">' + _('请确保下方“启用服务”已勾选并点击“保存并应用”，或在终端执行 /etc/init.d/aerowrt start') + '</div>';
 			}
 		};
-
-		s = m.section(form.NamedSection, 'main', 'aerowrt', _('基础设置'));
 
 		o = s.option(form.Flag, 'enabled', _('启用服务'));
 		o.rmempty = false;

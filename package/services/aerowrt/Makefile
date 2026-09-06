@@ -6,7 +6,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=aerowrt
 PKG_VERSION:=1.0.0
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=AeroWrt Developers
@@ -44,6 +44,9 @@ define Package/aerowrt/install
 
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./files/aerowrt.config $(1)/etc/config/aerowrt
+
+	$(INSTALL_DIR) $(1)/www/aerowrt
+	$(INSTALL_DATA) ./src/web/dist/* $(1)/www/aerowrt/
 
 	$(INSTALL_DIR) $(1)/usr/share/luci/menu.d
 	$(INSTALL_DATA) ./files/luci/menu.d/* $(1)/usr/share/luci/menu.d/

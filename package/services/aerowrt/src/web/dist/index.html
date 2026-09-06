@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AeroWrt - OpenWrt 现代透明代理管理台</title>
-  <link rel="stylesheet" href="/app.css">
+  <link rel="stylesheet" href="/app.css?v=1.0.1">
 </head>
 <body>
   <div class="app-layout">
@@ -40,23 +40,23 @@
       <!-- Sidebar Nav -->
       <aside class="sidebar">
         <nav class="nav-menu">
-          <a class="nav-item active" data-tab="dashboard" onclick="switchTab('dashboard')">
+          <a class="nav-item active" data-tab="dashboard" href="javascript:void(0)" onclick="switchTab('dashboard')">
             <span class="icon">📊</span>
             <span>概览仪表盘</span>
           </a>
-          <a class="nav-item" data-tab="nodes" onclick="switchTab('nodes')">
+          <a class="nav-item" data-tab="nodes" href="javascript:void(0)" onclick="switchTab('nodes')">
             <span class="icon">🌐</span>
             <span>节点管理</span>
           </a>
-          <a class="nav-item" data-tab="subscription" onclick="switchTab('subscription')">
+          <a class="nav-item" data-tab="subscription" href="javascript:void(0)" onclick="switchTab('subscription')">
             <span class="icon">📦</span>
             <span>订阅管理</span>
           </a>
-          <a class="nav-item" data-tab="dns" onclick="switchTab('dns')">
+          <a class="nav-item" data-tab="dns" href="javascript:void(0)" onclick="switchTab('dns')">
             <span class="icon">🛡️</span>
             <span>MosDNS 设置</span>
           </a>
-          <a class="nav-item" data-tab="logs" onclick="switchTab('logs')">
+          <a class="nav-item" data-tab="logs" href="javascript:void(0)" onclick="switchTab('logs')">
             <span class="icon">📑</span>
             <span>实时日志</span>
           </a>
@@ -357,6 +357,6 @@
     </div>
   </div>
 
-  <script src="/app.js"></script>
+  <script src="/app.js?v=1.0.1"></script>
 </body>
 </html>

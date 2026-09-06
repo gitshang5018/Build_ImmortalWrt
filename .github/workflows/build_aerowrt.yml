@@ -102,6 +102,9 @@ jobs:
             mkdir -p "$WORK_DIR/data/usr/lib/lua/luci/controller"
             mkdir -p "$WORK_DIR/data/usr/lib/lua/luci/model/cbi"
 
+            mkdir -p "$WORK_DIR/data/www/aerowrt"
+            cp -r "$SRC_DIR/src/web/dist/"* "$WORK_DIR/data/www/aerowrt/"
+
             cp -r "$SRC_DIR/files/luci/menu.d/"* "$WORK_DIR/data/usr/share/luci/menu.d/"
             cp -r "$SRC_DIR/files/luci/acl.d/"* "$WORK_DIR/data/usr/share/rpcd/acl.d/"
             cp "$SRC_DIR/files/luci/view/overview.js" "$WORK_DIR/data/www/luci-static/resources/view/aerowrt/overview.js"
@@ -111,7 +114,7 @@ jobs:
             # 3. 构造 control 控制信息
             {
               echo "Package: aerowrt"
-              echo "Version: ${PKG_VERSION}-1"
+              echo "Version: ${PKG_VERSION}-2"
               echo "Depends: libc, ca-bundle, sing-box, kmod-tun, mosdns"
               echo "Section: net"
               echo "Category: Network"
@@ -126,6 +129,7 @@ jobs:
               echo '#!/bin/sh'
               echo '[ -n "$IPKG_INSTROOT" ] || {'
               echo '    /etc/init.d/aerowrt enable'
+              echo '    /etc/init.d/aerowrt restart || true'
               echo '    rm -f /tmp/luci-indexcache /tmp/luci-modulecache/* 2>/dev/null || true'
               echo '}'
               echo 'exit 0'
