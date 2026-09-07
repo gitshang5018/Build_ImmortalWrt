@@ -57,12 +57,20 @@ const (
 )
 
 type SystemSettings struct {
-	ActiveNodeID string  `json:"active_node_id"`
-	ActiveGroup  string  `json:"active_group"`
-	RoutingMode  string  `json:"routing_mode"` // bypass_cn, global, direct
-	DNSMode      DNSMode `json:"dns_mode"`
-	MosDNSPort   int     `json:"mosdns_port"` // 默认 5335
-	HttpPort     int     `json:"http_port"`   // 默认 9099
+	ActiveNodeID        string   `json:"active_node_id"`
+	ActiveGroup         string   `json:"active_group"`
+	RoutingMode         string   `json:"routing_mode"` // bypass_cn, global, direct
+	DNSMode             DNSMode  `json:"dns_mode"`
+	MosDNSPort          int      `json:"mosdns_port"`           // 默认 5335
+	HttpPort            int      `json:"http_port"`             // 默认 9099
+	TestURL             string   `json:"test_url"`              // 测速URL
+	StrategyMode        string   `json:"strategy_mode"`         // manual, urltest
+	UrlTestIntervalMins int      `json:"urltest_interval_mins"` // 自动优选测速周期 (分钟)
+	AutoUpdateSubHours  int      `json:"auto_update_sub_hours"` // 订阅自动更新周期 (小时，0为禁用)
+	DirectDomains       []string `json:"direct_domains"`        // 自定义直连域名后缀
+	ProxyDomains        []string `json:"proxy_domains"`         // 自定义代理域名后缀
+	DirectIPs           []string `json:"direct_ips"`            // 自定义直连 IP/CIDR
+	ProxyIPs            []string `json:"proxy_ips"`             // 自定义代理 IP/CIDR
 }
 
 type Subscription struct {

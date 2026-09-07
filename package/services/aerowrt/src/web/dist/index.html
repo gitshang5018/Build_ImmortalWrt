@@ -53,8 +53,8 @@
             <span>订阅管理</span>
           </a>
           <a class="nav-item" data-tab="dns" href="javascript:void(0)" onclick="switchTab('dns')">
-            <span class="icon">🛡️</span>
-            <span>MosDNS 设置</span>
+            <span class="icon">⚙️</span>
+            <span>分流与网络设置</span>
           </a>
           <a class="nav-item" data-tab="logs" href="javascript:void(0)" onclick="switchTab('logs')">
             <span class="icon">📑</span>
@@ -99,10 +99,11 @@
             </div>
 
             <div class="stat-card">
-              <div class="stat-label">分流策略</div>
-              <div class="stat-value text-success">绕过中国大陆 (白名单)</div>
+              <div class="stat-label">分流与策略模式</div>
+              <div class="stat-value text-success" id="stats-routing-mode">绕过中国大陆 (白名单)</div>
               <div class="stat-meta">
-                <span class="text-muted">国内直连 / 海外走代理</span>
+                <span class="pill pill-success" id="stats-strategy-mode">🎯 手动主节点</span>
+                <span class="text-muted" id="stats-routing-sub">国内直连 / 海外走代理</span>
               </div>
             </div>
 
@@ -163,7 +164,8 @@
                 <span class="text-muted">查看、切换活跃节点或删除失效节点</span>
               </div>
               <div class="section-tools">
-                <button class="btn btn-primary btn-sm" onclick="openImportModal()">+ 导入节点</button>
+                <button class="btn btn-primary btn-sm" onclick="openNodeEditorModal()">+ 手动添加节点</button>
+                <button class="btn btn-secondary btn-sm" onclick="openImportModal()">📥 导入订阅/文本</button>
                 <button class="btn btn-secondary btn-sm" onclick="pingAllNodes()">⚡ 批量测速</button>
               </div>
             </div>
@@ -176,6 +178,7 @@
                     <th>服务器地址</th>
                     <th>端口</th>
                     <th>延迟</th>
+                    <th>前置跳板 (链式)</th>
                     <th>状态</th>
                     <th>操作</th>
                   </tr>
@@ -219,32 +222,122 @@
           </section>
         </div>
 
-        <!-- Tab 4: MosDNS & Routing Settings -->
+        <!-- Tab 4: System & Routing Settings -->
         <div id="tab-dns" class="tab-pane">
           <section class="section-card">
             <div class="section-header">
               <div class="section-title">
-                <h2>MosDNS 联动与分流模式</h2>
-                <span class="text-muted">配置 TUN 网卡截获的 DNS 请求转发目标与国内白名单分流</span>
+                <h2>核心出站与 DNS 联动设置</h2>
+                <span class="text-muted">配置路由分流模式、自动优选策略、测速目标与 MosDNS 端口</span>
               </div>
             </div>
-            <div style="max-width: 600px;">
-              <div class="form-group">
-                <label class="form-label">本地 MosDNS 端口</label>
-                <input type="number" class="form-input" id="setting-mosdns-port" value="5335">
-                <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
-                  默认 5335，Sing-box TUN 虚拟网卡将会把所有 53 端口 DNS 请求转到此端口
-                </div>
-              </div>
+            <div class="form-grid-2">
               <div class="form-group">
                 <label class="form-label">路由分流模式</label>
                 <select class="form-select" id="setting-routing-mode">
-                  <option value="bypass_cn">绕过中国大陆 (推荐: 国内直连，海外代理)</option>
+                  <option value="bypass_cn">绕过中国大陆 (推荐: 国内直连，海外走代理)</option>
                   <option value="global">全局代理 (所有流量均走选中的代理节点)</option>
-                  <option value="direct">全局直连 (暂时不通过代理转发流量)</option>
+                  <option value="direct">全局直连 (不通过代理转发流量)</option>
                 </select>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px;">
+                  决定局域网流量的整体转发规则 (GeoIP CN 白名单)
+                </div>
               </div>
-              <button class="btn btn-primary" onclick="saveDnsSettings()">💾 保存并应用设置</button>
+
+              <div class="form-group">
+                <label class="form-label">出站策略模式</label>
+                <select class="form-select" id="setting-strategy-mode">
+                  <option value="manual">手动指定主节点 (在仪表盘中手动点选)</option>
+                  <option value="urltest">自动优选最低延迟 (urltest 自动切换最优节点)</option>
+                </select>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px;">
+                  选择是固定使用手动指定的主节点，还是由核心自动测速优选
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">本地 MosDNS 联动端口</label>
+                <input type="number" class="form-input" id="setting-mosdns-port" value="5335">
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px;">
+                  默认 5335，TUN 虚拟网卡劫持的 53 端口 DNS 请求将转到此端口防污染
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">节点测速目标 URL</label>
+                <input type="text" class="form-input" id="setting-test-url" value="https://www.gstatic.com/generate_204">
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px;">
+                  用于批量测速与 urltest 自动优选的 204 检测地址
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">自动优选测速周期 (分钟)</label>
+                <select class="form-select" id="setting-urltest-interval">
+                  <option value="5">每 5 分钟 (高频刷新)</option>
+                  <option value="10">每 10 分钟 (推荐)</option>
+                  <option value="30">每 30 分钟</option>
+                  <option value="60">每 60 分钟 (低功耗)</option>
+                </select>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px;">
+                  在自动优选策略模式下，核心向测速目标发送探测包的间隔周期
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">订阅自动同步周期</label>
+                <select class="form-select" id="setting-sub-auto-update">
+                  <option value="0">禁用自动更新 (仅手动同步)</option>
+                  <option value="2">每 2 小时自动同步一次</option>
+                  <option value="6">每 6 小时自动同步一次</option>
+                  <option value="12">每 12 小时自动同步一次</option>
+                  <option value="24">每天 (24小时) 自动同步一次</option>
+                </select>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px;">
+                  后台定时重新拉取所有已保存的 HTTP/HTTPS 订阅源
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="section-card">
+            <div class="section-header">
+              <div class="section-title">
+                <h2>自定义路由分流规则 (高级)</h2>
+                <span class="text-muted">自定义强制直连或强制代理的域名后缀与 IP 网段 (每行一条)</span>
+              </div>
+            </div>
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label class="form-label">强制直连域名后缀 (Direct Domains)</label>
+                <textarea class="form-textarea" id="setting-direct-domains" rows="4" placeholder="每行一个域名后缀，例如:&#10;baidu.com&#10;qq.com&#10;apple.com"></textarea>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px;">
+                  命中这些域名的流量即使在全局模式下也会直连 (支持后缀匹配)
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">强制代理域名后缀 (Proxy Domains)</label>
+                <textarea class="form-textarea" id="setting-proxy-domains" rows="4" placeholder="每行一个域名后缀，例如:&#10;openai.com&#10;github.com&#10;notion.so"></textarea>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px;">
+                  命中这些域名的流量即使在国内直连模式下也会强制走代理
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">强制直连 IP / CIDR 网段</label>
+                <textarea class="form-textarea" id="setting-direct-ips" rows="3" placeholder="每行一个 IP 或 CIDR 网段，例如:&#10;119.29.29.29/32&#10;223.5.5.5/32"></textarea>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">强制代理 IP / CIDR 网段</label>
+                <textarea class="form-textarea" id="setting-proxy-ips" rows="3" placeholder="每行一个 IP 或 CIDR 网段，例如:&#10;1.1.1.1/32&#10;8.8.8.8/32"></textarea>
+              </div>
+            </div>
+
+            <div style="margin-top: 18px; display: flex; align-items: center; gap: 12px;">
+              <button class="btn btn-primary" onclick="saveSettings()">💾 保存并应用所有设置</button>
+              <span id="settings-status-msg" style="font-size: 13px; font-weight: 500;"></span>
             </div>
           </section>
         </div>
@@ -353,6 +446,154 @@
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="checkUpdateNow()">重新检测</button>
         <button class="btn btn-primary" id="btn-do-upgrade" onclick="triggerCoreUpgrade()">🚀 一键升级</button>
+      </div>
+    </div>
+  <!-- Chain Proxy Detour Modal -->
+  <div class="modal-overlay" id="modal-chain">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>🔗 设置链式前置跳板代理 (Detour)</h3>
+        <button class="modal-close" onclick="closeChainModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">当前落地节点</label>
+          <div style="font-weight: 600; font-size: 14px;" id="chain-target-node-name">--</div>
+          <div style="font-size: 11px; color: var(--text-muted);" id="chain-target-node-server">--</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">前置跳板代理节点 (Detour)</label>
+          <select class="form-select" id="chain-select-parent">
+            <option value="">(直连 - 不使用前置代理)</option>
+          </select>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+            设置后，发往当前落地节点的网络流量将首先经由选定的前置跳板节点代理转发，形成链式出站通道。
+          </div>
+        </div>
+        <div id="chain-status-msg" style="font-size: 12px; margin-top: 4px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeChainModal()">取消</button>
+        <button class="btn btn-primary" id="btn-save-chain" onclick="doSaveChainProxy()">💾 保存链式代理</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Manual Node Editor Modal -->
+  <div class="modal-overlay" id="modal-node-editor">
+    <div class="modal-box modal-box-wide">
+      <div class="modal-header">
+        <h3 id="node-editor-title">手动录入 / 编辑代理节点</h3>
+        <button class="modal-close" onclick="closeNodeEditorModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="node-edit-id">
+        <div class="form-row">
+          <div class="form-group" style="flex: 2;">
+            <label class="form-label">节点名称 / 备注</label>
+            <input type="text" class="form-input" id="node-edit-tag" placeholder="例如: 🇭🇰 香港 01 [优质BGP]">
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label class="form-label">代理协议</label>
+            <select class="form-select" id="node-edit-proto" onchange="handleProtocolChange()">
+              <option value="vless">VLESS</option>
+              <option value="trojan">Trojan</option>
+              <option value="shadowsocks">Shadowsocks</option>
+              <option value="vmess">VMess</option>
+              <option value="hysteria2">Hysteria2</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group" style="flex: 2;">
+            <label class="form-label">服务器地址 (域名 / IP)</label>
+            <input type="text" class="form-input" id="node-edit-server" placeholder="例如: hk.example.com">
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label class="form-label">服务器端口</label>
+            <input type="number" class="form-input" id="node-edit-port" placeholder="443" value="443">
+          </div>
+        </div>
+
+        <!-- UUID Field for VLESS / VMess -->
+        <div class="form-group" id="group-node-uuid">
+          <label class="form-label">用户 UUID</label>
+          <input type="text" class="form-input" id="node-edit-uuid" placeholder="例如: 8f9b1c2d-...">
+        </div>
+
+        <!-- Password Field for Trojan / SS / Hysteria2 -->
+        <div class="form-group" id="group-node-password" style="display: none;">
+          <label class="form-label">连接密码 (Password)</label>
+          <input type="text" class="form-input" id="node-edit-password" placeholder="密码">
+        </div>
+
+        <!-- Method Field for Shadowsocks -->
+        <div class="form-group" id="group-node-method" style="display: none;">
+          <label class="form-label">加密算法 (Method)</label>
+          <select class="form-select" id="node-edit-method">
+            <option value="aes-128-gcm">aes-128-gcm</option>
+            <option value="aes-256-gcm">aes-256-gcm</option>
+            <option value="chacha20-ietf-poly1305">chacha20-ietf-poly1305</option>
+            <option value="2022-blake3-aes-128-gcm">2022-blake3-aes-128-gcm</option>
+            <option value="2022-blake3-aes-256-gcm">2022-blake3-aes-256-gcm</option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">传输协议 (Network)</label>
+            <select class="form-select" id="node-edit-network">
+              <option value="tcp">TCP</option>
+              <option value="ws">WebSocket (ws)</option>
+              <option value="grpc">gRPC</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">WS / gRPC 路径 (Path)</label>
+            <input type="text" class="form-input" id="node-edit-path" placeholder="/">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">安全类型 (Security / TLS)</label>
+            <select class="form-select" id="node-edit-security" onchange="handleSecurityChange()">
+              <option value="none">None (不加密)</option>
+              <option value="tls">TLS 标准加密</option>
+              <option value="reality">Reality 伪装加密</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">SNI / 伪装域名</label>
+            <input type="text" class="form-input" id="node-edit-sni" placeholder="例如: www.microsoft.com">
+          </div>
+        </div>
+
+        <!-- Reality Fields -->
+        <div class="form-row" id="group-node-reality" style="display: none;">
+          <div class="form-group">
+            <label class="form-label">Reality 公钥 (Public Key)</label>
+            <input type="text" class="form-input" id="node-edit-publickey" placeholder="Public Key">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Reality Short ID</label>
+            <input type="text" class="form-input" id="node-edit-shortid" placeholder="Short ID (如 a1b2c3d4)">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">前置链式代理 (Detour 跳板)</label>
+          <select class="form-select" id="node-edit-chain">
+            <option value="">(直连 - 无前置跳板)</option>
+          </select>
+        </div>
+
+        <div id="node-editor-msg" style="font-size: 12px; margin-top: 4px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeNodeEditorModal()">取消</button>
+        <button class="btn btn-primary" id="btn-save-node" onclick="doSaveNode()">💾 保存节点</button>
       </div>
     </div>
   </div>

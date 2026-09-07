@@ -77,7 +77,7 @@ func (g *Generator) GenerateSingboxConfig(settings model.SystemSettings, nodes [
 		"route": map[string]interface{}{
 			"default_domain_resolver": "dns-upstream",
 			"auto_detect_interface":   true,
-			"final":                   "proxy",
+			"final":                   finalOutbound(settings),
 			"rules":                   g.buildRouteRules(settings),
 		},
 	}
@@ -122,8 +122,8 @@ func (g *Generator) buildOutbounds(settings model.SystemSettings, nodes []model.
 			"server_port": n.Port,
 		}
 
-		if n.ChainNode != "" {
-			if parentTag, exists := nodeTagMap[n.ChainNode]; exists {
+		if n.ChainNode != "" && n.ChainNode != n.ID {
+			if parentTag, exists := nodeTagMap[n.ChainNode]; exists && parentTag != n.Tag {
 				ob["detour"] = parentTag
 			}
 		}
@@ -259,11 +259,44 @@ func (g *Generator) buildOutbounds(settings model.SystemSettings, nodes []model.
 		activeTag = mappedTag
 	}
 
+	testURL := settings.TestURL
+	if testURL == "" {
+		testURL = "https://www.gstatic.com/generate_204"
+	}
+	intervalMins := settings.UrlTestIntervalMins
+	if intervalMins <= 0 {
+		intervalMins = 10
+	}
+	intervalStr := fmt.Sprintf("%dm", intervalMins)
+
+	// 自动测速优选分组 (auto-best)
+	if len(processedNodes) > 0 {
+		outbounds = append(outbounds, map[string]interface{}{
+			"type":      "urltest",
+			"tag":       "auto-best",
+			"outbounds": allTags,
+			"url":       testURL,
+			"interval":  intervalStr,
+			"tolerance": 50,
+		})
+	}
+
+	proxyOutbounds := make([]string, 0, len(allTags)+1)
+	if len(processedNodes) > 0 {
+		proxyOutbounds = append(proxyOutbounds, "auto-best")
+	}
+	proxyOutbounds = append(proxyOutbounds, allTags...)
+
+	defaultTag := activeTag
+	if settings.StrategyMode == "urltest" || settings.ActiveNodeID == "auto" {
+		defaultTag = "auto-best"
+	}
+
 	outbounds = append(outbounds, map[string]interface{}{
 		"type":      "selector",
 		"tag":       "proxy",
-		"outbounds": allTags,
-		"default":   activeTag,
+		"outbounds": proxyOutbounds,
+		"default":   defaultTag,
 	})
 
 	return outbounds
@@ -286,15 +319,82 @@ func (g *Generator) buildRouteRules(settings model.SystemSettings) []map[string]
 		{"source_port": mgmtPorts, "outbound": "direct"},
 	}
 
-	// 仅在路由器存在 geoip.db 时启用 geoip 规则，防止因缺少数据库文件导致 Sing-box 启动闪退
-	if hasGeoIPDB() {
+	// 1. 用户自定义强制直连域名规则 (优先级高于代理)
+	directDomains := cleanRuleList(settings.DirectDomains)
+	if len(directDomains) > 0 {
 		rules = append(rules, map[string]interface{}{
-			"geoip":    []string{"cn"},
+			"domain_suffix": directDomains,
+			"outbound":      "direct",
+		})
+	}
+
+	// 2. 用户自定义强制直连 IP / CIDR 规则
+	directIPs := cleanRuleList(settings.DirectIPs)
+	if len(directIPs) > 0 {
+		rules = append(rules, map[string]interface{}{
+			"ip_cidr":  directIPs,
 			"outbound": "direct",
 		})
 	}
 
+	// 3. 用户自定义强制代理域名规则
+	proxyDomains := cleanRuleList(settings.ProxyDomains)
+	if len(proxyDomains) > 0 {
+		rules = append(rules, map[string]interface{}{
+			"domain_suffix": proxyDomains,
+			"outbound":      "proxy",
+		})
+	}
+
+	// 4. 用户自定义强制代理 IP / CIDR 规则
+	proxyIPs := cleanRuleList(settings.ProxyIPs)
+	if len(proxyIPs) > 0 {
+		rules = append(rules, map[string]interface{}{
+			"ip_cidr":  proxyIPs,
+			"outbound": "proxy",
+		})
+	}
+
+	// 5. 路由分流模式
+	switch settings.RoutingMode {
+	case "direct":
+		// 全局直连：所有剩余流量均直连
+		rules = append(rules, map[string]interface{}{
+			"outbound": "direct",
+		})
+	case "global":
+		// 全局代理：不配置 CN 绕过规则，剩余流量由 final: proxy 转发
+	case "bypass_cn":
+		fallthrough
+	default:
+		// 绕过中国大陆：仅在路由器存在 geoip.db 时启用 CN 直连
+		if hasGeoIPDB() {
+			rules = append(rules, map[string]interface{}{
+				"geoip":    []string{"cn"},
+				"outbound": "direct",
+			})
+		}
+	}
+
 	return rules
+}
+
+func finalOutbound(settings model.SystemSettings) string {
+	if settings.RoutingMode == "direct" {
+		return "direct"
+	}
+	return "proxy"
+}
+
+func cleanRuleList(items []string) []string {
+	result := make([]string, 0, len(items))
+	for _, it := range items {
+		trimmed := strings.TrimSpace(it)
+		if trimmed != "" && !strings.HasPrefix(trimmed, "#") {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }
 
 func hasGeoIPDB() bool {

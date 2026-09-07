@@ -73,12 +73,32 @@ func (s *Server) LoadFromStorage() error {
 	if data.Settings.ActiveNodeID != "" {
 		s.settings.ActiveNodeID = data.Settings.ActiveNodeID
 	}
+	if data.Settings.ActiveGroup != "" {
+		s.settings.ActiveGroup = data.Settings.ActiveGroup
+	}
 	if data.Settings.RoutingMode != "" {
 		s.settings.RoutingMode = data.Settings.RoutingMode
 	}
 	if data.Settings.MosDNSPort > 0 {
 		s.settings.MosDNSPort = data.Settings.MosDNSPort
 	}
+	if data.Settings.TestURL != "" {
+		s.settings.TestURL = data.Settings.TestURL
+		if s.pinger != nil {
+			s.pinger.TestURL = data.Settings.TestURL
+		}
+	}
+	if data.Settings.StrategyMode != "" {
+		s.settings.StrategyMode = data.Settings.StrategyMode
+	}
+	if data.Settings.UrlTestIntervalMins > 0 {
+		s.settings.UrlTestIntervalMins = data.Settings.UrlTestIntervalMins
+	}
+	s.settings.AutoUpdateSubHours = data.Settings.AutoUpdateSubHours
+	s.settings.DirectDomains = data.Settings.DirectDomains
+	s.settings.ProxyDomains = data.Settings.ProxyDomains
+	s.settings.DirectIPs = data.Settings.DirectIPs
+	s.settings.ProxyIPs = data.Settings.ProxyIPs
 	return nil
 }
 
@@ -103,10 +123,14 @@ func (s *Server) AddNode(node model.Node) {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/status", s.handleStatus)
+	mux.HandleFunc("/api/settings", s.handleSettings)
 	mux.HandleFunc("/api/nodes", s.handleNodes)
 	mux.HandleFunc("/api/nodes/ping", s.handlePing)
 	mux.HandleFunc("/api/nodes/switch", s.handleSwitch)
 	mux.HandleFunc("/api/nodes/import", s.handleImport)
+	mux.HandleFunc("/api/nodes/chain", s.handleNodeChain)
+	mux.HandleFunc("/api/nodes/add", s.handleNodeAdd)
+	mux.HandleFunc("/api/nodes/edit", s.handleNodeEdit)
 	mux.HandleFunc("/api/nodes/delete", s.handleDeleteNode)
 	mux.HandleFunc("/api/subscriptions", s.handleSubscriptions)
 	mux.HandleFunc("/api/logs", s.handleLogs)
@@ -121,15 +145,19 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	defer s.mu.RUnlock()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":        "running",
-		"core":          "sing-box",
-		"core_version":  "v1.9.3",
-		"active_node":   s.settings.ActiveNodeID,
-		"routing_mode":  s.settings.RoutingMode,
-		"mosdns_port":   s.settings.MosDNSPort,
-		"total_nodes":   len(s.nodes),
-		"total_subs":    len(s.subscriptions),
-		"core_running":  s.supervisor != nil && s.supervisor.IsRunning(),
+		"status":                "running",
+		"core":                  "sing-box",
+		"core_version":          "v1.9.3",
+		"active_node":           s.settings.ActiveNodeID,
+		"routing_mode":          s.settings.RoutingMode,
+		"strategy_mode":         s.settings.StrategyMode,
+		"mosdns_port":           s.settings.MosDNSPort,
+		"test_url":              s.settings.TestURL,
+		"urltest_interval_mins": s.settings.UrlTestIntervalMins,
+		"auto_update_sub_hours": s.settings.AutoUpdateSubHours,
+		"total_nodes":           len(s.nodes),
+		"total_subs":            len(s.subscriptions),
+		"core_running":          s.supervisor != nil && s.supervisor.IsRunning(),
 	})
 }
 
@@ -520,3 +548,366 @@ func (s *Server) GetSettings() model.SystemSettings {
 	defer s.mu.RUnlock()
 	return s.settings
 }
+
+func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method == http.MethodGet {
+		s.mu.RLock()
+		defer s.mu.RUnlock()
+		json.NewEncoder(w).Encode(s.settings)
+		return
+	}
+
+	if r.Method != http.MethodPost && r.Method != http.MethodPut {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req model.SystemSettings
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	s.mu.Lock()
+	if req.RoutingMode != "" {
+		s.settings.RoutingMode = req.RoutingMode
+	}
+	if req.MosDNSPort > 0 {
+		s.settings.MosDNSPort = req.MosDNSPort
+	}
+	if req.TestURL != "" {
+		s.settings.TestURL = strings.TrimSpace(req.TestURL)
+		if s.pinger != nil {
+			s.pinger.TestURL = s.settings.TestURL
+		}
+	}
+	if req.StrategyMode != "" {
+		s.settings.StrategyMode = req.StrategyMode
+	}
+	if req.UrlTestIntervalMins > 0 {
+		s.settings.UrlTestIntervalMins = req.UrlTestIntervalMins
+	}
+	s.settings.AutoUpdateSubHours = req.AutoUpdateSubHours
+	s.settings.DirectDomains = req.DirectDomains
+	s.settings.ProxyDomains = req.ProxyDomains
+	s.settings.DirectIPs = req.DirectIPs
+	s.settings.ProxyIPs = req.ProxyIPs
+
+	s.saveToStorageLocked()
+
+	settingsCopy := s.settings
+	nodesCopy := make([]model.Node, len(s.nodes))
+	copy(nodesCopy, s.nodes)
+	s.mu.Unlock()
+
+	if s.supervisor != nil {
+		go func() {
+			if err := s.supervisor.ApplyConfig(settingsCopy, nodesCopy); err != nil {
+				s.supervisor.AddLog("ERROR", fmt.Sprintf("Failed to apply new settings: %v", err))
+			} else {
+				s.supervisor.AddLog("SUCCESS", fmt.Sprintf("Settings updated & config reloaded (Mode: %s, Strategy: %s)", settingsCopy.RoutingMode, settingsCopy.StrategyMode))
+			}
+		}()
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":  true,
+		"settings": settingsCopy,
+	})
+}
+
+func (s *Server) handleNodeChain(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		NodeID      string `json:"node_id"`
+		ChainNodeID string `json:"chain_node_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if req.NodeID == "" {
+		http.Error(w, "node_id is required", http.StatusBadRequest)
+		return
+	}
+
+	if req.ChainNodeID == req.NodeID {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "不能将自身设置为前置跳板代理",
+		})
+		return
+	}
+
+	s.mu.Lock()
+	var targetIdx = -1
+	chainMap := make(map[string]string)
+	for i, n := range s.nodes {
+		if n.ID == req.NodeID {
+			targetIdx = i
+		}
+		chainMap[n.ID] = n.ChainNode
+	}
+
+	if targetIdx == -1 {
+		s.mu.Unlock()
+		http.Error(w, "Target node not found", http.StatusNotFound)
+		return
+	}
+
+	// 如果指定了前置跳板节点，检查循环依赖
+	if req.ChainNodeID != "" {
+		foundParent := false
+		for _, n := range s.nodes {
+			if n.ID == req.ChainNodeID {
+				foundParent = true
+				break
+			}
+		}
+		if !foundParent {
+			s.mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": false,
+				"error":   "指定的跳板节点不存在",
+			})
+			return
+		}
+
+		// 环路检测
+		curr := req.ChainNodeID
+		chainMap[req.NodeID] = req.ChainNodeID
+		visited := make(map[string]bool)
+		for curr != "" {
+			if curr == req.NodeID || visited[curr] {
+				s.mu.Unlock()
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"success": false,
+					"error":   "检测到循环代理链依赖！无法将该节点设为前置跳板。",
+				})
+				return
+			}
+			visited[curr] = true
+			curr = chainMap[curr]
+		}
+	}
+
+	s.nodes[targetIdx].ChainNode = req.ChainNodeID
+	s.saveToStorageLocked()
+
+	settingsCopy := s.settings
+	nodesCopy := make([]model.Node, len(s.nodes))
+	copy(nodesCopy, s.nodes)
+	targetNode := s.nodes[targetIdx]
+	s.mu.Unlock()
+
+	if s.supervisor != nil {
+		go func() {
+			_ = s.supervisor.ApplyConfig(settingsCopy, nodesCopy)
+			action := "cleared"
+			if req.ChainNodeID != "" {
+				action = fmt.Sprintf("set to %s", req.ChainNodeID)
+			}
+			s.supervisor.AddLog("SUCCESS", fmt.Sprintf("Node [%s] chain detour %s", targetNode.Tag, action))
+		}()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"node":    targetNode,
+	})
+}
+
+func (s *Server) handleNodeAdd(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var node model.Node
+	if err := json.NewDecoder(r.Body).Decode(&node); err != nil {
+		http.Error(w, "Invalid JSON: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if node.Server == "" || node.Port <= 0 || node.Protocol == "" {
+		http.Error(w, "Server, Port, and Protocol are required", http.StatusBadRequest)
+		return
+	}
+
+	node.Tag = strings.TrimSpace(node.Tag)
+	if node.Tag == "" {
+		node.Tag = fmt.Sprintf("%s-%s:%d", node.Protocol, node.Server, node.Port)
+	}
+	if node.ID == "" {
+		node.ID = fmt.Sprintf("node-manual-%d", time.Now().UnixNano()/1e6)
+	}
+
+	s.mu.Lock()
+	s.nodes = append(s.nodes, node)
+	if s.settings.ActiveNodeID == "" {
+		s.settings.ActiveNodeID = node.ID
+	}
+	s.saveToStorageLocked()
+
+	settingsCopy := s.settings
+	nodesCopy := make([]model.Node, len(s.nodes))
+	copy(nodesCopy, s.nodes)
+	s.mu.Unlock()
+
+	if s.supervisor != nil {
+		go func() {
+			_ = s.supervisor.ApplyConfig(settingsCopy, nodesCopy)
+			s.supervisor.AddLog("SUCCESS", fmt.Sprintf("Manual node [%s] added", node.Tag))
+		}()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"node":    node,
+	})
+}
+
+func (s *Server) handleNodeEdit(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var node model.Node
+	if err := json.NewDecoder(r.Body).Decode(&node); err != nil {
+		http.Error(w, "Invalid JSON: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if node.ID == "" {
+		http.Error(w, "node id is required", http.StatusBadRequest)
+		return
+	}
+
+	s.mu.Lock()
+	idx := -1
+	for i, n := range s.nodes {
+		if n.ID == node.ID {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		s.mu.Unlock()
+		http.Error(w, "Node not found", http.StatusNotFound)
+		return
+	}
+
+	// 保留原有测速值
+	node.DelayMs = s.nodes[idx].DelayMs
+	if node.Tag == "" {
+		node.Tag = s.nodes[idx].Tag
+	}
+	s.nodes[idx] = node
+	s.saveToStorageLocked()
+
+	settingsCopy := s.settings
+	nodesCopy := make([]model.Node, len(s.nodes))
+	copy(nodesCopy, s.nodes)
+	s.mu.Unlock()
+
+	if s.supervisor != nil {
+		go func() {
+			_ = s.supervisor.ApplyConfig(settingsCopy, nodesCopy)
+			s.supervisor.AddLog("SUCCESS", fmt.Sprintf("Node [%s] updated", node.Tag))
+		}()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"node":    node,
+	})
+}
+
+func (s *Server) StartAutoUpdateWorker(stopCh <-chan struct{}) {
+	ticker := time.NewTicker(30 * time.Minute)
+	go func() {
+		for {
+			select {
+			case <-stopCh:
+				ticker.Stop()
+				return
+			case <-ticker.C:
+				s.autoUpdateSubscriptions()
+			}
+		}
+	}()
+}
+
+func (s *Server) autoUpdateSubscriptions() {
+	s.mu.RLock()
+	hours := s.settings.AutoUpdateSubHours
+	subs := make([]model.Subscription, len(s.subscriptions))
+	copy(subs, s.subscriptions)
+	s.mu.RUnlock()
+
+	if hours <= 0 || len(subs) == 0 {
+		return
+	}
+
+	cutoff := time.Now().Add(-time.Duration(hours) * time.Hour)
+	for _, sub := range subs {
+		if sub.URL == "" {
+			continue
+		}
+		updatedAt, err := time.Parse("2006-01-02 15:04:05", sub.UpdatedAt)
+		if err == nil && updatedAt.After(cutoff) {
+			continue
+		}
+
+		client := &http.Client{Timeout: 15 * time.Second}
+		httpReq, err := http.NewRequest("GET", sub.URL, nil)
+		if err != nil {
+			continue
+		}
+		httpReq.Header.Set("User-Agent", "v2rayN/6.23 clash-meta aerowrt")
+		resp, err := client.Do(httpReq)
+		if err != nil {
+			continue
+		}
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		parsedNodes, err := parser.ParseSubscriptionContent(string(bodyBytes))
+		if err != nil || len(parsedNodes) == 0 {
+			continue
+		}
+
+		s.mu.Lock()
+		nowStr := time.Now().Format("2006-01-02 15:04:05")
+		for si := range s.subscriptions {
+			if s.subscriptions[si].ID == sub.ID {
+				s.subscriptions[si].UpdatedAt = nowStr
+				s.subscriptions[si].NodeCount = len(parsedNodes)
+				break
+			}
+		}
+		s.saveToStorageLocked()
+		s.mu.Unlock()
+
+		if s.supervisor != nil {
+			s.supervisor.AddLog("INFO", fmt.Sprintf("Cron: Subscription [%s] auto-updated (%d nodes)", sub.Name, len(parsedNodes)))
+		}
+	}
+}
+

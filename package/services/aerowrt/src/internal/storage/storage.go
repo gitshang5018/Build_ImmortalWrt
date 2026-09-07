@@ -28,12 +28,20 @@ func NewStorage(filePath string) *Storage {
 func (s *Storage) DefaultData() *StoreData {
 	return &StoreData{
 		Settings: model.SystemSettings{
-			ActiveNodeID: "node-hk",
-			ActiveGroup:  "auto",
-			RoutingMode:  "bypass_cn",
-			DNSMode:      model.DNSModeMosDNS,
-			MosDNSPort:   5335,
-			HttpPort:     9099,
+			ActiveNodeID:        "node-hk",
+			ActiveGroup:         "auto",
+			RoutingMode:         "bypass_cn",
+			DNSMode:             model.DNSModeMosDNS,
+			MosDNSPort:          5335,
+			HttpPort:            9099,
+			TestURL:             "https://www.gstatic.com/generate_204",
+			StrategyMode:        "manual",
+			UrlTestIntervalMins: 10,
+			AutoUpdateSubHours:  0,
+			DirectDomains:       []string{},
+			ProxyDomains:        []string{},
+			DirectIPs:           []string{},
+			ProxyIPs:            []string{},
 		},
 		Nodes: []model.Node{
 			{

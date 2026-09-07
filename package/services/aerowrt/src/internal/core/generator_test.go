@@ -92,3 +92,65 @@ func TestGenerateSingboxTrojanAndReality(t *testing.T) {
 	}
 }
 
+func TestGenerateSingboxCustomRulesAndStrategy(t *testing.T) {
+	settings := model.SystemSettings{
+		ActiveNodeID:        "n1",
+		RoutingMode:         "bypass_cn",
+		StrategyMode:        "urltest",
+		TestURL:             "https://www.gstatic.com/generate_204",
+		UrlTestIntervalMins: 5,
+		DirectDomains:       []string{"direct.lan", "local.domain"},
+		ProxyDomains:        []string{"openai.com", "github.com"},
+		DirectIPs:           []string{"192.168.100.0/24"},
+		ProxyIPs:            []string{"1.0.0.1/32"},
+	}
+	nodes := []model.Node{
+		{ID: "n1", Tag: "Node-1", Protocol: model.ProtocolSS, Server: "s1.com", Port: 8388, Password: "p1"},
+		{ID: "n2", Tag: "Node-2", Protocol: model.ProtocolSS, Server: "s2.com", Port: 8388, Password: "p2"},
+	}
+
+	gen := NewGenerator()
+	configJSON, err := gen.GenerateSingboxConfig(settings, nodes)
+	if err != nil {
+		t.Fatalf("GenerateSingboxConfig error: %v", err)
+	}
+
+	// 1. 验证 urltest 分组存在
+	if !strings.Contains(configJSON, `"type": "urltest"`) || !strings.Contains(configJSON, `"tag": "auto-best"`) {
+		t.Errorf("expected auto-best urltest outbound in config: %s", configJSON)
+	}
+	if !strings.Contains(configJSON, `"url": "https://www.gstatic.com/generate_204"`) {
+		t.Errorf("expected test url in urltest outbound: %s", configJSON)
+	}
+	if !strings.Contains(configJSON, `"interval": "5m"`) {
+		t.Errorf("expected 5m interval in urltest outbound: %s", configJSON)
+	}
+
+	// 2. 验证 proxy selector 的 default 设为 auto-best
+	if !strings.Contains(configJSON, `"default": "auto-best"`) {
+		t.Errorf("expected proxy selector default to be auto-best in urltest mode: %s", configJSON)
+	}
+
+	// 3. 验证自定义直连域名与 IP
+	if !strings.Contains(configJSON, "direct.lan") || !strings.Contains(configJSON, "192.168.100.0/24") {
+		t.Errorf("expected direct domains and ips in route rules: %s", configJSON)
+	}
+
+	// 4. 验证自定义代理域名与 IP
+	if !strings.Contains(configJSON, "openai.com") || !strings.Contains(configJSON, "1.0.0.1/32") {
+		t.Errorf("expected proxy domains and ips in route rules: %s", configJSON)
+	}
+
+	// 5. 验证 direct 模式
+	settingsDirect := settings
+	settingsDirect.RoutingMode = "direct"
+	directConfig, err := gen.GenerateSingboxConfig(settingsDirect, nodes)
+	if err != nil {
+		t.Fatalf("GenerateSingboxConfig direct error: %v", err)
+	}
+	if !strings.Contains(directConfig, `"final": "direct"`) {
+		t.Errorf("expected final to be direct in direct routing mode: %s", directConfig)
+	}
+}
+
+

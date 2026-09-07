@@ -68,6 +68,9 @@ func main() {
 	log.Printf("  MosDNS Linkage:  127.0.0.1:%d", settings.MosDNSPort)
 	log.Printf("=====================================================")
 
+	stopWorkerCh := make(chan struct{})
+	apiServer.StartAutoUpdateWorker(stopWorkerCh)
+
 	srv := &http.Server{
 		Addr:    addr,
 		Handler: mux,
@@ -79,6 +82,7 @@ func main() {
 	go func() {
 		sig := <-sigChan
 		log.Printf("[INFO] Received signal %v, gracefully shutting down AeroWrt...", sig)
+		close(stopWorkerCh)
 		supervisor.Stop()
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
