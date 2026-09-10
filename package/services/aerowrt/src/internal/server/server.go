@@ -329,7 +329,7 @@ func (s *Server) handleCoreRestart(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 	if s.supervisor != nil {
-		err = s.supervisor.ApplyConfig(settings, nodes)
+		err = s.supervisor.ApplyConfigWithGroups(settings, nodes, s.groups)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -428,7 +428,7 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 
 	if s.supervisor != nil {
 		s.mu.RLock()
-		_ = s.supervisor.ApplyConfig(s.settings, s.nodes)
+		_ = s.supervisor.ApplyConfigWithGroups(s.settings, s.nodes, s.groups)
 		s.supervisor.AddLog("SUCCESS", fmt.Sprintf("Imported %d new proxy nodes successfully", len(parsedNodes)))
 		s.mu.RUnlock()
 	}
@@ -462,6 +462,12 @@ func (s *Server) handleDeleteNode(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.nodes = newNodes
+	// 清除其他节点指向被删节点的 detour（链式代理）
+	for i := range s.nodes {
+		if s.nodes[i].ChainNode == req.ID {
+			s.nodes[i].ChainNode = ""
+		}
+	}
 	if s.settings.ActiveNodeID == req.ID {
 		if len(s.nodes) > 0 {
 			s.settings.ActiveNodeID = s.nodes[0].ID
@@ -469,12 +475,26 @@ func (s *Server) handleDeleteNode(w http.ResponseWriter, r *http.Request) {
 			s.settings.ActiveNodeID = ""
 		}
 	}
+	// 同步把该节点从所有出站分组中移除，并保持 group.Selected 不失效
+	for gi := range s.groups {
+		g := &s.groups[gi]
+		newGroupNodes := make([]string, 0, len(g.Nodes))
+		for _, nid := range g.Nodes {
+			if nid != req.ID {
+				newGroupNodes = append(newGroupNodes, nid)
+			}
+		}
+		g.Nodes = newGroupNodes
+		if g.Selected == req.ID {
+			g.Selected = ""
+		}
+	}
 	s.saveToStorageLocked()
 	s.mu.Unlock()
 
 	if s.supervisor != nil {
 		s.mu.RLock()
-		_ = s.supervisor.ApplyConfig(s.settings, s.nodes)
+		_ = s.supervisor.ApplyConfigWithGroups(s.settings, s.nodes, s.groups)
 		s.supervisor.AddLog("INFO", fmt.Sprintf("Node %s removed", req.ID))
 		s.mu.RUnlock()
 	}

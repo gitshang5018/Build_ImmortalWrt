@@ -59,6 +59,10 @@
             <span class="icon">⚙️</span>
             <span>分流与网络设置</span>
           </a>
+          <a class="nav-item" data-tab="groups" href="javascript:void(0)" onclick="switchTab('groups')">
+            <span class="icon">🧩</span>
+            <span>出站分组</span>
+          </a>
           <a class="nav-item" data-tab="logs" href="javascript:void(0)" onclick="switchTab('logs')">
             <span class="icon">📑</span>
             <span>实时日志</span>
@@ -365,6 +369,38 @@
           </section>
         </div>
 
+        <!-- Tab 4.5: Outbound Groups -->
+        <div id="tab-groups" class="tab-pane">
+          <section class="section-card">
+            <div class="section-header">
+              <div class="section-title">
+                <h2>出站分组管理</h2>
+                <span class="text-muted">将若干节点组合为 urltest / selector / loadbalance 分组，选择分组即把流量按策略分散</span>
+              </div>
+              <div class="section-tools">
+                <button class="btn btn-primary btn-sm" onclick="openGroupModal()">+ 新建分组</button>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>分组名称 (Tag)</th>
+                    <th>类型</th>
+                    <th>包含节点</th>
+                    <th>测速周期</th>
+                    <th>容差 (ms)</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="groups-table-body">
+                  <tr><td colspan="6" style="text-align: center; padding: 24px; color: var(--text-muted);">暂无分组，点击右上角「+ 新建分组」创建</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
         <!-- Tab 5: Real-time Logs -->
         <div id="tab-logs" class="tab-pane">
           <section class="section-card">
@@ -617,6 +653,63 @@
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeNodeEditorModal()">取消</button>
         <button class="btn btn-primary" id="btn-save-node" onclick="doSaveNode()">💾 保存节点</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Outbound Group Editor Modal -->
+  <div class="modal-overlay" id="modal-group">
+    <div class="modal-box modal-box-wide">
+      <div class="modal-header">
+        <h3 id="group-modal-title">➕ 新建出站分组</h3>
+        <button class="modal-close" onclick="closeGroupModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="group-edit-id">
+        <div class="form-group">
+          <label class="form-label">分组名称 (Tag，唯一)</label>
+          <input type="text" class="form-input" id="group-edit-tag" placeholder="例如: hk-pool">
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px;">
+            会以前缀 <code>group-</code> 拼接到 sing-box outbound tag，例如 <code>group-hk-pool</code>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">分组类型</label>
+          <select class="form-select" id="group-edit-type">
+            <option value="urltest">URLTest - 周期测速，自动选延迟最低节点（默认，类似故障转移）</option>
+            <option value="selector">Selector - 手动从分组中挑选具体节点（在 Clash API / 主 selector 中切换）</option>
+            <option value="loadbalance">LoadBalance - 多节点负载均衡（ sing-box 1.9+ 需实验特性）</option>
+            <option value="failover">Failover - 故障转移（与 urltest 低容差近似）</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">包含节点 (按住 Ctrl/Cmd 多选)</label>
+          <select class="form-select" id="group-edit-nodes" multiple size="8"></select>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px;">
+            至少选择一个节点。分组内所有节点的链式代理（detour）配置仍然生效。
+          </div>
+        </div>
+
+        <div class="form-grid-2">
+          <div class="form-group">
+            <label class="form-label">测速周期 (秒)</label>
+            <input type="number" class="form-input" id="group-edit-interval" value="300" min="30">
+            <div style="font-size: 11px; color: var(--text-muted);">用于 urltest/loadbalance，默认 300</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">切换容差 (ms)</label>
+            <input type="number" class="form-input" id="group-edit-tolerance" value="50" min="0">
+            <div style="font-size: 11px; color: var(--text-muted);">urltest 模式：当前节点与新最优差值超过该阈值才切换，越小越灵敏</div>
+          </div>
+        </div>
+
+        <div id="group-modal-msg" style="font-size: 12px; margin-top: 6px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeGroupModal()">取消</button>
+        <button class="btn btn-primary" id="btn-save-group" onclick="doSaveGroup()">💾 保存分组</button>
       </div>
     </div>
   </div>

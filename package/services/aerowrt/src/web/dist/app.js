@@ -1136,12 +1136,194 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
+// ========== 出站分组管理 (Outbound Groups) ==========
+let currentGroups = [];
+
+async function loadGroups() {
+  try {
+    const res = await fetch('/api/groups');
+    currentGroups = await res.json() || [];
+    renderGroupsTable();
+  } catch (err) {
+    console.error('Failed to load groups:', err);
+  }
+}
+
+function renderGroupsTable() {
+  const tbody = document.getElementById('groups-table-body');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  if (!currentGroups || currentGroups.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 24px; color: var(--text-muted);">暂无分组，点击右上角「+ 新建分组」创建</td></tr>';
+    return;
+  }
+
+  currentGroups.forEach(g => {
+    const nodeNames = (g.nodes || []).map(nid => {
+      const n = currentNodes.find(x => x.id === nid);
+      return n ? (n.tag || n.server) : nid;
+    });
+    const typeBadge = {
+      'urltest': '<span class="pill pill-success">URLTest 自动测速</span>',
+      'selector': '<span class="pill pill-warning">Selector 手选</span>',
+      'loadbalance': '<span class="pill pill-info">LoadBalance 负载均衡</span>',
+      'failover': '<span class="pill pill-warning">Failover 故障转移</span>',
+    }[g.type] || `<span class="pill">${escapeHtml(g.type)}</span>`;
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><strong>group-${escapeHtml(g.tag)}</strong></td>
+      <td>${typeBadge}</td>
+      <td style="max-width: 340px; word-break: break-all;">
+        <span class="pill pill-success">${nodeNames.length} 个</span>
+        <span style="font-size: 11px; color: var(--text-muted); margin-left: 6px;">${escapeHtml(nodeNames.join('、'))}</span>
+      </td>
+      <td>${g.interval || 300}s</td>
+      <td>${g.tolerance || 50}ms</td>
+      <td>
+        <button class="btn btn-secondary btn-sm" onclick="openGroupModal('${escapeHtml(g.id)}')">✏️ 编辑</button>
+        <button class="btn btn-secondary btn-sm" style="color: var(--danger); margin-left: 4px;" onclick="deleteGroup('${escapeHtml(g.id)}', '${escapeHtml(g.tag)}')">🗑️ 删除</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function openGroupModal(groupId = '') {
+  const titleEl = document.getElementById('group-modal-title');
+  const msgEl = document.getElementById('group-modal-msg');
+  const idInput = document.getElementById('group-edit-id');
+  const tagInput = document.getElementById('group-edit-tag');
+  const typeSel = document.getElementById('group-edit-type');
+  const nodesSel = document.getElementById('group-edit-nodes');
+  const intervalInput = document.getElementById('group-edit-interval');
+  const toleranceInput = document.getElementById('group-edit-tolerance');
+
+  if (msgEl) msgEl.textContent = '';
+
+  // 渲染节点多选框
+  if (nodesSel) {
+    nodesSel.innerHTML = '';
+    currentNodes.forEach(n => {
+      const opt = document.createElement('option');
+      opt.value = n.id;
+      opt.textContent = `${n.tag || n.server} (${(n.protocol || '').toUpperCase()} · ${n.server}:${n.port})`;
+      nodesSel.appendChild(opt);
+    });
+  }
+
+  if (groupId) {
+    const g = (currentGroups || []).find(x => x.id === groupId);
+    if (!g) return;
+    if (titleEl) titleEl.textContent = `✏️ 编辑分组 [${g.tag}]`;
+    if (idInput) idInput.value = g.id;
+    if (tagInput) tagInput.value = g.tag;
+    if (typeSel) typeSel.value = g.type || 'urltest';
+    if (intervalInput) intervalInput.value = g.interval || 300;
+    if (toleranceInput) toleranceInput.value = g.tolerance || 50;
+    if (nodesSel) {
+      const nodeSet = new Set(g.nodes || []);
+      Array.from(nodesSel.options).forEach(opt => {
+        opt.selected = nodeSet.has(opt.value);
+      });
+    }
+  } else {
+    if (titleEl) titleEl.textContent = '➕ 新建出站分组';
+    if (idInput) idInput.value = '';
+    if (tagInput) tagInput.value = '';
+    if (typeSel) typeSel.value = 'urltest';
+    if (intervalInput) intervalInput.value = 300;
+    if (toleranceInput) toleranceInput.value = 50;
+    if (nodesSel) Array.from(nodesSel.options).forEach(o => o.selected = false);
+  }
+
+  const modal = document.getElementById('modal-group');
+  if (modal) modal.classList.add('open');
+}
+
+function closeGroupModal() {
+  const modal = document.getElementById('modal-group');
+  if (modal) modal.classList.remove('open');
+}
+
+async function doSaveGroup() {
+  const id = document.getElementById('group-edit-id')?.value || '';
+  const tag = document.getElementById('group-edit-tag')?.value?.trim() || '';
+  const type = document.getElementById('group-edit-type')?.value || 'urltest';
+  const interval = parseInt(document.getElementById('group-edit-interval')?.value || '300', 10);
+  const tolerance = parseInt(document.getElementById('group-edit-tolerance')?.value || '50', 10);
+  const nodesSel = document.getElementById('group-edit-nodes');
+  const nodes = nodesSel ? Array.from(nodesSel.selectedOptions).map(o => o.value) : [];
+
+  const msgEl = document.getElementById('group-modal-msg');
+  const btn = document.getElementById('btn-save-group');
+
+  if (!tag) {
+    if (msgEl) { msgEl.style.color = 'var(--danger)'; msgEl.textContent = '❌ 请填写分组名称 (Tag)'; }
+    return;
+  }
+  if (nodes.length === 0) {
+    if (msgEl) { msgEl.style.color = 'var(--danger)'; msgEl.textContent = '❌ 请至少选择一个节点'; }
+    return;
+  }
+
+  const payload = { id, tag, type, nodes, interval, tolerance };
+
+  if (btn) btn.disabled = true;
+  if (msgEl) { msgEl.style.color = 'var(--accent)'; msgEl.textContent = '正在保存分组并重载核心...'; }
+
+  try {
+    const res = await fetch('/api/groups', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (data.success) {
+      if (msgEl) { msgEl.style.color = 'var(--success)'; msgEl.textContent = '✅ 分组已保存，sing-box 配置已重载！'; }
+      setTimeout(() => {
+        closeGroupModal();
+        loadGroups();
+        loadLogs();
+      }, 500);
+    } else {
+      if (msgEl) { msgEl.style.color = 'var(--danger)'; msgEl.textContent = '❌ ' + (data.error || '保存失败'); }
+    }
+  } catch (err) {
+    if (msgEl) { msgEl.style.color = 'var(--danger)'; msgEl.textContent = '❌ 请求失败: ' + err.message; }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function deleteGroup(groupId, groupTag) {
+  if (!confirm(`确定要删除分组「group-${groupTag}」吗？\n\n该分组将从 sing-box 配置中移除，引用它的策略将回落到 auto-best。`)) return;
+  try {
+    const res = await fetch('/api/groups/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: groupId }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      loadGroups();
+      loadLogs();
+    } else {
+      alert('删除失败: ' + (data.error || '未知错误'));
+    }
+  } catch (err) {
+    alert('删除请求失败: ' + err.message);
+  }
+}
+
 // ========== 初始化入口 ==========
 window.addEventListener('DOMContentLoaded', () => {
   initTheme();
   loadStatus();
   loadNodes();
   loadSettings();
+  loadGroups();
   loadLogs();
 
   // 周期性拉取日志流
