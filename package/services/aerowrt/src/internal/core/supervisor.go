@@ -167,11 +167,16 @@ func (s *Supervisor) Start() error {
 	s.cancel = cancel
 
 	cmd := exec.CommandContext(ctx, s.binPath, "run", "-c", s.configPath)
+	// Go runtime 内存约束（sing-box 也是 Go 程序）：约束内存峰值并降低 GC 触发阈值
+	// 路由器典型 RAM 256~512MB，sing-box gvisor 栈默认 GOGC=100 极易吃光内存
 	cmd.Env = append(os.Environ(),
 		"ENABLE_DEPRECATED_LEGACY_DNS_SERVERS=true",
 		"ENABLE_DEPRECATED_SPECIAL_OUTBOUNDS=true",
 		"ENABLE_DEPRECATED_LEGACY_INBOUND_OPTIONS=true",
 		"ENABLE_DEPRECATED_MISSING_DOMAIN_RESOLVER=true",
+		"GOMEMLIMIT=96MiB",
+		"GOGC=30",
+		"GOMAXPROCS=2",
 	)
 
 	stdoutPipe, err := cmd.StdoutPipe()

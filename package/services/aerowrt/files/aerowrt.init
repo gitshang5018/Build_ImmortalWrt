@@ -54,7 +54,17 @@ start_service() {
 
 	procd_open_instance
 	procd_set_param command "$PROG" -port "$port" -mosdns "$mosdns_port"
-	procd_set_param env ENABLE_DEPRECATED_LEGACY_DNS_SERVERS=true ENABLE_DEPRECATED_SPECIAL_OUTBOUNDS=true ENABLE_DEPRECATED_LEGACY_INBOUND_OPTIONS=true ENABLE_DEPRECATED_MISSING_DOMAIN_RESOLVER=true
+	# 内存与 GC 约束：AeroWrt 是常驻进程，目标设备普遍 256MB~512MB RAM
+	# GOMEMLIMIT/GOGC 默认 48MiB/30，可在 /etc/config/aerowrt 中通过 option go_mem_limit / go_gc 覆盖
+	config_get go_mem_limit "main" go_mem_limit "48MiB"
+	config_get go_gc "main" go_gc "30"
+	procd_set_param env \
+		ENABLE_DEPRECATED_LEGACY_DNS_SERVERS=true \
+		ENABLE_DEPRECATED_SPECIAL_OUTBOUNDS=true \
+		ENABLE_DEPRECATED_LEGACY_INBOUND_OPTIONS=true \
+		ENABLE_DEPRECATED_MISSING_DOMAIN_RESOLVER=true \
+		GOMEMLIMIT="$go_mem_limit" \
+		GOGC="$go_gc"
 	procd_set_param respawn 3600 5 5
 	procd_set_param stdout 1
 	procd_set_param stderr 1
