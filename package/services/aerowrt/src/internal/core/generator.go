@@ -41,7 +41,10 @@ func (g *Generator) GenerateSingboxConfig(settings model.SystemSettings, nodes [
 				"address":               []string{"172.19.0.1/30"},
 				"auto_route":            true,
 				"strict_route":          false,
-				"stack":                 "system",
+				// gvisor 在路由器上比 system 更稳定：
+				// system 模式下从 tun 发出的回环流量会再被路由表查回 tun0 形成回环黑洞
+				// （默认路由已被 auto_route 改成 tun0），gvisor 自带 TCP/IP 栈不会再入 tun。
+				"stack":                 "gvisor",
 				"route_exclude_address": []string{
 					"192.168.0.0/16",
 					"10.0.0.0/8",
@@ -51,10 +54,8 @@ func (g *Generator) GenerateSingboxConfig(settings model.SystemSettings, nodes [
 					"169.254.0.0/16",
 					"224.0.0.0/4",
 				},
-				// 不再使用 include_interface 限定 br-lan：
-				// 在路由器上 include_interface br-lan 会把所有进入 br-lan 的流量（包括局域网客户端访问路由器
-				// 自身的 22/80/443 管理流量）强行拉入 TUN，导致 OpenWrt 后台 (LuCI/SSH) 无法访问。
-				// 移除后由 auto_route + route_exclude_address 全局接管：到私网/本机网段直接走原路由表不进 TUN。
+				// 不使用 include_interface 限定 br-lan：会把到路由器自身的管理流量也拉进 TUN，
+				// 导致 LuCI/SSH 断连。auto_route + route_exclude_address 已足够隔离私网/本机流量。
 			},
 			{
 				"type":        "mixed",
@@ -66,7 +67,10 @@ func (g *Generator) GenerateSingboxConfig(settings model.SystemSettings, nodes [
 		"outbounds": g.buildOutbounds(settings, nodes, effectiveGroups),
 		"route": map[string]interface{}{
 			"default_domain_resolver": defaultDomainResolver(settings),
-			"auto_detect_interface":   true,
+			// 关闭 auto_detect_interface：在路由器+TUN 模式下，sing-box 自动检测出口
+			// 会查回到 tun0（默认路由已被 auto_route 指向 tun0），导致出站数据包自循环。
+			// 让 outbound 通过系统默认路由正常选 eth0/wan 离开，这是家用路由器透明代理的标准做法。
+			"auto_detect_interface":   false,
 			"final":                   finalOutbound(settings),
 			"rules":                   g.buildRouteRules(settings),
 		},
