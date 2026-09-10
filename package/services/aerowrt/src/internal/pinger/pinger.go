@@ -34,6 +34,24 @@ func (p *Pinger) PingNode(node model.Node) int64 {
 	return delay
 }
 
+// PingNodeWithURL 允许临时覆盖 TestURL 用于本次测速（不修改 Pinger 全局 TestURL）
+func (p *Pinger) PingNodeWithURL(node model.Node, overrideURL string) (int64, string) {
+	if overrideURL == "" {
+		return p.PingNodeWithDetail(node)
+	}
+	tag := strings.TrimSpace(node.Tag)
+	if tag == "" {
+		tag = node.ID
+	}
+	if p.ClashAddr != "" && tag != "" {
+		delay, err := p.pingViaClashWithURL(tag, overrideURL)
+		if err == nil {
+			return delay, "URL-Test"
+		}
+	}
+	return p.tcpPing(node), "TCP"
+}
+
 func (p *Pinger) PingNodeWithDetail(node model.Node) (int64, string) {
 	tag := strings.TrimSpace(node.Tag)
 	if tag == "" {
@@ -58,7 +76,11 @@ func (p *Pinger) pingViaClashWithErr(tag string) (int64, error) {
 	if testURL == "" {
 		testURL = "http://cp.cloudflare.com/generate_204"
 	}
+	return p.pingViaClashWithURL(tag, testURL)
+}
 
+// pingViaClashWithURL 通过 Sing-box Clash API 用指定 URL 测速节点 tag
+func (p *Pinger) pingViaClashWithURL(tag string, testURL string) (int64, error) {
 	reqURL := fmt.Sprintf("http://%s/proxies/%s/delay?timeout=%d&url=%s",
 		p.ClashAddr,
 		url.PathEscape(tag),

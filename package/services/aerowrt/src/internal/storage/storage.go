@@ -9,9 +9,10 @@ import (
 )
 
 type StoreData struct {
-	Settings      model.SystemSettings `json:"settings"`
-	Nodes         []model.Node         `json:"nodes"`
-	Subscriptions []model.Subscription `json:"subscriptions"`
+	Settings      model.SystemSettings  `json:"settings"`
+	Nodes         []model.Node          `json:"nodes"`
+	Subscriptions []model.Subscription  `json:"subscriptions"`
+	Groups        []model.OutboundGroup `json:"groups"`
 }
 
 type Storage struct {
@@ -71,6 +72,7 @@ func (s *Storage) DefaultData() *StoreData {
 			},
 		},
 		Subscriptions: []model.Subscription{},
+		Groups:        []model.OutboundGroup{},
 	}
 }
 

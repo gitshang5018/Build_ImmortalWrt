@@ -318,6 +318,7 @@ async function loadSubscriptions() {
         <td>${escapeHtml(sub.updated_at || '--')}</td>
         <td>
           <button class="btn btn-primary btn-sm" onclick="updateSubscription('${escapeHtml(sub.url)}')">🔄 同步更新</button>
+          <button class="btn btn-secondary btn-sm" style="color: var(--danger); margin-left: 4px;" onclick="deleteSubscription('${escapeHtml(sub.id)}', '${escapeHtml(sub.url)}')">🗑️ 删除</button>
         </td>
       `;
       tbody.appendChild(tr);
@@ -402,15 +403,25 @@ async function deleteNode(nodeId) {
 }
 
 async function pingSingleNode(nodeId, btn) {
+  // 支持临时覆盖测速 URL：按住 Alt 点击测速按钮，弹窗输入自定义 URL
+  let customUrl = '';
+  if (window.event && window.event.altKey) {
+    const defUrl = (document.getElementById('setting-test-url')?.value || 'https://www.gstatic.com/generate_204');
+    customUrl = prompt('自定义测速 URL（留空使用全局默认）', defUrl) || '';
+    if (customUrl === null) customUrl = ''; // 用户取消
+  }
+
   if (btn) {
     btn.disabled = true;
     btn.textContent = '⏳...';
   }
   try {
+    const body = { id: nodeId };
+    if (customUrl) body.test_url = customUrl;
     const res = await fetch('/api/nodes/ping', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: nodeId })
+      body: JSON.stringify(body)
     });
     const results = await res.json();
     if (results[nodeId] !== undefined) {
@@ -581,6 +592,28 @@ async function updateSubscription(subUrl) {
   }
 }
 
+async function deleteSubscription(subId, subUrl) {
+  const sub = (currentSubscriptions || []).find(s => s.id === subId);
+  const displayName = sub ? `${sub.name} (${sub.node_count} 个节点)` : (subUrl || subId);
+  if (!confirm(`确定要删除订阅源「${displayName}」吗？\n\n注意：仅删除订阅记录。该订阅此前导入的节点将保留在节点管理列表中，如需清理请到节点管理页手动删除。`)) return;
+  try {
+    const res = await fetch('/api/subscriptions/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: subId, url: subUrl }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      loadSubscriptions();
+      loadStatus();
+    } else {
+      alert('删除失败: ' + (data.error || '未知错误'));
+    }
+  } catch (err) {
+    alert('删除请求失败: ' + err.message);
+  }
+}
+
 // ========== 内核在线升级逻辑 ==========
 function openUpgradeModal() {
   const modal = document.getElementById('modal-upgrade');
@@ -695,6 +728,15 @@ async function loadSettings() {
     const strategyMode = document.getElementById('setting-strategy-mode');
     if (strategyMode && data.strategy_mode) strategyMode.value = data.strategy_mode;
 
+    const dnsMode = document.getElementById('setting-dns-mode');
+    if (dnsMode && data.dns_mode) dnsMode.value = data.dns_mode;
+    handleDnsModeChange();
+
+    const customDnsServer = document.getElementById('setting-custom-dns');
+    if (customDnsServer) {
+      customDnsServer.value = (data.custom_dns_servers || []).join('\n');
+    }
+
     const mosdnsPort = document.getElementById('setting-mosdns-port');
     if (mosdnsPort && data.mosdns_port) mosdnsPort.value = data.mosdns_port;
 
@@ -742,10 +784,12 @@ async function saveSettings() {
   const payload = {
     routing_mode: document.getElementById('setting-routing-mode')?.value || 'bypass_cn',
     strategy_mode: document.getElementById('setting-strategy-mode')?.value || 'manual',
+    dns_mode: document.getElementById('setting-dns-mode')?.value || 'mosdns',
     mosdns_port: parseInt(document.getElementById('setting-mosdns-port')?.value || '5335', 10),
     test_url: document.getElementById('setting-test-url')?.value?.trim() || 'https://www.gstatic.com/generate_204',
     urltest_interval_mins: parseInt(document.getElementById('setting-urltest-interval')?.value || '10', 10),
     auto_update_sub_hours: parseInt(document.getElementById('setting-sub-auto-update')?.value || '0', 10),
+    custom_dns_servers: parseLines('setting-custom-dns'),
     direct_domains: parseLines('setting-direct-domains'),
     proxy_domains: parseLines('setting-proxy-domains'),
     direct_ips: parseLines('setting-direct-ips'),
@@ -783,6 +827,15 @@ async function saveSettings() {
 
 function saveDnsSettings() {
   saveSettings();
+}
+
+// 切换 DNS 模式时显示/隐藏自定义 DNS 输入框，并在 mosdns 模式下提示端口必填
+function handleDnsModeChange() {
+  const mode = document.getElementById('setting-dns-mode')?.value || 'mosdns';
+  const customGroup = document.getElementById('group-custom-dns');
+  if (customGroup) {
+    customGroup.style.display = (mode === 'custom') ? 'flex' : 'none';
+  }
 }
 
 // ========== 链式前置跳板代理 (Detour) 管理 ==========

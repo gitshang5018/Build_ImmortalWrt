@@ -94,11 +94,19 @@ func (s *Server) LoadFromStorage() error {
 	if data.Settings.UrlTestIntervalMins > 0 {
 		s.settings.UrlTestIntervalMins = data.Settings.UrlTestIntervalMins
 	}
+	switch data.Settings.DNSMode {
+	case model.DNSModeMosDNS, model.DNSModeSmart, model.DNSModeCustom:
+		s.settings.DNSMode = data.Settings.DNSMode
+	}
+	s.settings.CustomDnsServers = data.Settings.CustomDnsServers
 	s.settings.AutoUpdateSubHours = data.Settings.AutoUpdateSubHours
 	s.settings.DirectDomains = data.Settings.DirectDomains
 	s.settings.ProxyDomains = data.Settings.ProxyDomains
 	s.settings.DirectIPs = data.Settings.DirectIPs
 	s.settings.ProxyIPs = data.Settings.ProxyIPs
+
+	// 自定义出站分组（可为空）
+	s.groups = append([]model.OutboundGroup{}, data.Groups...)
 	return nil
 }
 
@@ -110,6 +118,7 @@ func (s *Server) saveToStorageLocked() {
 		Settings:      s.settings,
 		Nodes:         s.nodes,
 		Subscriptions: s.subscriptions,
+		Groups:        s.groups,
 	})
 }
 
@@ -133,6 +142,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/nodes/edit", s.handleNodeEdit)
 	mux.HandleFunc("/api/nodes/delete", s.handleDeleteNode)
 	mux.HandleFunc("/api/subscriptions", s.handleSubscriptions)
+	mux.HandleFunc("/api/subscriptions/delete", s.handleDeleteSubscription)
+	mux.HandleFunc("/api/groups", s.handleGroups)
+	mux.HandleFunc("/api/groups/delete", s.handleDeleteGroup)
 	mux.HandleFunc("/api/logs", s.handleLogs)
 	mux.HandleFunc("/api/core/check", s.handleCoreCheck)
 	mux.HandleFunc("/api/core/upgrade", s.handleCoreUpgrade)
@@ -201,7 +213,7 @@ func (s *Server) handlePing(w http.ResponseWriter, r *http.Request) {
 	if s.supervisor != nil && !s.supervisor.IsRunning() && len(targetNodes) > 0 {
 		s.supervisor.AddLog("INFO", "Sing-box core not running, auto-starting for URL-Test proxy ping...")
 		s.mu.RLock()
-		_ = s.supervisor.ApplyConfig(s.settings, s.nodes)
+		_ = s.supervisor.ApplyConfigWithGroups(s.settings, s.nodes, s.groups)
 		s.mu.RUnlock()
 		time.Sleep(500 * time.Millisecond) // 等待 Sing-box 内核及 Clash API (9090) 就绪
 	}
@@ -211,7 +223,14 @@ func (s *Server) handlePing(w http.ResponseWriter, r *http.Request) {
 	var tcpCount int
 
 	for _, n := range targetNodes {
-		delay, mode := s.pinger.PingNodeWithDetail(n)
+		var delay int64
+		var mode string
+		if req.TestURL != "" && req.ID != "" {
+			// 单节点 + 自定义测速 URL：临时使用指定 URL，不污染 Pinger 全局 TestURL
+			delay, mode = s.pinger.PingNodeWithURL(n, req.TestURL)
+		} else {
+			delay, mode = s.pinger.PingNodeWithDetail(n)
+		}
 		results[n.ID] = delay
 		if mode == "URL-Test" {
 			urlTestCount++
@@ -276,7 +295,7 @@ func (s *Server) handleSwitch(w http.ResponseWriter, r *http.Request) {
 
 	if !switchedViaClash && s.supervisor != nil {
 		s.mu.RLock()
-		_ = s.supervisor.ApplyConfig(s.settings, s.nodes)
+		_ = s.supervisor.ApplyConfigWithGroups(s.settings, s.nodes, s.groups)
 		s.mu.RUnlock()
 	}
 
@@ -588,7 +607,13 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	if req.UrlTestIntervalMins > 0 {
 		s.settings.UrlTestIntervalMins = req.UrlTestIntervalMins
 	}
+	// DNSMode：仅接受三种合法值，避免误写导致 generator 行为未定义
+	switch req.DNSMode {
+	case model.DNSModeMosDNS, model.DNSModeSmart, model.DNSModeCustom:
+		s.settings.DNSMode = req.DNSMode
+	}
 	s.settings.AutoUpdateSubHours = req.AutoUpdateSubHours
+	s.settings.CustomDnsServers = req.CustomDnsServers
 	s.settings.DirectDomains = req.DirectDomains
 	s.settings.ProxyDomains = req.ProxyDomains
 	s.settings.DirectIPs = req.DirectIPs
@@ -603,7 +628,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 
 	if s.supervisor != nil {
 		go func() {
-			if err := s.supervisor.ApplyConfig(settingsCopy, nodesCopy); err != nil {
+			if err := s.supervisor.ApplyConfigWithGroups(settingsCopy, nodesCopy, s.groups); err != nil {
 				s.supervisor.AddLog("ERROR", fmt.Sprintf("Failed to apply new settings: %v", err))
 			} else {
 				s.supervisor.AddLog("SUCCESS", fmt.Sprintf("Settings updated & config reloaded (Mode: %s, Strategy: %s)", settingsCopy.RoutingMode, settingsCopy.StrategyMode))
@@ -714,7 +739,7 @@ func (s *Server) handleNodeChain(w http.ResponseWriter, r *http.Request) {
 
 	if s.supervisor != nil {
 		go func() {
-			_ = s.supervisor.ApplyConfig(settingsCopy, nodesCopy)
+			_ = s.supervisor.ApplyConfigWithGroups(settingsCopy, nodesCopy, s.groups)
 			action := "cleared"
 			if req.ChainNodeID != "" {
 				action = fmt.Sprintf("set to %s", req.ChainNodeID)
@@ -769,7 +794,7 @@ func (s *Server) handleNodeAdd(w http.ResponseWriter, r *http.Request) {
 
 	if s.supervisor != nil {
 		go func() {
-			_ = s.supervisor.ApplyConfig(settingsCopy, nodesCopy)
+			_ = s.supervisor.ApplyConfigWithGroups(settingsCopy, nodesCopy, s.groups)
 			s.supervisor.AddLog("SUCCESS", fmt.Sprintf("Manual node [%s] added", node.Tag))
 		}()
 	}
@@ -827,7 +852,7 @@ func (s *Server) handleNodeEdit(w http.ResponseWriter, r *http.Request) {
 
 	if s.supervisor != nil {
 		go func() {
-			_ = s.supervisor.ApplyConfig(settingsCopy, nodesCopy)
+			_ = s.supervisor.ApplyConfigWithGroups(settingsCopy, nodesCopy, s.groups)
 			s.supervisor.AddLog("SUCCESS", fmt.Sprintf("Node [%s] updated", node.Tag))
 		}()
 	}
@@ -836,6 +861,186 @@ func (s *Server) handleNodeEdit(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"node":    node,
+	})
+}
+
+// handleGroups：GET 返回当前出站分组列表；POST 创建或覆盖一个分组
+func (s *Server) handleGroups(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method == http.MethodGet {
+		s.mu.RLock()
+		defer s.mu.RUnlock()
+		json.NewEncoder(w).Encode(s.groups)
+		return
+	}
+	if r.Method == http.MethodPost || r.Method == http.MethodPut {
+		var req model.OutboundGroup
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid JSON: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		req.Tag = strings.TrimSpace(req.Tag)
+		if req.Tag == "" {
+			http.Error(w, "tag is required", http.StatusBadRequest)
+			return
+		}
+		if req.Type == "" {
+			req.Type = model.GroupTypeUrlTest
+		}
+		if req.Interval <= 0 {
+			req.Interval = 300
+		}
+		if req.Tolerance <= 0 {
+			req.Tolerance = 50
+		}
+		if req.ID == "" {
+			req.ID = fmt.Sprintf("group-%d", time.Now().Unix())
+		}
+		s.mu.Lock()
+		replaced := false
+		for i, g := range s.groups {
+			if g.ID == req.ID || g.Tag == req.Tag {
+				s.groups[i] = req
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			s.groups = append(s.groups, req)
+		}
+		s.saveToStorageLocked()
+		settingsCopy := s.settings
+		nodesCopy := make([]model.Node, len(s.nodes))
+		copy(nodesCopy, s.nodes)
+		s.mu.Unlock()
+		if s.supervisor != nil {
+			go func() {
+				_ = s.supervisor.ApplyConfigWithGroups(settingsCopy, nodesCopy, s.groups)
+				s.supervisor.AddLog("SUCCESS", "Outbound group ["+req.Tag+"] saved")
+			}()
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "group": req})
+		return
+	}
+	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+}
+
+// handleDeleteGroup：POST {"id": "..."} 或 {"tag": "..."} 删除一个分组
+func (s *Server) handleDeleteGroup(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost && r.Method != http.MethodDelete {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		ID  string `json:"id"`
+		Tag string `json:"tag"`
+	}
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&req)
+	}
+	if req.ID == "" {
+		req.ID = r.URL.Query().Get("id")
+	}
+	if req.ID == "" && req.Tag == "" {
+		http.Error(w, "id or tag is required", http.StatusBadRequest)
+		return
+	}
+
+	s.mu.Lock()
+	newGroups := make([]model.OutboundGroup, 0, len(s.groups))
+	found := false
+	var removedTag string
+	for _, g := range s.groups {
+		if g.ID == req.ID || (req.Tag != "" && g.Tag == req.Tag) {
+			found = true
+			removedTag = g.Tag
+			continue
+		}
+		newGroups = append(newGroups, g)
+	}
+	s.groups = newGroups
+	s.saveToStorageLocked()
+	settingsCopy := s.settings
+	nodesCopy := make([]model.Node, len(s.nodes))
+	copy(nodesCopy, s.nodes)
+	s.mu.Unlock()
+
+	if s.supervisor != nil && found {
+		go func() {
+			_ = s.supervisor.ApplyConfigWithGroups(settingsCopy, nodesCopy, s.groups)
+			s.supervisor.AddLog("INFO", "Outbound group ["+removedTag+"] removed")
+		}()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if !found {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "group not found"})
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+}
+
+func (s *Server) handleDeleteSubscription(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost && r.Method != http.MethodDelete {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		ID         string `json:"id"`
+		URL        string `json:"url"`
+		AlsoDeleteNodes bool `json:"also_delete_nodes"`
+	}
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&req)
+	}
+	if req.ID == "" {
+		req.ID = r.URL.Query().Get("id")
+	}
+	if req.ID == "" && req.URL == "" {
+		http.Error(w, "id or url is required", http.StatusBadRequest)
+		return
+	}
+
+	s.mu.Lock()
+	var removedSub *model.Subscription
+	newSubs := make([]model.Subscription, 0, len(s.subscriptions))
+	for _, sub := range s.subscriptions {
+		if sub.ID == req.ID || (req.URL != "" && sub.URL == req.URL) {
+			cp := sub
+			removedSub = &cp
+			continue
+		}
+		newSubs = append(newSubs, sub)
+	}
+	s.subscriptions = newSubs
+
+	// 可选：级联删除该订阅源导入的所有节点（节点 tag 没有保存订阅来源信息，仅通过 URL 关联不可靠）
+	// 保守策略：默认仅删除订阅记录不级联节点，前端通过 also_delete_nodes=true 显式触发
+	deletedNodeCount := 0
+	if removedSub != nil && req.AlsoDeleteNodes {
+		// 节点的 ID 是导入时基于时间戳批量分配的 (node-<unix>-<idx>)，无法精准回滚
+		// // 仅靠订阅 URL 信息无法准确识别节点归属，需要扩展 model.Subscription.Nodes 字段
+		// // 当前实现仅删除订阅记录，节点保留并提示用户手动清理
+	}
+	s.saveToStorageLocked()
+	s.mu.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	if removedSub == nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "subscription not found",
+		})
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":        true,
+		"removed_id":     removedSub.ID,
+		"removed_url":    removedSub.URL,
+		"deleted_nodes":  deletedNodeCount,
+		"note":           "仅删除订阅记录；该订阅历史导入的节点未级联清理（如需清理请使用节点管理页删除）",
 	})
 }
 

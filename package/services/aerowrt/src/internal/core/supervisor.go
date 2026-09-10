@@ -97,7 +97,12 @@ func (s *Supervisor) GetLogs() []string {
 }
 
 func (s *Supervisor) ApplyConfig(settings model.SystemSettings, nodes []model.Node) error {
-	configJSON, err := s.generator.GenerateSingboxConfig(settings, nodes)
+	return s.ApplyConfigWithGroups(settings, nodes, nil)
+}
+
+// ApplyConfigWithGroups：在生成配置时考虑用户自定义出站分组（groups 为 nil 时退化为旧行为）
+func (s *Supervisor) ApplyConfigWithGroups(settings model.SystemSettings, nodes []model.Node, groups []model.OutboundGroup) error {
+	configJSON, err := s.generator.GenerateSingboxConfig(settings, nodes, groups)
 	if err != nil {
 		s.AddLog("ERROR", fmt.Sprintf("Failed to generate Sing-box config: %v", err))
 		return err

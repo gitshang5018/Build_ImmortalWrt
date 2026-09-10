@@ -28,6 +28,9 @@
         <button id="btn-ping-all" class="btn btn-primary" onclick="pingAllNodes()">
           ⚡ 批量真延迟测速
         </button>
+        <button class="btn btn-secondary" onclick="restartCoreProcess()" title="重启 Sing-box 内核并重新生成完整配置">
+          🔁 重启核心
+        </button>
         <!-- Theme Mode Toggle Button -->
         <button id="btn-theme-toggle" class="btn btn-secondary btn-icon" title="切换色彩模式 (跟随系统/深色/浅色)" onclick="cycleTheme()">
           🌓 <span id="theme-text">自动</span>
@@ -256,10 +259,30 @@
               </div>
 
               <div class="form-group">
+                <label class="form-label">DNS 解析模式</label>
+                <select class="form-select" id="setting-dns-mode" onchange="handleDnsModeChange()">
+                  <option value="mosdns">本地 MosDNS 联动 (推荐，下方端口生效)</option>
+                  <option value="smart">Sing-box 智能分流 (国内 UDP，海外走代理 DoH)</option>
+                  <option value="custom">自定义上游 DNS (在下方填写 udp/tls/https 服务器)</option>
+                </select>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px;">
+                  mosdns 模式依赖系统中已运行的 MosDNS 服务；smart 完全由 Sing-box 自决
+                </div>
+              </div>
+
+              <div class="form-group">
                 <label class="form-label">本地 MosDNS 联动端口</label>
                 <input type="number" class="form-input" id="setting-mosdns-port" value="5335">
                 <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px;">
                   默认 5335，TUN 虚拟网卡劫持的 53 端口 DNS 请求将转到此端口防污染
+                </div>
+              </div>
+
+              <div class="form-group" id="group-custom-dns" style="display:none; grid-column: 1 / -1;">
+                <label class="form-label">自定义上游 DNS 服务器 (每行一条)</label>
+                <textarea class="form-textarea" id="setting-custom-dns" rows="3" placeholder="支持格式：&#10;8.8.8.8                    (纯 IP，自动用 UDP/53)&#10;udp://8.8.4.4&#10;tls://1.1.1.1            (DoT)&#10;https://dns.google/dns-query (DoH)"></textarea>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px;">
+                  第一行将作为其它所有 DNS 的 bootstrap 解析器，建议用最稳定的 IP 地址放最前
                 </div>
               </div>
 
