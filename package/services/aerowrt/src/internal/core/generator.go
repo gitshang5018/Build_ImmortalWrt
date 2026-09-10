@@ -254,7 +254,8 @@ func (g *Generator) buildOutbounds(settings model.SystemSettings, nodes []model.
 	}
 
 	testURL := settings.TestURL
-	if testURL == "" {
+	// 健壮性：若前端/外部塞入了非 URL 字符串（如 "@url:`...`" 之类的拷贝污染），回退默认
+	if !strings.HasPrefix(testURL, "http://") && !strings.HasPrefix(testURL, "https://") {
 		testURL = "https://www.gstatic.com/generate_204"
 	}
 	intervalMins := settings.UrlTestIntervalMins

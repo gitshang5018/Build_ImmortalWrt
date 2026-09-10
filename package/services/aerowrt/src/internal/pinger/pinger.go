@@ -73,7 +73,8 @@ func (p *Pinger) PingNodeWithDetail(node model.Node) (int64, string) {
 
 func (p *Pinger) pingViaClashWithErr(tag string) (int64, error) {
 	testURL := p.TestURL
-	if testURL == "" {
+	// 健壮性：拒绝任何非 http(s) 的 TestURL（防止 store.json 被异常污染）
+	if !strings.HasPrefix(testURL, "http://") && !strings.HasPrefix(testURL, "https://") {
 		testURL = "http://cp.cloudflare.com/generate_204"
 	}
 	return p.pingViaClashWithURL(tag, testURL)

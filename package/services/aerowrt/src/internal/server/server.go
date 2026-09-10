@@ -616,9 +616,13 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		s.settings.MosDNSPort = req.MosDNSPort
 	}
 	if req.TestURL != "" {
-		s.settings.TestURL = strings.TrimSpace(req.TestURL)
-		if s.pinger != nil {
-			s.pinger.TestURL = s.settings.TestURL
+		trimmed := strings.TrimSpace(req.TestURL)
+		// 仅接受 http/https URL；其他无用字符（如终端高亮码、@url: 前缀、反引号包裹）一律拒绝
+		if strings.HasPrefix(trimmed, "http://") || strings.HasPrefix(trimmed, "https://") {
+			s.settings.TestURL = trimmed
+			if s.pinger != nil {
+				s.pinger.TestURL = s.settings.TestURL
+			}
 		}
 	}
 	if req.StrategyMode != "" {
