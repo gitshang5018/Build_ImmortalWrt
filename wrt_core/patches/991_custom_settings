@@ -113,6 +113,11 @@ fi
 
 # 应用自适应 Conntrack 与内存策略
 set_sysctl "net.netfilter.nf_conntrack_max" "$conntrack_max"
+
+# Conntrack 超时回收：默认 established 驻留 7440s 太久，收紧以加速表项轮转
+set_sysctl "net.netfilter.nf_conntrack_tcp_timeout_established" "3600"
+set_sysctl "net.netfilter.nf_conntrack_udp_timeout" "60"
+set_sysctl "net.netfilter.nf_conntrack_udp_timeout_stream" "180"
 set_sysctl "vm.vfs_cache_pressure" "$vfs_cache_pressure"
 set_sysctl "vm.dirty_ratio" "$dirty_ratio"
 set_sysctl "vm.dirty_background_ratio" "$dirty_bg_ratio"

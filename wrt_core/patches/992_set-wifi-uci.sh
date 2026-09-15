@@ -51,7 +51,13 @@ EOF
 set wireless.radio${radio}.noscan='1'
 set wireless.radio${radio}.qam256='1'
 EOF
-	fi
+        fi
+    # 5G BSS Coloring：密集环境下降低邻居 AP 同频干扰 (OBSS_PD)
+    if [ "$is_2g" -eq 0 ] && echo "$htmode" | grep -q "^HE"; then
+            uci -q batch <<EOF
+set wireless.radio${radio}.he_bss_color='42'
+EOF
+    fi
 }
 
 jdc_ax1800_pro_wifi_cfg() {
