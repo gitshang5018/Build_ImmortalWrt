@@ -9,6 +9,7 @@ import org.immortalwrt.manager.domain.model.ConnectedClient
 import org.immortalwrt.manager.domain.model.ConnectionType
 import org.immortalwrt.manager.domain.model.RealtimeTraffic
 import org.immortalwrt.manager.domain.model.RouterOverview
+import org.immortalwrt.manager.data.repository.RouterRepository
 import org.immortalwrt.manager.ui.screens.clients.ClientFilter
 import org.immortalwrt.manager.ui.screens.clients.ClientsUiState
 import org.junit.Assert.*
@@ -158,5 +159,32 @@ class UbusModelsTest {
         assertEquals(1, wifiState.filteredClients.size)
         assertEquals("iPhone 15", wifiState.filteredClients[0].hostname)
         assertTrue(wifiState.filteredClients[0].isOnline)
+    }
+
+    @Test
+    fun testCpuAndTemperatureParsingLogic() {
+        // 1. 验证非温度字符串（如 board/system info 中的型号与版本）不被解析为 CPU 温度
+        val fakeBoardInfo = """{"model":"JDCloud AX6600","release":{"description":"ImmortalWrt 24.10.0-rc1"}}"""
+        val (cpu1, wifi1) = RouterRepository.extractTemperaturesFromText(fakeBoardInfo)
+        assertNull(cpu1)
+        assertTrue(wifi1.isEmpty())
+
+        // 2. 验证标准温度字符串能正确提取 CPU 和 WiFi 温度
+        val validTempInfo = """{"tempinfo":"CPU: 48.0°C, WiFi: 51.0°C 53.0°C 49.0°C"}"""
+        val (cpu2, wifi2) = RouterRepository.extractTemperaturesFromText(validTempInfo)
+        assertEquals(48, cpu2)
+        assertEquals(listOf(51, 53, 49), wifi2)
+
+        // 3. 验证 parseCpuUsage 不会把带有 WiFi/温度的字符串存入 fullCpuUsageText
+        val parsed = RouterRepository.parseCpuUsage(validTempInfo)
+        assertNull(parsed.fullCpuUsageText) // 应当被安全过滤
+
+        // 验证合法的 CPU 使用率文本解析
+        val validCpuUsage = "CPU: 12.5% HWE: 5% ECM: 120 active"
+        val parsedCpu = RouterRepository.parseCpuUsage(validCpuUsage)
+        assertEquals(12.5f, parsedCpu.realCpuLoadPct ?: 0f, 0.01f)
+        assertEquals("5%", parsedCpu.hweUsage)
+        assertEquals("120 active", parsedCpu.ecmStats)
+        assertEquals(validCpuUsage, parsedCpu.fullCpuUsageText)
     }
 }

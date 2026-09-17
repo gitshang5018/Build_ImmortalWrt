@@ -104,60 +104,6 @@ class RouterRepository(private val client: UbusClient) {
             var hweUsage: String? = null
             var ecmStats: String? = null
 
-            // 解析来自 /sbin/cpuusage 的精确 CPU 负载、HWE 硬件加速与 ECM 状态
-            fun parseCpuUsageString(str: String) {
-                fullCpuUsageText = str.trim()
-                val cpuMatch = Regex("""CPU:\s*([0-9]+(?:\.[0-9]+)?)\s*%""", RegexOption.IGNORE_CASE).find(str)
-                if (cpuMatch != null) {
-                    cpuMatch.groupValues[1].toFloatOrNull()?.let {
-                        realCpuLoadPct = it
-                    }
-                }
-                val hweMatch = Regex("""HWE:\s*([0-9]+(?:\.[0-9]+)?%?)""", RegexOption.IGNORE_CASE).find(str)
-                if (hweMatch != null) {
-                    hweUsage = hweMatch.groupValues[1].let { if (it.endsWith("%")) it else "$it%" }
-                }
-                val ecmMatch = Regex("""ECM:\s*(.+)$""", RegexOption.IGNORE_CASE).find(str)
-                if (ecmMatch != null) {
-                    ecmStats = ecmMatch.groupValues[1].trim()
-                }
-            }
-
-            // 智能温控字符串全模式解析提取 (如 "CPU: 48.0C, WiFi: 51.0C 53.0C 49.0C" 或 "Qualcomm IPQ6018 (1.8GHz, 48.0C)")
-            fun extractTemperaturesFromText(text: String): Pair<Int?, List<Int>> {
-                var cpu: Int? = null
-                val wifis = mutableListOf<Int>()
-
-                val cpuMatch = Regex("""CPU[:\s]+([0-9]+(?:\.[0-9]+)?)""", RegexOption.IGNORE_CASE).find(text)
-                if (cpuMatch != null) {
-                    cpu = cpuMatch.groupValues[1].toFloatOrNull()?.toInt()
-                }
-
-                val wifiSection = text.substringAfter("WiFi:", "").ifBlank { text.substringAfter("wifi:", "") }
-                if (wifiSection.isNotBlank()) {
-                    Regex("""([0-9]+(?:\.[0-9]+)?)""").findAll(wifiSection).forEach { m ->
-                        m.groupValues[1].toFloatOrNull()?.toInt()?.let {
-                            if (it in 15..125) wifis.add(it)
-                        }
-                    }
-                }
-
-                if (cpu == null) {
-                    val numbers = Regex("""([0-9]{2}(?:\.[0-9]+)?)""").findAll(text)
-                        .mapNotNull { it.groupValues[1].toFloatOrNull()?.toInt() }
-                        .filter { it in 15..125 }
-                        .toList()
-                    if (numbers.isNotEmpty()) {
-                        cpu = numbers[0]
-                        if (numbers.size > 1) {
-                            wifis.addAll(numbers.drop(1))
-                        }
-                    }
-                }
-
-                return Pair(cpu, wifis)
-            }
-
             fun parseTempToDegree(raw: Long): Int? {
                 val deg = when {
                     raw in 15000..125000 -> (raw / 1000).toInt()
@@ -175,23 +121,32 @@ class RouterRepository(private val client: UbusClient) {
             var cpuTemp: String? = null
 
             // 源 1：优先调用 LuCI 标准 RPC 接口 (与网页端完全一致)
-            // 无论是 getCPUInfo 还是 getTempInfo，直接把完整的 JSON 序列化为字符串进行暴力正则提取
             try {
                 for (service in listOf("luci", "luci-rpc", "autocore")) {
                     for (method in listOf("getCPUInfo", "getSystemInfo", "getTempInfo", "getBoardInfo")) {
                         val resp = client.callRaw(service, method).getOrNull()
                         if (resp != null) {
                             val rawStr = resp.toString()
-                            
-                            // 只要返回的 JSON 里面包含了 HWE 或 ECM，就直接提取出来
-                            parseCpuUsageString(rawStr)
-                            
-                            // 提取各种温度 (CPU, WiFi)
-                            val (c, w) = extractTemperaturesFromText(rawStr)
-                            c?.let { cpuCandidates.add(it) }
-                            if (w.isNotEmpty()) {
-                                wifiCandidates.addAll(w)
-                                hasWirelessHw = true
+
+                            // 调用 parseCpuUsage 提取负载/HWE/ECM，并更新 realCpuLoadPct, fullCpuUsageText, hweUsage, ecmStats
+                            val parsed = parseCpuUsage(rawStr)
+                            parsed.realCpuLoadPct?.let { realCpuLoadPct = it }
+                            parsed.hweUsage?.let { hweUsage = it }
+                            parsed.ecmStats?.let { ecmStats = it }
+                            if (parsed.fullCpuUsageText != null && (parsed.realCpuLoadPct != null || parsed.hweUsage != null || parsed.ecmStats != null)) {
+                                fullCpuUsageText = parsed.fullCpuUsageText
+                            }
+
+                            // 仅对 getTempInfo、getCPUInfo 和 autocore 执行 extractTemperaturesFromText，严禁对 getBoardInfo 和 getSystemInfo 提取温度！
+                            val allowTempExtract = (method == "getTempInfo" || method == "getCPUInfo" || service == "autocore") &&
+                                    method != "getBoardInfo" && method != "getSystemInfo"
+                            if (allowTempExtract) {
+                                val (c, w) = extractTemperaturesFromText(rawStr)
+                                c?.let { cpuCandidates.add(it) }
+                                if (w.isNotEmpty()) {
+                                    wifiCandidates.addAll(w)
+                                    hasWirelessHw = true
+                                }
                             }
                         }
                     }
@@ -1683,6 +1638,71 @@ class RouterRepository(private val client: UbusClient) {
             Result.success(true)
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    companion object {
+        data class CpuUsageResult(
+            val realCpuLoadPct: Float? = null,
+            val fullCpuUsageText: String? = null,
+            val hweUsage: String? = null,
+            val ecmStats: String? = null
+        )
+
+        fun parseCpuUsage(str: String): CpuUsageResult {
+            val lower = str.lowercase()
+            // 若包含明显的温度文本，绝不作为 CPU 使用率文本保存
+            val isTempText = lower.contains("wifi") || lower.contains("°c") || lower.contains("℃") || lower.contains("tempinfo")
+            val fullText = if (isTempText) null else str.trim().takeIf { it.isNotBlank() }
+
+            var cpuLoad: Float? = null
+            val cpuMatch = Regex("""CPU:\s*([0-9]+(?:\.[0-9]+)?)\s*%""", RegexOption.IGNORE_CASE).find(str)
+            if (cpuMatch != null) {
+                cpuLoad = cpuMatch.groupValues[1].toFloatOrNull()
+            }
+
+            var hweUsage: String? = null
+            val hweMatch = Regex("""HWE:\s*([0-9]+(?:\.[0-9]+)?%?)""", RegexOption.IGNORE_CASE).find(str)
+            if (hweMatch != null) {
+                hweUsage = hweMatch.groupValues[1].let { if (it.endsWith("%")) it else "$it%" }
+            }
+
+            var ecmStats: String? = null
+            val ecmMatch = Regex("""ECM:\s*([^\r\n]+)""", RegexOption.IGNORE_CASE).find(str)
+            if (ecmMatch != null) {
+                ecmStats = ecmMatch.groupValues[1].trim()
+            }
+
+            return CpuUsageResult(
+                realCpuLoadPct = cpuLoad,
+                fullCpuUsageText = fullText,
+                hweUsage = hweUsage,
+                ecmStats = ecmStats
+            )
+        }
+
+        fun extractTemperaturesFromText(text: String): Pair<Int?, List<Int>> {
+            var cpu: Int? = null
+            val wifis = mutableListOf<Int>()
+
+            val cpuMatch = Regex("""(?:CPU|SoC|Core(?:\s*[0-9]+)?)[：:\s]+([0-9]+(?:\.[0-9]+)?)\s*°?C?""", RegexOption.IGNORE_CASE).find(text)
+            if (cpuMatch != null) {
+                val v = cpuMatch.groupValues[1].toFloatOrNull()?.toInt()
+                if (v != null && v in 25..105) {
+                    cpu = v
+                }
+            }
+
+            val wifiSection = text.substringAfter("WiFi:", "").ifBlank { text.substringAfter("wifi:", "") }
+            if (wifiSection.isNotBlank()) {
+                Regex("""([0-9]+(?:\.[0-9]+)?)\s*°?C?""").findAll(wifiSection).forEach { m ->
+                    m.groupValues[1].toFloatOrNull()?.toInt()?.let {
+                        if (it in 25..105) wifis.add(it)
+                    }
+                }
+            }
+
+            return Pair(cpu, wifis)
         }
     }
 }
