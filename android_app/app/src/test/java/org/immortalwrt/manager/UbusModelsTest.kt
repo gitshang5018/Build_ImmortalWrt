@@ -5,11 +5,11 @@ import com.google.gson.JsonObject
 import org.immortalwrt.manager.data.api.SystemInfoResult
 import org.immortalwrt.manager.data.api.UbusRequest
 import org.immortalwrt.manager.data.api.UbusResponse
-import org.immortalwrt.manager.domain.model.ClientFilter
 import org.immortalwrt.manager.domain.model.ConnectedClient
 import org.immortalwrt.manager.domain.model.ConnectionType
 import org.immortalwrt.manager.domain.model.RealtimeTraffic
 import org.immortalwrt.manager.domain.model.RouterOverview
+import org.immortalwrt.manager.ui.screens.clients.ClientFilter
 import org.immortalwrt.manager.ui.screens.clients.ClientsUiState
 import org.junit.Assert.*
 import org.junit.Test
@@ -82,11 +82,11 @@ class UbusModelsTest {
             host = "10.10.10.1",
             modelName = "JDCloud AX1800 Pro",
             firmwareVersion = "ImmortalWrt 24.10",
-            uptimeSeconds = 90060, // 1 day, 1 hour, 1 min
-            wanIp = "192.168.1.5",
+            uptimeSeconds = 90060L, // 1 day, 1 hour, 1 min
+            wanIpv4 = "192.168.1.5",
             cpuLoadPercentage = 12.5f,
-            memoryTotalMb = 512,
-            memoryUsedMb = 180,
+            memoryTotalMb = 512L,
+            memoryUsedMb = 180L,
             onlineClientsCount = 8
         )
 
