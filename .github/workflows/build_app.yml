@@ -1,0 +1,136 @@
+name: Build Android App
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: '构建类型 (Build Type)'
+        required: true
+        type: choice
+        options:
+          - 'release'
+          - 'debug'
+          - 'both'
+        default: 'release'
+      create_release:
+        description: '是否发布到 GitHub Releases'
+        required: false
+        type: boolean
+        default: true
+  push:
+    paths:
+      - 'android_app/**'
+      - '.github/workflows/build_app.yml'
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  build-app:
+    name: Build ImmortalWrt Manager APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出仓库代码
+        uses: actions/checkout@v4
+
+      - name: 设置时区与环境变量
+        run: |
+          sudo timedatectl set-timezone "Asia/Shanghai"
+          BUILD_DATE=$(date +"%Y%m%d_%H%M%S")
+          echo "BUILD_DATE=$BUILD_DATE" >> $GITHUB_ENV
+
+      - name: 设置 Java 17 环境
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 设置 Gradle 运行环境与缓存
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: 赋予 gradlew 可执行权限
+        run: |
+          chmod +x android_app/gradlew
+
+      - name: 运行单元测试
+        run: |
+          cd android_app
+          ./gradlew testDebugUnitTest --no-daemon
+
+      - name: 编译 Android APK
+        run: |
+          cd android_app
+          BUILD_TYPE="${{ inputs.build_type || 'release' }}"
+          echo "正在执行构建类型: $BUILD_TYPE"
+          if [ "$BUILD_TYPE" = "debug" ]; then
+            ./gradlew assembleDebug --no-daemon
+          elif [ "$BUILD_TYPE" = "both" ]; then
+            ./gradlew assembleDebug assembleRelease --no-daemon
+          else
+            ./gradlew assembleRelease --no-daemon
+          fi
+
+      - name: 整理并重命名 APK 产物
+        run: |
+          mkdir -p bin/apk
+          VERSION_NAME="1.2.8"
+          DATE_TAG=$(date +"%Y%m%d")
+
+          find android_app/app/build/outputs/apk/ -name "*.apk" | while read -r apk; do
+            FILENAME=$(basename "$apk")
+            if [[ "$FILENAME" == *"release"* ]]; then
+              TARGET_NAME="ImmortalWrt-Manager-v${VERSION_NAME}-release-${DATE_TAG}.apk"
+            else
+              TARGET_NAME="ImmortalWrt-Manager-v${VERSION_NAME}-debug-${DATE_TAG}.apk"
+            fi
+            cp "$apk" "bin/apk/$TARGET_NAME"
+            echo "生成产物: bin/apk/$TARGET_NAME ($(ls -lh "$apk" | awk '{print $5}'))"
+          done
+
+          echo "=== 产物清单 ==="
+          ls -lh bin/apk/
+
+      - name: 上传 APK 构建产物 (Artifacts)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ImmortalWrt-Manager-APKs
+          path: bin/apk/*.apk
+          retention-days: 30
+
+      - name: 发布至 GitHub Releases
+        if: ${{ inputs.create_release == true || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "app-v1.2.8-${{ env.BUILD_DATE }}"
+          name: "ImmortalWrt 路由管理器 Android APP (v1.2.8)"
+          body: |
+            ### 📱 ImmortalWrt 路由管理器 Android 客户端 (v1.2.8)
+            
+            #### ✨ 主要特性与更新：
+            - **准确终端识别**：精准区分 Wi-Fi（2.4G / 5G / 5.2G 电竞）与千兆有线 LAN 终端，修复离线与 LAN 状态混淆
+            - **一键静态绑定**：支持在终端详情页一键绑定静态 DHCP，支持自定义别名备注
+            - **现代化 Material 3 界面**：支持暗黑模式、实时上行/下行速率、CPU/内存仪表盘、无线重启与开关控制
+            - **即装即用**：APK 已配置内置签名，直接下载安装即可
+            
+            #### 📦 安装说明：
+            - 在 Android 手机上下载下方的 `.apk` 文件直接点击安装。
+          files: bin/apk/*.apk
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 输出 GitHub 构建摘要 (Step Summary)
+        if: always()
+        run: |
+          if [ -d "bin/apk" ]; then
+            echo "### 📱 Android APP 构建完成" >> $GITHUB_STEP_SUMMARY
+            echo "| 文件名 | 文件大小 |" >> $GITHUB_STEP_SUMMARY
+            echo "| :--- | :--- |" >> $GITHUB_STEP_SUMMARY
+            for f in bin/apk/*.apk; do
+              if [ -f "$f" ]; then
+                SIZE=$(ls -lh "$f" | awk '{print $5}')
+                NAME=$(basename "$f")
+                echo "| **$NAME** | $SIZE |" >> $GITHUB_STEP_SUMMARY
+              fi
+            done
+          fi
