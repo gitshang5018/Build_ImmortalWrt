@@ -187,4 +187,78 @@ class UbusModelsTest {
         assertEquals("120 active", parsedCpu.ecmStats)
         assertEquals(validCpuUsage, parsedCpu.fullCpuUsageText)
     }
+
+    @Test
+    fun testClientDeviceClassification() {
+        // 验证移动终端识别为 true
+        assertTrue(RouterRepository.isMobileDevice("iPhone-14", "Apple, Inc."))
+        assertTrue(RouterRepository.isMobileDevice("Galaxy-S23", "Samsung Electronics"))
+        assertTrue(RouterRepository.isMobileDevice("Xiaomi-13-Pro", "Xiaomi Communications"))
+        assertTrue(RouterRepository.isMobileDevice("HUAWEI-Mate-60", "Huawei Device Co., Ltd."))
+        assertTrue(RouterRepository.isMobileDevice("iPad-Air", "Apple, Inc."))
+
+        // 验证固定有线终端（电脑、NAS、电视盒、打印机）识别为 false
+        assertFalse(RouterRepository.isMobileDevice("Desktop-PC", "Giga-Byte Technology"))
+        assertFalse(RouterRepository.isMobileDevice("Synology-NAS", "Synology Incorporated"))
+        assertFalse(RouterRepository.isMobileDevice("Apple-TV", "Apple, Inc."))
+        assertFalse(RouterRepository.isMobileDevice("HP-LaserJet", "HP Inc."))
+    }
+
+    @Test
+    fun testSmartLanOnlineDetectionLogic() {
+        val desktopPc = ConnectedClient(
+            hostname = "Desktop-PC",
+            ipAddress = "192.168.1.100",
+            macAddress = "aa:bb:cc:dd:ee:01",
+            connectionType = ConnectionType.WIRED_LAN,
+            vendor = "Giga-Byte Technology",
+            isOnline = false
+        )
+        val iphone = ConnectedClient(
+            hostname = "iPhone-14",
+            ipAddress = "192.168.1.102",
+            macAddress = "aa:bb:cc:dd:ee:02",
+            connectionType = ConnectionType.WIRED_LAN,
+            vendor = "Apple, Inc.",
+            isOnline = false
+        )
+        val huawei = ConnectedClient(
+            hostname = "HUAWEI-Mate-60",
+            ipAddress = "192.168.1.103",
+            macAddress = "aa:bb:cc:dd:ee:03",
+            connectionType = ConnectionType.WIFI_5G,
+            vendor = "Huawei Device Co., Ltd.",
+            isOnline = false
+        )
+
+        val activeLeaseMacs = setOf("aa:bb:cc:dd:ee:01", "aa:bb:cc:dd:ee:02")
+        val onlineWifiMap = mapOf("aa:bb:cc:dd:ee:03" to ConnectionType.WIFI_5G)
+
+        // 1. 验证对于有线固定设备（非移动终端），若处于活跃租约中（如在 activeLeaseMacs 中），判定为在线有线设备 (isOnline = true, connectionType = WIRED_LAN)
+        val (pcOnline, pcConn) = RouterRepository.resolveClientStatus(
+            client = desktopPc,
+            onlineWifiMap = onlineWifiMap,
+            activeLeaseMacs = activeLeaseMacs
+        )
+        assertTrue(pcOnline)
+        assertEquals(ConnectionType.WIRED_LAN, pcConn)
+
+        // 2. 验证对于移动终端（手机），若未在 onlineWifiMap 中，即使有历史租约记录，也正确判定为离线无线 (isOnline = false, connectionType = WIFI_5G)，绝不误标为有线 LAN 在线
+        val (phoneOnline, phoneConn) = RouterRepository.resolveClientStatus(
+            client = iphone,
+            onlineWifiMap = onlineWifiMap,
+            activeLeaseMacs = activeLeaseMacs
+        )
+        assertFalse(phoneOnline)
+        assertEquals(ConnectionType.WIFI_5G, phoneConn)
+
+        // 3. 验证处于 onlineWifiMap 中的终端，判定为在线无线 (isOnline = true)
+        val (huaweiOnline, huaweiConn) = RouterRepository.resolveClientStatus(
+            client = huawei,
+            onlineWifiMap = onlineWifiMap,
+            activeLeaseMacs = activeLeaseMacs
+        )
+        assertTrue(huaweiOnline)
+        assertEquals(ConnectionType.WIFI_5G, huaweiConn)
+    }
 }

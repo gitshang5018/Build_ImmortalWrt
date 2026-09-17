@@ -392,6 +392,8 @@ class RouterRepository(private val client: UbusClient) {
             val wifiRxRateMap = mutableMapOf<String, Float>()
             val wifiTxRateMap = mutableMapOf<String, Float>()
             val onlineLanMacs = mutableSetOf<String>()
+            val activeLeaseMacs = mutableSetOf<String>()
+            val staticLeaseMacs = mutableSetOf<String>()
 
             // 1. 扫描当前真实在线的无线 Wi-Fi 终端关联列表 (iwinfo assoclist)
             val wifiDevices = listOf("phy0-ap0", "phy1-ap0", "phy2-ap0", "wlan0", "wlan1", "wlan2", "ra0", "rax0")
@@ -504,7 +506,7 @@ class RouterRepository(private val client: UbusClient) {
                 }
             } catch (_: Exception) {}
 
-            // 4. 读取 DHCP 租约 (获取 IP 与主机名映射，但绝不直接将租约等同于在线)
+            // 4. 读取 DHCP 租约 (获取 IP 与主机名映射，维护活跃租约列表)
             try {
                 val dhcpLeasesResp = client.callRaw("luci-rpc", "getDHCPLeases").getOrNull()
                     ?: client.callRaw("luci", "getDHCPLeases").getOrNull()
@@ -515,7 +517,16 @@ class RouterRepository(private val client: UbusClient) {
                     val mac = obj.get("mac")?.asString?.lowercase() ?: obj.get("macaddr")?.asString?.lowercase() ?: ""
                     val ip = obj.get("ip")?.asString ?: obj.get("ipaddr")?.asString ?: ""
                     val rawHost = obj.get("hostname")?.asString?.trim() ?: ""
+                    val expires = obj.get("expires")?.asLong
+                    val isLeaseActive = when {
+                        expires == null -> ip.isNotBlank() && ip.contains(".")
+                        expires >= 0 -> ip.isNotBlank() && ip.contains(".")
+                        else -> false
+                    }
                     if (mac.length == 17) {
+                        if (isLeaseActive) {
+                            activeLeaseMacs.add(mac)
+                        }
                         if (rawHost.isNotBlank() && rawHost != "*" && rawHost != "?") {
                             hostnameMap[mac] = rawHost
                         }
@@ -539,26 +550,38 @@ class RouterRepository(private val client: UbusClient) {
                 val fLeases = client.callRaw("file", "read", mapOf("path" to "/tmp/dhcp.leases")).getOrNull()?.get("data")?.asString
                     ?: client.callRaw("file", "read", mapOf("path" to "/var/dhcp.leases")).getOrNull()?.get("data")?.asString
                     ?: ""
+                val nowSec = System.currentTimeMillis() / 1000
                 fLeases.lineSequence().forEach { line ->
                     val parts = line.trim().split(Regex("\\s+"))
                     if (parts.size >= 4) {
+                        val expiresEpoch = parts[0].toLongOrNull() ?: 0L
                         val mac = parts[1].lowercase()
                         val ip = parts[2]
                         val rawHost = parts[3].trim()
-                        if (rawHost.isNotBlank() && rawHost != "*" && rawHost != "?") {
-                            hostnameMap[mac] = rawHost
+                        val isLeaseActive = when {
+                            expiresEpoch > 1000000000L -> expiresEpoch > nowSec
+                            expiresEpoch >= 0L -> true
+                            else -> false
                         }
-                        if (mac.length == 17 && ip.contains(".")) {
-                            val existing = clientMap[mac]
-                            val finalHost = hostnameMap[mac] ?: (if (rawHost.isNotBlank() && rawHost != "*") rawHost else existing?.hostname ?: resolveVendorByMac(mac))
-                            clientMap[mac] = ConnectedClient(
-                                hostname = finalHost,
-                                ipAddress = ip,
-                                macAddress = mac,
-                                connectionType = existing?.connectionType ?: ConnectionType.WIRED_LAN,
-                                vendor = resolveVendorByMac(mac),
-                                isOnline = false
-                            )
+                        if (mac.length == 17) {
+                            if (isLeaseActive && ip.contains(".")) {
+                                activeLeaseMacs.add(mac)
+                            }
+                            if (rawHost.isNotBlank() && rawHost != "*" && rawHost != "?") {
+                                hostnameMap[mac] = rawHost
+                            }
+                            if (ip.contains(".")) {
+                                val existing = clientMap[mac]
+                                val finalHost = hostnameMap[mac] ?: (if (rawHost.isNotBlank() && rawHost != "*") rawHost else existing?.hostname ?: resolveVendorByMac(mac))
+                                clientMap[mac] = ConnectedClient(
+                                    hostname = finalHost,
+                                    ipAddress = ip,
+                                    macAddress = mac,
+                                    connectionType = existing?.connectionType ?: ConnectionType.WIRED_LAN,
+                                    vendor = resolveVendorByMac(mac),
+                                    isOnline = false
+                                )
+                            }
                         }
                     }
                 }
@@ -598,6 +621,9 @@ class RouterRepository(private val client: UbusClient) {
             val staticLeases = getStaticDhcpLeases().getOrNull() ?: emptyList()
             staticLeases.forEach { sLease ->
                 val sMac = sLease.mac.lowercase()
+                if (sMac.length == 17) {
+                    staticLeaseMacs.add(sMac)
+                }
                 val existing = clientMap[sMac]
                 val sHost = sLease.hostname.trim()
                 if (sHost.isNotBlank()) {
@@ -659,25 +685,17 @@ class RouterRepository(private val client: UbusClient) {
                 }
             }
 
-            // 9. 最终准确计算真实在线状态与连接类型：
+            // 9. 智能计算真实在线状态与连接类型：
             // - 在 onlineWifiMap 中 -> 真实在线 Wi-Fi (2.4G / 5G / 5.2G)
-            // - 在 onlineLanMacs 中 (且不在 Wi-Fi 中) -> 真实在线 有线 LAN
-            // - 其它设备 -> 真实离线 (绝不误判为在线 LAN)
+            // - 移动设备未在无线关联中 -> 离线无线 (绝不误判为有线 LAN)
+            // - 固定设备处于活跃租期内 (activeLeaseMacs/staticLeaseMacs/onlineLanMacs) -> 在线有线 LAN
+            // - 其它设备 -> 离线
             val resultList = clientMap.values.map { client ->
-                val mac = client.macAddress.lowercase()
-                val isWifi = onlineWifiMap.containsKey(mac)
-                val isLan = !isWifi && onlineLanMacs.contains(mac)
-                val isRealOnline = isWifi || isLan
-
-                val finalConnType = when {
-                    isWifi -> onlineWifiMap[mac] ?: ConnectionType.WIFI_5G
-                    isLan -> ConnectionType.WIRED_LAN
-                    else -> client.connectionType
-                }
+                val (isOnline, connType) = resolveClientStatus(client, onlineWifiMap, activeLeaseMacs, staticLeaseMacs, onlineLanMacs)
 
                 client.copy(
-                    isOnline = isRealOnline,
-                    connectionType = finalConnType
+                    isOnline = isOnline,
+                    connectionType = connType
                 )
             }.sortedWith(
                 compareByDescending<ConnectedClient> { it.isOnline }
@@ -1649,6 +1667,48 @@ class RouterRepository(private val client: UbusClient) {
             val ecmStats: String? = null
         )
 
+        private val CPU_LOAD_REGEX = Regex("""CPU:\s*([0-9]+(?:\.[0-9]+)?)\s*%""", RegexOption.IGNORE_CASE)
+        private val HWE_REGEX = Regex("""HWE:\s*([0-9]+(?:\.[0-9]+)?%?)""", RegexOption.IGNORE_CASE)
+        private val ECM_REGEX = Regex("""ECM:\s*([^\r\n]+)""", RegexOption.IGNORE_CASE)
+        private val TEMP_CPU_REGEX = Regex("""(?:CPU|SoC|Core(?:\s*[0-9]+)?)[：:\s]+([0-9]+(?:\.[0-9]+)?)\s*°?C?""", RegexOption.IGNORE_CASE)
+        private val TEMP_VAL_REGEX = Regex("""([0-9]+(?:\.[0-9]+)?)\s*°?C?""")
+
+        private val EXCLUDE_MOBILE_KEYWORDS = listOf("apple-tv", "appletv", "tv-box", "tvbox")
+        private val MOBILE_KEYWORDS = listOf(
+            "iphone", "ipad", "ipod", "android", "galaxy", "xiaomi", "redmi",
+            "huawei", "honor", "oppo", "vivo", "oneplus", "meizu", "pixel",
+            "realme", "iqoo", "phone", "mobile", "pad", "tab"
+        )
+
+        fun isMobileDevice(hostname: String?, vendor: String? = null): Boolean {
+            val name = hostname?.lowercase() ?: ""
+            val ven = vendor?.lowercase() ?: ""
+            if (EXCLUDE_MOBILE_KEYWORDS.any { name.contains(it) || ven.contains(it) }) {
+                return false
+            }
+            return MOBILE_KEYWORDS.any { name.contains(it) || ven.contains(it) }
+        }
+
+        fun resolveClientStatus(
+            client: ConnectedClient,
+            onlineWifiMap: Map<String, ConnectionType>,
+            activeLeaseMacs: Set<String>,
+            staticLeaseMacs: Set<String> = emptySet(),
+            onlineLanMacs: Set<String> = emptySet()
+        ): Pair<Boolean, ConnectionType> {
+            val mac = client.macAddress.lowercase()
+            val isWifi = onlineWifiMap.containsKey(mac)
+            val isMobile = isMobileDevice(client.hostname, client.vendor)
+            val hasActiveLease = activeLeaseMacs.contains(mac) || staticLeaseMacs.contains(mac) || onlineLanMacs.contains(mac)
+
+            return when {
+                isWifi -> Pair(true, onlineWifiMap[mac] ?: ConnectionType.WIFI_5G)
+                isMobile -> Pair(false, ConnectionType.WIFI_5G) // 手机不在无线关联中，判定为离线无线，绝不误判为有线
+                hasActiveLease -> Pair(true, ConnectionType.WIRED_LAN) // 固定设备处于活跃租期内，判定为在线有线
+                else -> Pair(false, client.connectionType)
+            }
+        }
+
         fun parseCpuUsage(str: String): CpuUsageResult {
             val lower = str.lowercase()
             // 若包含明显的温度文本，绝不作为 CPU 使用率文本保存
@@ -1656,19 +1716,19 @@ class RouterRepository(private val client: UbusClient) {
             val fullText = if (isTempText) null else str.trim().takeIf { it.isNotBlank() }
 
             var cpuLoad: Float? = null
-            val cpuMatch = Regex("""CPU:\s*([0-9]+(?:\.[0-9]+)?)\s*%""", RegexOption.IGNORE_CASE).find(str)
+            val cpuMatch = CPU_LOAD_REGEX.find(str)
             if (cpuMatch != null) {
                 cpuLoad = cpuMatch.groupValues[1].toFloatOrNull()
             }
 
             var hweUsage: String? = null
-            val hweMatch = Regex("""HWE:\s*([0-9]+(?:\.[0-9]+)?%?)""", RegexOption.IGNORE_CASE).find(str)
+            val hweMatch = HWE_REGEX.find(str)
             if (hweMatch != null) {
                 hweUsage = hweMatch.groupValues[1].let { if (it.endsWith("%")) it else "$it%" }
             }
 
             var ecmStats: String? = null
-            val ecmMatch = Regex("""ECM:\s*([^\r\n]+)""", RegexOption.IGNORE_CASE).find(str)
+            val ecmMatch = ECM_REGEX.find(str)
             if (ecmMatch != null) {
                 ecmStats = ecmMatch.groupValues[1].trim()
             }
@@ -1685,7 +1745,7 @@ class RouterRepository(private val client: UbusClient) {
             var cpu: Int? = null
             val wifis = mutableListOf<Int>()
 
-            val cpuMatch = Regex("""(?:CPU|SoC|Core(?:\s*[0-9]+)?)[：:\s]+([0-9]+(?:\.[0-9]+)?)\s*°?C?""", RegexOption.IGNORE_CASE).find(text)
+            val cpuMatch = TEMP_CPU_REGEX.find(text)
             if (cpuMatch != null) {
                 val v = cpuMatch.groupValues[1].toFloatOrNull()?.toInt()
                 if (v != null && v in 25..105) {
@@ -1693,9 +1753,21 @@ class RouterRepository(private val client: UbusClient) {
                 }
             }
 
-            val wifiSection = text.substringAfter("WiFi:", "").ifBlank { text.substringAfter("wifi:", "") }
+            // 优化 WiFi 冒号分割，支持大小写与全角冒号
+            val wifiIndex = text.indexOf("wifi", ignoreCase = true)
+            val wifiSection = if (wifiIndex != -1) {
+                val after = text.substring(wifiIndex + 4).trimStart()
+                if (after.startsWith(":") || after.startsWith("：")) {
+                    after.substring(1).trimStart()
+                } else {
+                    after
+                }
+            } else {
+                ""
+            }
+
             if (wifiSection.isNotBlank()) {
-                Regex("""([0-9]+(?:\.[0-9]+)?)\s*°?C?""").findAll(wifiSection).forEach { m ->
+                TEMP_VAL_REGEX.findAll(wifiSection).forEach { m ->
                     m.groupValues[1].toFloatOrNull()?.toInt()?.let {
                         if (it in 25..105) wifis.add(it)
                     }
