@@ -307,11 +307,21 @@ fun ClientItemCard(
                     fontWeight = FontWeight.Medium
                 )
             } else {
-                Icon(
-                    imageVector = Icons.Default.ChevronRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Cable,
+                        contentDescription = "有线连接",
+                        tint = PrimaryBlue,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "有线",
+                        fontSize = 11.sp,
+                        color = PrimaryBlue,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
             }
         }
     }
@@ -357,6 +367,19 @@ fun ClientDetailDialog(
                                 fontWeight = FontWeight.Bold,
                                 color = if (client.isOnline) SuccessGreen else Color.Gray
                             )
+                        }
+                        if (client.isOnline) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("连接方式", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                val typeDesc = when (client.connectionType) {
+                                    ConnectionType.WIRED_LAN -> "千兆网口 (有线 LAN)"
+                                    ConnectionType.WIFI_2G -> "2.4GHz Wi-Fi"
+                                    ConnectionType.WIFI_5G -> "5GHz Wi-Fi"
+                                    ConnectionType.WIFI_5_2G_GAME -> "5.2GHz 电竞 Wi-Fi"
+                                    ConnectionType.WIFI_6G -> "6GHz Wi-Fi"
+                                }
+                                Text(typeDesc, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = PrimaryBlue)
+                            }
                         }
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("原始主机名", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -421,11 +444,11 @@ private fun getDeviceIconAndColor(client: ConnectedClient): Pair<androidx.compos
     val m = client.macAddress.lowercase()
     val v = client.vendor?.lowercase() ?: ""
     return when {
-        client.connectionType == ConnectionType.WIRED_LAN -> Icons.Default.Computer to PrimaryBlue
         h.contains("iphone") || h.contains("ipad") || v.contains("apple") -> Icons.Default.Smartphone to SecondaryCyan
         h.contains("android") || v.contains("xiaomi") || v.contains("huawei") || v.contains("honor") || v.contains("oppo") || v.contains("vivo") -> Icons.Default.PhoneAndroid to SecondaryCyan
         h.contains("tv") || h.contains("box") || h.contains("media") || v.contains("sony") -> Icons.Default.Tv to SuccessGreen
         v.contains("espressif") || v.contains("iot") -> Icons.Default.Sensors to WarningOrange
+        client.connectionType == ConnectionType.WIRED_LAN -> Icons.Default.Computer to PrimaryBlue
         else -> Icons.Default.DevicesOther to PrimaryBlue
     }
 }

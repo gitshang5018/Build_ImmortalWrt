@@ -432,9 +432,98 @@ class RouterRepository(private val client: UbusClient) {
         return try {
             val clientMap = mutableMapOf<String, ConnectedClient>() // Key: MAC (lowercase)
             val hostnameMap = mutableMapOf<String, String>() // MAC -> Hostname
-            val onlineMacs = mutableSetOf<String>()
-            val currentEpoch = System.currentTimeMillis() / 1000L
+            val onlineWifiMap = mutableMapOf<String, ConnectionType>() // MAC -> WiFi ConnectionType
+            val wifiSignalMap = mutableMapOf<String, Int>()
+            val wifiRxRateMap = mutableMapOf<String, Float>()
+            val wifiTxRateMap = mutableMapOf<String, Float>()
+            val onlineLanMacs = mutableSetOf<String>()
 
+            // 1. 扫描当前真实在线的无线 Wi-Fi 终端关联列表 (iwinfo assoclist)
+            val wifiDevices = listOf("phy0-ap0", "phy1-ap0", "phy2-ap0", "wlan0", "wlan1", "wlan2", "ra0", "rax0")
+            for (wDev in wifiDevices) {
+                val iwinfoRes = client.callRaw("iwinfo", "assoclist", mapOf("device" to wDev))
+                if (iwinfoRes.isSuccess) {
+                    val wifiClients = iwinfoRes.getOrNull()?.getAsJsonArray("results")
+                    wifiClients?.forEach { el ->
+                        val obj = el.asJsonObject
+                        val mac = obj.get("mac")?.asString?.lowercase() ?: ""
+                        val signal = obj.get("signal")?.asInt ?: -60
+                        val rxRate = obj.get("rx_rate")?.asFloat ?: 0f
+                        val txRate = obj.get("tx_rate")?.asFloat ?: 0f
+
+                        val is2G = wDev.startsWith("phy1") || wDev == "wlan1" || wDev.contains("2g") || wDev.contains("2.4")
+                        val is52G = wDev.startsWith("phy2") || wDev == "wlan2" || wDev.contains("5.2")
+                        val connType = when {
+                            is2G -> ConnectionType.WIFI_2G
+                            is52G -> ConnectionType.WIFI_5_2G_GAME
+                            else -> ConnectionType.WIFI_5G
+                        }
+
+                        if (mac.length == 17) {
+                            onlineWifiMap[mac] = connType
+                            wifiSignalMap[mac] = signal
+                            wifiRxRateMap[mac] = rxRate / 1000f
+                            wifiTxRateMap[mac] = txRate / 1000f
+                        }
+                    }
+                }
+            }
+
+            // 2. 扫描真实活跃的有线 LAN 终端 (/proc/net/arp、ip neigh、bridge fdb)
+            try {
+                val arpText = client.callRaw("file", "read", mapOf("path" to "/proc/net/arp")).getOrNull()?.get("data")?.asString ?: ""
+                arpText.lineSequence().drop(1).forEach { line ->
+                    val parts = line.trim().split(Regex("\\s+"))
+                    if (parts.size >= 6) {
+                        val flags = parts[2]
+                        val mac = parts[3].lowercase()
+                        if (mac.length == 17 && mac != "00:00:00:00:00:00") {
+                            // 0x2 / 0x6 代表有效完整的活跃 ARP 记录
+                            if (flags != "0x0" && flags != "0") {
+                                if (!onlineWifiMap.containsKey(mac)) {
+                                    onlineLanMacs.add(mac)
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+
+            try {
+                val neighResp = client.callRaw("file", "exec", mapOf(
+                    "command" to "/bin/sh",
+                    "params" to listOf("-c", "ip -4 neigh show; ip -6 neigh show; bridge fdb show dev br-lan 2>/dev/null; brctl showmacs br-lan 2>/dev/null")
+                ))
+                val neighText = neighResp.getOrNull()?.get("stdout")?.asString ?: ""
+                neighText.lineSequence().forEach { line ->
+                    val parts = line.trim().split(Regex("\\s+"))
+                    val lladdrIdx = parts.indexOf("lladdr")
+                    if (lladdrIdx != -1 && lladdrIdx + 1 < parts.size) {
+                        val mac = parts[lladdrIdx + 1].lowercase()
+                        val state = parts.lastOrNull()?.uppercase() ?: ""
+                        val isReachable = state == "REACHABLE" || state == "DELAY" || state == "PROBE" || state == "STALE"
+                        if (mac.length == 17 && mac != "00:00:00:00:00:00" && isReachable) {
+                            if (!onlineWifiMap.containsKey(mac)) {
+                                onlineLanMacs.add(mac)
+                            }
+                        }
+                    }
+                    val devIdx = parts.indexOf("dev")
+                    if (devIdx != -1 && devIdx + 1 < parts.size) {
+                        val port = parts[devIdx + 1].lowercase()
+                        val mac = parts[0].lowercase()
+                        val isWiredPort = port.startsWith("lan") || port.startsWith("eth")
+                        val isNotSelf = !line.contains("permanent", ignoreCase = true) && !line.contains("self", ignoreCase = true)
+                        if (mac.length == 17 && isWiredPort && isNotSelf) {
+                            if (!onlineWifiMap.containsKey(mac)) {
+                                onlineLanMacs.add(mac)
+                            }
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+
+            // 3. 读取主机别名与已知终端历史提示 (luci-rpc getHostHints)
             try {
                 val hostHintsResp = client.callRaw("luci-rpc", "getHostHints").getOrNull()
                     ?: client.callRaw("luci", "getHostHints").getOrNull()
@@ -460,6 +549,7 @@ class RouterRepository(private val client: UbusClient) {
                 }
             } catch (_: Exception) {}
 
+            // 4. 读取 DHCP 租约 (获取 IP 与主机名映射，但绝不直接将租约等同于在线)
             try {
                 val dhcpLeasesResp = client.callRaw("luci-rpc", "getDHCPLeases").getOrNull()
                     ?: client.callRaw("luci", "getDHCPLeases").getOrNull()
@@ -470,13 +560,9 @@ class RouterRepository(private val client: UbusClient) {
                     val mac = obj.get("mac")?.asString?.lowercase() ?: obj.get("macaddr")?.asString?.lowercase() ?: ""
                     val ip = obj.get("ip")?.asString ?: obj.get("ipaddr")?.asString ?: ""
                     val rawHost = obj.get("hostname")?.asString?.trim() ?: ""
-                    val expires = obj.get("expires")?.asLong ?: -1L
                     if (mac.length == 17) {
                         if (rawHost.isNotBlank() && rawHost != "*" && rawHost != "?") {
                             hostnameMap[mac] = rawHost
-                        }
-                        if (expires == -1L || expires > 0) {
-                            onlineMacs.add(mac)
                         }
                         if (ip.isNotBlank() && ip.contains(".")) {
                             val existing = clientMap[mac]
@@ -487,7 +573,7 @@ class RouterRepository(private val client: UbusClient) {
                                 macAddress = mac,
                                 connectionType = existing?.connectionType ?: ConnectionType.WIRED_LAN,
                                 vendor = resolveVendorByMac(mac),
-                                isOnline = true
+                                isOnline = false
                             )
                         }
                     }
@@ -501,13 +587,9 @@ class RouterRepository(private val client: UbusClient) {
                 fLeases.lineSequence().forEach { line ->
                     val parts = line.trim().split(Regex("\\s+"))
                     if (parts.size >= 4) {
-                        val expireTime = parts[0].toLongOrNull() ?: 0L
                         val mac = parts[1].lowercase()
                         val ip = parts[2]
                         val rawHost = parts[3].trim()
-                        if (expireTime > currentEpoch || expireTime == 0L) {
-                            onlineMacs.add(mac)
-                        }
                         if (rawHost.isNotBlank() && rawHost != "*" && rawHost != "?") {
                             hostnameMap[mac] = rawHost
                         }
@@ -520,13 +602,14 @@ class RouterRepository(private val client: UbusClient) {
                                 macAddress = mac,
                                 connectionType = existing?.connectionType ?: ConnectionType.WIRED_LAN,
                                 vendor = resolveVendorByMac(mac),
-                                isOnline = onlineMacs.contains(mac)
+                                isOnline = false
                             )
                         }
                     }
                 }
             } catch (_: Exception) {}
 
+            // 5. 补充 ARP 中的 IP 信息 (针对静态 IP 有线设备)
             try {
                 val arpText = client.callRaw("file", "read", mapOf("path" to "/proc/net/arp")).getOrNull()?.get("data")?.asString ?: ""
                 arpText.lineSequence().drop(1).forEach { line ->
@@ -534,20 +617,13 @@ class RouterRepository(private val client: UbusClient) {
                     if (parts.size >= 6) {
                         val ip = parts[0]
                         val mac = parts[3].lowercase()
-                        val flags = parts[2]
                         if (mac.length == 17 && mac != "00:00:00:00:00:00") {
-                            if (flags != "0x0" && flags != "0") {
-                                onlineMacs.add(mac)
-                            }
                             val existing = clientMap[mac]
                             val finalHost = hostnameMap[mac] ?: existing?.hostname ?: "${resolveVendorByMac(mac)} (${mac.takeLast(5)})"
-                            val isOnline = onlineMacs.contains(mac)
                             if (existing != null) {
-                                clientMap[mac] = existing.copy(
-                                    ipAddress = if (existing.ipAddress.isBlank() || existing.ipAddress == "动态分配") ip else existing.ipAddress,
-                                    hostname = finalHost,
-                                    isOnline = isOnline || existing.isOnline
-                                )
+                                if (existing.ipAddress.isBlank() || existing.ipAddress == "动态分配") {
+                                    clientMap[mac] = existing.copy(ipAddress = ip, hostname = finalHost)
+                                }
                             } else {
                                 clientMap[mac] = ConnectedClient(
                                     hostname = finalHost,
@@ -555,7 +631,7 @@ class RouterRepository(private val client: UbusClient) {
                                     macAddress = mac,
                                     connectionType = ConnectionType.WIRED_LAN,
                                     vendor = resolveVendorByMac(mac),
-                                    isOnline = isOnline
+                                    isOnline = false
                                 )
                             }
                         }
@@ -563,50 +639,7 @@ class RouterRepository(private val client: UbusClient) {
                 }
             } catch (_: Exception) {}
 
-            try {
-                val neighResp = client.callRaw("file", "exec", mapOf(
-                    "command" to "/bin/sh",
-                    "params" to listOf("-c", "ip -4 neigh show; ip -6 neigh show")
-                ))
-                val neighText = neighResp.getOrNull()?.get("stdout")?.asString ?: ""
-                neighText.lineSequence().forEach { line ->
-                    val parts = line.trim().split(Regex("\\s+"))
-                    val lladdrIdx = parts.indexOf("lladdr")
-                    if (lladdrIdx != -1 && lladdrIdx + 1 < parts.size) {
-                        val ip = parts[0]
-                        val mac = parts[lladdrIdx + 1].lowercase()
-                        val state = parts.lastOrNull()?.uppercase() ?: ""
-                        val isReachable = state == "REACHABLE" || state == "DELAY" || state == "STALE" || state == "PROBE"
-                        if (mac.length == 17 && mac != "00:00:00:00:00:00") {
-                            if (isReachable) onlineMacs.add(mac)
-                            val existing = clientMap[mac]
-                            val isIpv6 = ip.contains(":")
-                            val finalHost = hostnameMap[mac] ?: existing?.hostname ?: "${resolveVendorByMac(mac)} (${mac.takeLast(5)})"
-                            val isOnline = onlineMacs.contains(mac) || (existing?.isOnline == true)
-                            if (existing != null) {
-                                if (isIpv6 && existing.ipv6Address.isNullOrBlank()) {
-                                    clientMap[mac] = existing.copy(ipv6Address = ip, hostname = finalHost, isOnline = isOnline)
-                                } else if (!isIpv6 && (existing.ipAddress.isBlank() || existing.ipAddress == "动态分配")) {
-                                    clientMap[mac] = existing.copy(ipAddress = ip, hostname = finalHost, isOnline = isOnline)
-                                } else {
-                                    clientMap[mac] = existing.copy(isOnline = isOnline)
-                                }
-                            } else {
-                                clientMap[mac] = ConnectedClient(
-                                    hostname = finalHost,
-                                    ipAddress = if (isIpv6) "动态分配" else ip,
-                                    macAddress = mac,
-                                    connectionType = ConnectionType.WIRED_LAN,
-                                    ipv6Address = if (isIpv6) ip else null,
-                                    vendor = resolveVendorByMac(mac),
-                                    isOnline = isOnline
-                                )
-                            }
-                        }
-                    }
-                }
-            } catch (_: Exception) {}
-
+            // 6. 整合静态 DHCP 租约绑定
             val staticLeases = getStaticDhcpLeases().getOrNull() ?: emptyList()
             staticLeases.forEach { sLease ->
                 val sMac = sLease.mac.lowercase()
@@ -616,12 +649,10 @@ class RouterRepository(private val client: UbusClient) {
                     hostnameMap[sMac] = sHost
                 }
                 val finalHost = hostnameMap[sMac] ?: existing?.hostname ?: sHost.ifBlank { "静态设备 (${sMac.takeLast(5)})" }
-                val isOnline = onlineMacs.contains(sMac) || (existing?.isOnline == true)
                 if (existing != null) {
                     clientMap[sMac] = existing.copy(
                         hostname = finalHost,
-                        isStaticLease = true,
-                        isOnline = isOnline
+                        isStaticLease = true
                     )
                 } else if (sLease.ip.isNotBlank()) {
                     clientMap[sMac] = ConnectedClient(
@@ -631,62 +662,68 @@ class RouterRepository(private val client: UbusClient) {
                         connectionType = ConnectionType.WIRED_LAN,
                         isStaticLease = true,
                         vendor = resolveVendorByMac(sMac),
-                        isOnline = isOnline
+                        isOnline = false
                     )
                 }
             }
 
-            val wifiDevices = listOf("phy0-ap0", "phy1-ap0", "phy2-ap0", "wlan0", "wlan1", "wlan2", "ra0", "rax0")
-            for (wDev in wifiDevices) {
-                val iwinfoRes = client.callRaw("iwinfo", "assoclist", mapOf("device" to wDev))
-                if (iwinfoRes.isSuccess) {
-                    val wifiClients = iwinfoRes.getOrNull()?.getAsJsonArray("results")
-                    wifiClients?.forEach { el ->
-                        val obj = el.asJsonObject
-                        val mac = obj.get("mac")?.asString?.lowercase() ?: ""
-                        val signal = obj.get("signal")?.asInt ?: -60
-                        val rxRate = obj.get("rx_rate")?.asFloat ?: 0f
-                        val txRate = obj.get("tx_rate")?.asFloat ?: 0f
+            // 7. 确保当前在线的无线终端全部同步至 clientMap
+            onlineWifiMap.forEach { (mac, wifiType) ->
+                val existing = clientMap[mac]
+                val finalHost = hostnameMap[mac] ?: existing?.hostname ?: "无线终端 (${mac.takeLast(5)})"
+                clientMap[mac] = (existing ?: ConnectedClient(
+                    hostname = finalHost,
+                    ipAddress = "动态分配",
+                    macAddress = mac,
+                    connectionType = wifiType,
+                    vendor = resolveVendorByMac(mac),
+                    isOnline = true
+                )).copy(
+                    hostname = finalHost,
+                    connectionType = wifiType,
+                    signalDbm = wifiSignalMap[mac] ?: -60,
+                    rxRateMbps = wifiRxRateMap[mac] ?: 0f,
+                    txRateMbps = wifiTxRateMap[mac] ?: 0f,
+                    isOnline = true
+                )
+            }
 
-                        val is2G = wDev.startsWith("phy1") || wDev == "wlan1" || wDev.contains("2g") || wDev.contains("2.4")
-                        val is52G = wDev.startsWith("phy2") || wDev == "wlan2" || wDev.contains("5.2")
-                        val connType = when {
-                            is2G -> ConnectionType.WIFI_2G
-                            is52G -> ConnectionType.WIFI_5_2G_GAME
-                            else -> ConnectionType.WIFI_5G
-                        }
-
-                        if (mac.length == 17) {
-                            onlineMacs.add(mac)
-                            val existing = clientMap[mac]
-                            if (existing != null) {
-                                clientMap[mac] = existing.copy(
-                                    connectionType = connType,
-                                    signalDbm = signal,
-                                    rxRateMbps = rxRate / 1000f,
-                                    txRateMbps = txRate / 1000f,
-                                    isOnline = true
-                                )
-                            } else {
-                                clientMap[mac] = ConnectedClient(
-                                    hostname = "无线终端 (${mac.takeLast(5)})",
-                                    ipAddress = "动态分配",
-                                    macAddress = mac,
-                                    connectionType = connType,
-                                    signalDbm = signal,
-                                    vendor = resolveVendorByMac(mac),
-                                    isOnline = true
-                                )
-                            }
-                        }
-                    }
+            // 8. 确保当前在线的有线终端全部同步至 clientMap
+            onlineLanMacs.forEach { mac ->
+                val existing = clientMap[mac]
+                if (existing == null) {
+                    val finalHost = hostnameMap[mac] ?: "有线终端 (${mac.takeLast(5)})"
+                    clientMap[mac] = ConnectedClient(
+                        hostname = finalHost,
+                        ipAddress = "动态分配",
+                        macAddress = mac,
+                        connectionType = ConnectionType.WIRED_LAN,
+                        vendor = resolveVendorByMac(mac),
+                        isOnline = true
+                    )
                 }
             }
 
-            // 最终刷新并同步所有设备的 isOnline 状态与排序
+            // 9. 最终准确计算真实在线状态与连接类型：
+            // - 在 onlineWifiMap 中 -> 真实在线 Wi-Fi (2.4G / 5G / 5.2G)
+            // - 在 onlineLanMacs 中 (且不在 Wi-Fi 中) -> 真实在线 有线 LAN
+            // - 其它设备 -> 真实离线 (绝不误判为在线 LAN)
             val resultList = clientMap.values.map { client ->
-                val isRealOnline = onlineMacs.contains(client.macAddress.lowercase()) || client.connectionType != ConnectionType.WIRED_LAN
-                client.copy(isOnline = isRealOnline)
+                val mac = client.macAddress.lowercase()
+                val isWifi = onlineWifiMap.containsKey(mac)
+                val isLan = !isWifi && onlineLanMacs.contains(mac)
+                val isRealOnline = isWifi || isLan
+
+                val finalConnType = when {
+                    isWifi -> onlineWifiMap[mac] ?: ConnectionType.WIFI_5G
+                    isLan -> ConnectionType.WIRED_LAN
+                    else -> client.connectionType
+                }
+
+                client.copy(
+                    isOnline = isRealOnline,
+                    connectionType = finalConnType
+                )
             }.sortedWith(
                 compareByDescending<ConnectedClient> { it.isOnline }
                     .thenBy { it.displayName }

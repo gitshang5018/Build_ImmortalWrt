@@ -45,8 +45,8 @@ data class ClientsUiState(
                 ClientFilter.ALL -> true
                 ClientFilter.ONLINE_ONLY -> client.isOnline
                 ClientFilter.OFFLINE_ONLY -> !client.isOnline
-                ClientFilter.WIFI_ONLY -> client.connectionType != ConnectionType.WIRED_LAN
-                ClientFilter.WIRED_ONLY -> client.connectionType == ConnectionType.WIRED_LAN
+                ClientFilter.WIFI_ONLY -> client.isOnline && client.connectionType != ConnectionType.WIRED_LAN
+                ClientFilter.WIRED_ONLY -> client.isOnline && client.connectionType == ConnectionType.WIRED_LAN
             }
 
             matchSearch && matchFilter
