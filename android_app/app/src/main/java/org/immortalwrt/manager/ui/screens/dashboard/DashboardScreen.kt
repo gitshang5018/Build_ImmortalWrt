@@ -174,11 +174,13 @@ fun DashboardScreen(
 
                     val hwe = state.overview?.hweUsage
                     val ecm = state.overview?.ecmStats
+                    val loadAvg = state.overview?.cpuLoadAverage
+
                     val cpuSubtitle = when {
                         hwe != null && ecm != null -> "HWE: $hwe · ECM: $ecm"
-                        hwe != null -> "HWE 硬件加速: $hwe · 负载: ${state.overview?.cpuLoadAverage}"
-                        state.overview?.cpuUsageText != null -> state.overview?.cpuUsageText ?: ""
-                        else -> "平均负载: ${state.overview?.cpuLoadAverage ?: "--"}"
+                        ecm != null -> "ECM: $ecm · 负载: ${loadAvg ?: "--"}"
+                        hwe != null -> "HWE: $hwe · 负载: ${loadAvg ?: "--"}"
+                        else -> "平均负载: ${loadAvg ?: "--"}"
                     }
 
                     StatCard(
