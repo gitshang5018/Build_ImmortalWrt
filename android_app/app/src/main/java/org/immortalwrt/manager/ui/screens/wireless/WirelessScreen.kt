@@ -225,7 +225,7 @@ fun WifiConfigCard(
             }
 
             Spacer(modifier = Modifier.height(14.dp))
-            Divider()
+            HorizontalDivider()
             Spacer(modifier = Modifier.height(12.dp))
 
             Row(

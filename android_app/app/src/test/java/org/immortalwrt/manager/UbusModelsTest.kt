@@ -60,7 +60,15 @@ class UbusModelsTest {
         assertEquals(123456L, sysInfo.uptime)
         assertEquals(1073741824L, sysInfo.memory.total)
         assertEquals(536870912L, sysInfo.memory.free)
-        assertEquals(50f, sysInfo.memory.usedPercentage, 0.1f)
+
+        // 真实可用内存 = free(512MB) + buffered(10MB) + cached(200MB) = 757071872
+        val expectedAvailable = 536870912L + 10485760L + 209715200L
+        val expectedUsed = 1073741824L - expectedAvailable
+        val expectedPercent = (expectedUsed.toFloat() / 1073741824L.toFloat()) * 100f
+
+        assertEquals(expectedAvailable, sysInfo.memory.realAvailable)
+        assertEquals(expectedUsed, sysInfo.memory.used)
+        assertEquals(expectedPercent, sysInfo.memory.usedPercentage, 0.1f)
     }
 
     @Test
