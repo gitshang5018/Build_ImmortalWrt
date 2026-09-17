@@ -1673,12 +1673,16 @@ class RouterRepository(private val client: UbusClient) {
         private val TEMP_CPU_REGEX = Regex("""(?:CPU|SoC|Core(?:\s*[0-9]+)?)[：:\s]+([0-9]+(?:\.[0-9]+)?)\s*°?C?""", RegexOption.IGNORE_CASE)
         private val TEMP_VAL_REGEX = Regex("""([0-9]+(?:\.[0-9]+)?)\s*°?C?""")
 
-        private val EXCLUDE_MOBILE_KEYWORDS = listOf("apple-tv", "appletv", "tv-box", "tvbox")
+        private val EXCLUDE_MOBILE_KEYWORDS = listOf(
+            "apple-tv", "appletv", "tv-box", "tvbox",
+            "thinkpad", "ideapad", "vivobook", "database", "server"
+        )
         private val MOBILE_KEYWORDS = listOf(
             "iphone", "ipad", "ipod", "android", "galaxy", "xiaomi", "redmi",
             "huawei", "honor", "oppo", "vivo", "oneplus", "meizu", "pixel",
-            "realme", "iqoo", "phone", "mobile", "pad", "tab"
+            "realme", "iqoo"
         )
+        private val MOBILE_WORD_REGEX = Regex("""(?:^|[^a-z0-9])(pad|tab|phone|mobile)(?:$|[^a-z0-9])""")
 
         fun isMobileDevice(hostname: String?, vendor: String? = null): Boolean {
             val name = hostname?.lowercase() ?: ""
@@ -1686,7 +1690,10 @@ class RouterRepository(private val client: UbusClient) {
             if (EXCLUDE_MOBILE_KEYWORDS.any { name.contains(it) || ven.contains(it) }) {
                 return false
             }
-            return MOBILE_KEYWORDS.any { name.contains(it) || ven.contains(it) }
+            if (MOBILE_KEYWORDS.any { name.contains(it) || ven.contains(it) }) {
+                return true
+            }
+            return MOBILE_WORD_REGEX.containsMatchIn(name) || MOBILE_WORD_REGEX.containsMatchIn(ven)
         }
 
         fun resolveClientStatus(
@@ -1698,13 +1705,24 @@ class RouterRepository(private val client: UbusClient) {
         ): Pair<Boolean, ConnectionType> {
             val mac = client.macAddress.lowercase()
             val isWifi = onlineWifiMap.containsKey(mac)
+            val isPhysicalLan = onlineLanMacs.contains(mac)
             val isMobile = isMobileDevice(client.hostname, client.vendor)
-            val hasActiveLease = activeLeaseMacs.contains(mac) || staticLeaseMacs.contains(mac) || onlineLanMacs.contains(mac)
+            val hasActiveLease = activeLeaseMacs.contains(mac)
+            val isKnownWifi = client.connectionType != ConnectionType.WIRED_LAN
+            val fallbackWifi = if (isKnownWifi) client.connectionType else ConnectionType.WIFI_5G
 
             return when {
+                // 1. 处于当前在线 Wi-Fi 关联中 -> 在线无线
                 isWifi -> Pair(true, onlineWifiMap[mac] ?: ConnectionType.WIFI_5G)
-                isMobile -> Pair(false, ConnectionType.WIFI_5G) // 手机不在无线关联中，判定为离线无线，绝不误判为有线
-                hasActiveLease -> Pair(true, ConnectionType.WIRED_LAN) // 固定设备处于活跃租期内，判定为在线有线
+                // 2. 内核/交换机明确检测到物理有线数据帧 -> 拥有最高物理优先级，判定为在线有线
+                isPhysicalLan -> Pair(true, ConnectionType.WIRED_LAN)
+                // 3. 移动终端未在 Wi-Fi 关联列表中，即使有历史租约记录，也保留 Wi-Fi 属性标为离线无线，绝不误标为有线 LAN 在线
+                isMobile -> Pair(false, fallbackWifi)
+                // 4. 已知 Wi-Fi 终端（如休眠离线的无线笔记本）脱离 Wi-Fi 后，即使租约未过期，也保留 Wi-Fi 属性标为离线无线
+                isKnownWifi -> Pair(false, client.connectionType)
+                // 5. 真正的有线固定设备（非移动终端且非已知无线），若处于活跃租期内，判定为在线有线
+                hasActiveLease -> Pair(true, ConnectionType.WIRED_LAN)
+                // 6. 其他无活跃记录或静态绑定的离线设备 -> 保持原连接类型标为离线
                 else -> Pair(false, client.connectionType)
             }
         }

@@ -202,6 +202,12 @@ class UbusModelsTest {
         assertFalse(RouterRepository.isMobileDevice("Synology-NAS", "Synology Incorporated"))
         assertFalse(RouterRepository.isMobileDevice("Apple-TV", "Apple, Inc."))
         assertFalse(RouterRepository.isMobileDevice("HP-LaserJet", "HP Inc."))
+
+        // 验证防短词误伤负例（ThinkPad, IdeaPad, VivoBook, Database-Server）识别为 false
+        assertFalse(RouterRepository.isMobileDevice("ThinkPad-X1-Carbon", "Lenovo"))
+        assertFalse(RouterRepository.isMobileDevice("IdeaPad-5-Pro", "Lenovo"))
+        assertFalse(RouterRepository.isMobileDevice("ASUS-VivoBook-15", "ASUSTeK Computer Inc."))
+        assertFalse(RouterRepository.isMobileDevice("Database-Server", "Dell Inc."))
     }
 
     @Test
@@ -260,5 +266,75 @@ class UbusModelsTest {
         )
         assertTrue(huaweiOnline)
         assertEquals(ConnectionType.WIFI_5G, huaweiConn)
+
+        // 4. 物理有线探测优先级高于移动设备指纹：当 onlineLanMacs 包含某 MAC 时（如插有线网卡的 iPad），必须优先判定为在线有线
+        val wiredIpad = ConnectedClient(
+            hostname = "iPad-Pro",
+            ipAddress = "192.168.1.150",
+            macAddress = "aa:bb:cc:dd:ee:05",
+            connectionType = ConnectionType.WIRED_LAN,
+            vendor = "Apple, Inc.",
+            isOnline = false
+        )
+        val (ipadOnline, ipadConn) = RouterRepository.resolveClientStatus(
+            client = wiredIpad,
+            onlineWifiMap = onlineWifiMap,
+            activeLeaseMacs = activeLeaseMacs,
+            onlineLanMacs = setOf("aa:bb:cc:dd:ee:05")
+        )
+        assertTrue(ipadOnline)
+        assertEquals(ConnectionType.WIRED_LAN, ipadConn)
+
+        // 5. 防止 Wi-Fi 笔记本脱离 Wi-Fi 后误判为在线有线：原本为 WIFI_5G 的笔记本休眠离开后，即使租约未到期，也判定为离线无线
+        val wifiLaptop = ConnectedClient(
+            hostname = "ThinkPad-X1",
+            ipAddress = "192.168.1.160",
+            macAddress = "aa:bb:cc:dd:ee:06",
+            connectionType = ConnectionType.WIFI_5G,
+            vendor = "Lenovo",
+            isOnline = false
+        )
+        val (laptopOnline, laptopConn) = RouterRepository.resolveClientStatus(
+            client = wifiLaptop,
+            onlineWifiMap = onlineWifiMap,
+            activeLeaseMacs = setOf("aa:bb:cc:dd:ee:06")
+        )
+        assertFalse(laptopOnline)
+        assertEquals(ConnectionType.WIFI_5G, laptopConn)
+
+        // 6. 静态租约（staticLeaseMacs）不直接视同在线：仅有静态绑定未通电的设备不能被误判为在线
+        val staticDevice = ConnectedClient(
+            hostname = "HP-LaserJet-Static",
+            ipAddress = "192.168.1.170",
+            macAddress = "aa:bb:cc:dd:ee:07",
+            connectionType = ConnectionType.WIRED_LAN,
+            vendor = "HP Inc.",
+            isOnline = false
+        )
+        val (staticOnline, _) = RouterRepository.resolveClientStatus(
+            client = staticDevice,
+            onlineWifiMap = emptyMap(),
+            activeLeaseMacs = emptySet(),
+            staticLeaseMacs = setOf("aa:bb:cc:dd:ee:07"),
+            onlineLanMacs = emptySet()
+        )
+        assertFalse(staticOnline)
+
+        // 7. 移动设备离线时保留原 Wi-Fi 频段（如 WIFI_2G）
+        val iphone2g = ConnectedClient(
+            hostname = "iPhone-14",
+            ipAddress = "192.168.1.102",
+            macAddress = "aa:bb:cc:dd:ee:02",
+            connectionType = ConnectionType.WIFI_2G,
+            vendor = "Apple, Inc.",
+            isOnline = false
+        )
+        val (phone2gOnline, phone2gConn) = RouterRepository.resolveClientStatus(
+            client = iphone2g,
+            onlineWifiMap = onlineWifiMap,
+            activeLeaseMacs = activeLeaseMacs
+        )
+        assertFalse(phone2gOnline)
+        assertEquals(ConnectionType.WIFI_2G, phone2gConn)
     }
 }
