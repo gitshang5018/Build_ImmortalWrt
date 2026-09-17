@@ -13,11 +13,22 @@ PKG_MAINTAINER:=AeroWrt Developers
 
 PKG_BUILD_DEPENDS:=golang/host
 PKG_BUILD_PARALLEL:=1
+PKG_BUILD_FLAGS:=no-mips16
+PKG_USE_MIPS16:=0
+
+TARGET_CFLAGS += -mno-mips16
+TARGET_CXXFLAGS += -mno-mips16
 
 GO_PKG:=aerowrt
+GO_PKG_LDFLAGS:=-s -w
 
 include $(INCLUDE_DIR)/package.mk
 include $(TOPDIR)/feeds/packages/lang/golang/golang-package.mk
+
+# 强制禁用 CGO 并去除 MIPS16，解决 MIPS (mipsel_24kc) 架构下 cgo 汇编与 musl 编译冲突
+GO_PKG_TARGET_VARS:=$(filter-out CGO_ENABLED=%,$(GO_PKG_TARGET_VARS)) CGO_ENABLED=0
+GO_PKG_VARS:=$(filter-out CGO_ENABLED=%,$(GO_PKG_VARS)) CGO_ENABLED=0
+MAKE_VARS += CGO_ENABLED=0
 
 define Package/aerowrt
   SECTION:=net
