@@ -4,6 +4,34 @@ set -e
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
 
+# uci 桩: 记录 set 调用, get 恒返回 none (模拟未配置)
+mkdir -p "$TMP_DIR/bin"
+cat <<'EOF' > "$TMP_DIR/uci_stub"
+#!/bin/bash
+if [ "$1" = "get" ]; then
+    echo "none"
+    exit 0
+fi
+if [ "$1" = "-q" ] && [ "$2" = "set" ]; then
+    echo "set $3" >> "$UCI_OUT"
+    exit 0
+fi
+if [ "$1" = "-q" ] && [ "$2" = "batch" ]; then
+    cat >> "$UCI_OUT"
+    exit 0
+fi
+if [ "$1" = "commit" ]; then
+    exit 0
+fi
+if [ "$1" = "show" ]; then
+    exit 0
+fi
+exit 0
+EOF
+chmod +x "$TMP_DIR/uci_stub"
+export UCI_OUT="$TMP_DIR/uci_out.txt"
+mkdir -p "$TMP_DIR/sys/module"
+
 echo "=== 测试 1: 小内存设备 (< 300MB, 如歌华链 128MB) ==="
 mkdir -p "$TMP_DIR/proc1" "$TMP_DIR/etc1"
 echo "MemTotal:         128000 kB" > "$TMP_DIR/proc1/meminfo"
@@ -48,5 +76,37 @@ MEMINFO_FILE="$TMP_DIR/proc3/meminfo" SYSCTL_CONF="$TMP_DIR/etc3/sysctl.conf" TA
 
 grep -q "net.netfilter.nf_conntrack_max = 262144" "$TMP_DIR/etc3/sysctl.conf" || { echo "FAIL: 大内存 conntrack_max 不正确"; exit 1; }
 grep -q "GOMEMLIMIT=512MiB" "$TMP_DIR/etc3/environment" || { echo "FAIL: 大内存 GOMEMLIMIT 不正确"; exit 1; }
+
+echo "=== 测试 4: NSS 机型不得强开 packet_steering (与 ECM 的 disable_packet_steering 冲突) ==="
+mkdir -p "$TMP_DIR/etc4" "$TMP_DIR/proc4"
+echo "MemTotal:        1048576 kB" > "$TMP_DIR/proc4/meminfo"
+touch "$TMP_DIR/etc4/sysctl.conf" "$TMP_DIR/etc4/profile"
+mkdir -p "$TMP_DIR/network"
+: > "$TMP_DIR/network/config"
+
+# 让 991 通过 PATH 命中 uci 桩
+export PATH="$TMP_DIR/bin:$PATH"
+cp "$TMP_DIR/uci_stub" "$TMP_DIR/bin/uci"
+
+# 4a. NSS 在线 (ECM 已加载) -> 必须跳过 packet_steering
+mkdir -p "$TMP_DIR/sys/module/ecm"
+: > "$UCI_OUT"
+MEMINFO_FILE="$TMP_DIR/proc4/meminfo" SYSCTL_CONF="$TMP_DIR/etc4/sysctl.conf" TARGET_ETC="$TMP_DIR/etc4" \
+    SYS_MODULE_DIR="$TMP_DIR/sys/module" NETWORK_CONFIG="$TMP_DIR/network/config" \
+    "$BASH" wrt_core/patches/991_custom_settings
+
+grep -q "packet_steering" "$UCI_OUT" && { echo "FAIL: NSS 机型不应把 network.globals.packet_steering 设为 1"; exit 1; }
+grep -q "packet_steering" "$TMP_DIR/etc4/sysctl.conf" && { echo "FAIL: NSS 机型不应通过 sysctl 强开 packet_steering"; exit 1; }
+
+echo "=== 测试 4b: 非 NSS 机型 (ECM 未加载) 保持原有 packet_steering=1 行为 ==="
+rm -rf "$TMP_DIR/sys/module/ecm" "$TMP_DIR/etc4/sysctl.conf"
+touch "$TMP_DIR/etc4/sysctl.conf"
+: > "$UCI_OUT"
+
+MEMINFO_FILE="$TMP_DIR/proc4/meminfo" SYSCTL_CONF="$TMP_DIR/etc4/sysctl.conf" TARGET_ETC="$TMP_DIR/etc4" \
+    SYS_MODULE_DIR="$TMP_DIR/sys/module" NETWORK_CONFIG="$TMP_DIR/network/config" \
+    "$BASH" wrt_core/patches/991_custom_settings
+
+grep -q "packet_steering=1" "$UCI_OUT" || { echo "FAIL: 非 NSS 机型应保留 packet_steering=1"; exit 1; }
 
 echo "PASS: test_custom_settings"

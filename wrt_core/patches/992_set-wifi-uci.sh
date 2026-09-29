@@ -38,6 +38,10 @@ set wireless.default_radio${radio}.key="${key}"
 set wireless.default_radio${radio}.ieee80211k='1'
 set wireless.default_radio${radio}.bss_transition='1'
 
+# ATF (Airtime Fairness) 空口公平调度: Wi-Fi 6 下多终端争抢时按 airtime 加权分配,
+# 避免单设备长包长占空口拖慢其他客户端. hostapd airtime_mode 合法值 0/1/2.
+set wireless.default_radio${radio}.airtime_mode='1'
+
 # 管理帧保护与稳定防踢、组播转单播消除丢包
 # ieee80211w 设置为 0 确保旧设备与智能家居设备能够正常连接
 set wireless.default_radio${radio}.ieee80211w='0'
@@ -45,11 +49,10 @@ set wireless.default_radio${radio}.disassoc_low_ack='0'
 set wireless.default_radio${radio}.multicast_to_unicast='1'
 EOF
 
-	# 2.4G 频宽防降速与 256-QAM (TurboQAM)
+	# 2.4G 防降速: 锁定 noscan 跳过启动信道扫描, 减少切换延迟
 	if [ "$is_2g" -eq 1 ]; then
 		uci -q batch <<EOF
 set wireless.radio${radio}.noscan='1'
-set wireless.radio${radio}.qam256='1'
 EOF
         fi
     # 5G BSS Coloring：密集环境下降低邻居 AP 同频干扰 (OBSS_PD)

@@ -54,9 +54,17 @@ grep -q "set wireless.default_radio0.bss_transition='1'" "$UCI_OUT" || { echo "F
 grep -q "set wireless.default_radio0.ieee80211w='0'" "$UCI_OUT" || { echo "FAIL: ieee80211w 应为 0 保证全设备兼容"; exit 1; }
 grep -q "set wireless.radio1.noscan='1'" "$UCI_OUT" || { echo "FAIL: 缺少 2.4G noscan"; exit 1; }
 
+# Wi-Fi 6 空口公平调度 (ATF): airtime_mode 是 hostapd BSS 级选项, 多终端争抢空口时
+# 防止单设备长时间霸占 airtime. 属于 wifi-scripts schema 内的合法选项.
+grep -q "set wireless.default_radio0.airtime_mode='1'" "$UCI_OUT" || { echo "FAIL: 缺少 airtime_mode=1 (Wi-Fi 6 ATF 空口公平调度)"; exit 1; }
+grep -q "set wireless.default_radio1.airtime_mode='1'" "$UCI_OUT" || { echo "FAIL: 2.4G 缺少 airtime_mode=1"; exit 1; }
+
 # 确保移除了导致连接拒绝或 hostapd 语法报错的无效参数
 ! grep -q "ieee80211r='1'" "$UCI_OUT" || { echo "FAIL: 包含导致客户端拒绝连接的 ieee80211r"; exit 1; }
 ! grep -q "he_dlofdma='1'" "$UCI_OUT" || { echo "FAIL: 包含无效 UCI 选项 he_dlofdma"; exit 1; }
+# qam256 不在 wireless.wifi-device.json schema 中, ath11k 也不消费该 UCI 键,
+# 写入只会留下永不生效的死配置并误导排查.
+! grep -q "qam256" "$UCI_OUT" || { echo "FAIL: 包含 schema 不存在的无效选项 qam256"; exit 1; }
 
 # 2. 测试 AX6600 Athena (RE-CS-02 三频)
 echo "jdcloud,re-cs-02" > "$TMP_DIR/tmp/sysinfo/board_name"

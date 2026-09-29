@@ -4,6 +4,8 @@
 SYSCTL_CONF="${SYSCTL_CONF:-/etc/sysctl.conf}"
 MEMINFO_FILE="${MEMINFO_FILE:-/proc/meminfo}"
 TARGET_ETC="${TARGET_ETC:-/etc}"
+NETWORK_CONFIG="${NETWORK_CONFIG:-/etc/config/network}"
+SYS_MODULE_DIR="${SYS_MODULE_DIR:-/sys/module}"
 
 touch "$SYSCTL_CONF" 2>/dev/null
 
@@ -165,8 +167,14 @@ fi
 
 
 # 启用多核软中断负载均衡 (Packet Steering)
-if [ -f /etc/config/network ] && command -v uci >/dev/null 2>&1; then
-    uci -q set network.@globals[0].packet_steering='1'
+# NSS/ECM 机型例外: qca-nss-ecm(START=26) 在 uci-defaults(本脚本, 随 boot START=10 跑完) 之后
+# 启动时会主动执行 disable_packet_steering, 把 packet_steering 置 0 并重跑 steering 脚本.
+# 软件 RPS/XPS 绑核会与 NSS 的中断亲和性 (见 patches/smp_affinity) 抢同一批核心,
+# 反而拖累 NSS 卸载路径. 因此仅在 ECM 未加载时启用.
+if [ -d "$SYS_MODULE_DIR/ecm" ]; then
+    : # NSS/ECM 在线, 保持 ECM 的 disable 语义, 不在此处强开 packet_steering
+elif [ -f "$NETWORK_CONFIG" ] && command -v uci >/dev/null 2>&1; then
+    uci -q set network.globals.packet_steering='1'
     uci commit network
 fi
 
