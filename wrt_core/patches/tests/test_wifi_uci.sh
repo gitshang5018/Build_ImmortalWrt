@@ -84,4 +84,13 @@ grep -q "set wireless.radio1.channel=\"1\"" "$UCI_OUT" || { echo "FAIL: Athena r
 grep -q "set wireless.radio2.channel=\"44\"" "$UCI_OUT" || { echo "FAIL: Athena radio2 5.2G 应分配低频信道 (如 44)"; exit 1; }
 grep -q "set wireless.radio2.htmode=\"HE160\"" "$UCI_OUT" || { echo "FAIL: Athena radio2 5.2G 应开启 HE160 (4x4 4804Mbps)"; exit 1; }
 
+# 3. 测试 Wi-Fi 5 设备 (如歌华链 / R619AC: HT40/VHT80, 不应开启 Wi-Fi 6 ATF)
+echo "gehua,ghl-r-001" > "$TMP_DIR/tmp/sysinfo/board_name"
+> "$UCI_OUT"
+bash "$TMP_DIR/test_run.sh"
+
+echo "=== 检查 Wi-Fi 5 设备输出 (应跳过 ATF) ==="
+! grep -q "airtime_mode" "$UCI_OUT" || { echo "FAIL: Wi-Fi 5 设备不应开启 airtime_mode 避免 hostapd 解析报错"; exit 1; }
+! grep -q "airtime_bss_weight" "$UCI_OUT" || { echo "FAIL: Wi-Fi 5 设备不应开启 airtime_bss_weight"; exit 1; }
+
 echo "PASS: test_wifi_uci (全机型信道与兼容性测试通过)"

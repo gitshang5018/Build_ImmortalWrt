@@ -38,24 +38,24 @@ set wireless.default_radio${radio}.key="${key}"
 set wireless.default_radio${radio}.ieee80211k='1'
 set wireless.default_radio${radio}.bss_transition='1'
 
-# ATF (Airtime Fairness) 空口公平调度: Wi-Fi 6 下多终端争抢时按 airtime 加权分配,
-# 避免单设备长包长占空口拖慢其他客户端.
-# 注意层级: airtime_mode 是 wifi-device(radio) 级选项, 写在 wifi-iface 段 hostapd 不会读.
-#   依据 wireless.wifi-device.json (airtime_mode 仅在 device schema) 与
-#   files-ucode/usr/share/ucode/wifi/hostapd.uc 的 device 级 generate().
-# 取值 2=strict (按占用率严格公平); 1 会按最大速率加权, 偏爱高速客户端.
-set wireless.radio${radio}.airtime_mode='2'
-
 # 管理帧保护与稳定防踢、组播转单播消除丢包
 # ieee80211w 设置为 0 确保旧设备与智能家居设备能够正常连接
 set wireless.default_radio${radio}.ieee80211w='0'
 set wireless.default_radio${radio}.disassoc_low_ack='0'
 set wireless.default_radio${radio}.multicast_to_unicast='1'
+EOF
 
-# ATF 的 BSS 侧权重: airtime_bss_weight 属 wifi-iface 段 (由 ap.uc 读取),
-# 与上面的 radio 级 airtime_mode 配合构成完整 ATF 配置.
+	# ATF (Airtime Fairness) 空口公平调度: 仅在 Wi-Fi 6/7 (HE/EHT) 环境下启用,
+	# 避免多设备争抢时慢速终端拖慢整体 Wi-Fi 6 协商吞吐.
+	# 层级规范: airtime_mode 属 wifi-device(radio) 段 (由 hostapd.uc device 级读取),
+	# 配套的 airtime_bss_weight 属 wifi-iface 段 (由 ap.uc 读取).
+	# 对 Wi-Fi 5 / 4 (HT/VHT) 不强开, 避免基础版 hostapd 解析未知配置项报错.
+	if echo "$htmode" | grep -qE '^(HE|EHT)'; then
+		uci -q batch <<EOF
+set wireless.radio${radio}.airtime_mode='2'
 set wireless.default_radio${radio}.airtime_bss_weight='1'
 EOF
+	fi
 
 	# 2.4G 防降速: 锁定 noscan 跳过启动信道扫描, 减少切换延迟
 	if [ "$is_2g" -eq 1 ]; then

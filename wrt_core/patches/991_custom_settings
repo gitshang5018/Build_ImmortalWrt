@@ -167,14 +167,16 @@ fi
 
 
 # 启用多核软中断负载均衡 (Packet Steering)
-# NSS/ECM 机型例外: qca-nss-ecm(START=26) 在 uci-defaults(本脚本, 随 boot START=10 跑完) 之后
-# 启动时会主动执行 disable_packet_steering, 把 packet_steering 置 0 并重跑 steering 脚本.
-# 软件 RPS/XPS 绑核会与 NSS 的中断亲和性 (见 patches/smp_affinity) 抢同一批核心,
-# 反而拖累 NSS 卸载路径. 因此仅在 ECM 未加载时启用.
-if [ -d "$SYS_MODULE_DIR/ecm" ]; then
-    : # NSS/ECM 在线, 保持 ECM 的 disable 语义, 不在此处强开 packet_steering
+# NSS/ECM 机型例外: 针对集成了 qca-nss-ecm 加速组件的固件，其在后续启动时
+# 会通过 disable_packet_steering 逻辑重置 packet_steering，
+# 且软件 RPS/XPS 绑核会与 NSS 中断亲和性 (见 patches/smp_affinity) 冲突并争抢核心，
+# 反而拖累硬件卸载性能。
+# 注意时序: uci-defaults 运行在 boot (START=10) 阶段，此时内核模块 /sys/module/ecm 尚未加载，
+# 因此必须通过检测固件中是否存在 ECM 服务或驱动模块来进行可靠静态判定。
+if [ -f "$TARGET_ETC/init.d/qca-nss-ecm" ] || [ -f "$TARGET_ETC/modules.d/ecm" ] || [ -d "$SYS_MODULE_DIR/ecm" ] || ls /lib/modules/*/ecm.ko >/dev/null 2>&1; then
+    : # NSS/ECM 固件在线, 保持 ECM 的控制权, 不在此处强开 packet_steering
 elif [ -f "$NETWORK_CONFIG" ] && command -v uci >/dev/null 2>&1; then
-    uci -q set network.globals.packet_steering='1'
+    uci -q set network.@globals[0].packet_steering='1'
     uci commit network
 fi
 
