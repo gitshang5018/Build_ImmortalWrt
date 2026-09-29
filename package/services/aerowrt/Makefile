@@ -30,6 +30,9 @@ GO_PKG_TARGET_VARS:=$(filter-out CGO_ENABLED=%,$(GO_PKG_TARGET_VARS)) CGO_ENABLE
 GO_PKG_VARS:=$(filter-out CGO_ENABLED=%,$(GO_PKG_VARS)) CGO_ENABLED=0
 MAKE_VARS += CGO_ENABLED=0
 
+# 纯 Go 静态构建：覆盖 golang-package.mk 默认注入的 -linkmode external (需 cgo 依赖，无 CGO 时会导致链接报错)
+GO_PKG_DEFAULT_LDFLAGS:=-s -w
+
 define Package/aerowrt
   SECTION:=net
   CATEGORY:=Network

@@ -92,5 +92,7 @@ bash "$TMP_DIR/test_run.sh"
 echo "=== 检查 Wi-Fi 5 设备输出 (应跳过 ATF) ==="
 ! grep -q "airtime_mode" "$UCI_OUT" || { echo "FAIL: Wi-Fi 5 设备不应开启 airtime_mode 避免 hostapd 解析报错"; exit 1; }
 ! grep -q "airtime_bss_weight" "$UCI_OUT" || { echo "FAIL: Wi-Fi 5 设备不应开启 airtime_bss_weight"; exit 1; }
+grep -q "HT20" "$UCI_OUT" || { echo "FAIL: 歌华链 2.4G 应配置 HT20 根治断流"; exit 1; }
+grep -q "VHT80" "$UCI_OUT" || { echo "FAIL: 歌华链 5G 应配置 VHT80"; exit 1; }
 
 echo "PASS: test_wifi_uci (全机型信道与兼容性测试通过)"

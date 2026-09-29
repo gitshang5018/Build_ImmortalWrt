@@ -7,6 +7,7 @@ echo "=== 1. 检查 aerowrt 包结构完整性 ==="
 [ -f "$PKG_DIR/Makefile" ] || { echo "FAIL: Makefile 不存在"; exit 1; }
 grep -q "PKG_BUILD_FLAGS:=no-mips16" "$PKG_DIR/Makefile" || { echo "FAIL: Makefile 缺少 no-mips16 设置"; exit 1; }
 grep -q "CGO_ENABLED=0" "$PKG_DIR/Makefile" || { echo "FAIL: Makefile 缺少 CGO_ENABLED=0 设置"; exit 1; }
+grep -q "GO_PKG_DEFAULT_LDFLAGS" "$PKG_DIR/Makefile" || { echo "FAIL: Makefile 缺少 GO_PKG_DEFAULT_LDFLAGS 设置"; exit 1; }
 [ -f "$PKG_DIR/files/aerowrt.init" ] || { echo "FAIL: aerowrt.init 缺失"; exit 1; }
 [ -f "$PKG_DIR/files/aerowrt.config" ] || { echo "FAIL: aerowrt.config 缺失"; exit 1; }
 [ -f "$PKG_DIR/src/main.go" ] || { echo "FAIL: main.go 缺失"; exit 1; }

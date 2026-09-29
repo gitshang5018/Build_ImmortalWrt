@@ -145,11 +145,12 @@ p2w_r619ac_wifi_cfg() {
 gehua_ghl_r001_wifi_cfg() {
 	local r0_band
 	r0_band=$(uci get wireless.radio0.band 2>/dev/null || uci get wireless.radio0.hwmode 2>/dev/null)
+	# 2.4G MT7603E 锁定 HT20 (20MHz) + 19dBm 彻底根治 40MHz 频宽频繁退避、丢包与智能家居断流问题
 	if [ "$r0_band" = "5g" ] || [ "$r0_band" = "11a" ]; then
 		configure_wifi 0 149 VHT80 20 'Gehua_GHL_5G' '12345678'
-		configure_wifi 1 6 HT40 20 'Gehua_GHL' '12345678'
+		configure_wifi 1 1 HT20 19 'Gehua_GHL' '12345678'
 	else
-		configure_wifi 0 6 HT40 20 'Gehua_GHL' '12345678'
+		configure_wifi 0 1 HT20 19 'Gehua_GHL' '12345678'
 		configure_wifi 1 149 VHT80 20 'Gehua_GHL_5G' '12345678'
 	fi
 }

@@ -5,6 +5,9 @@ SYSCTL_CONF="${SYSCTL_CONF:-/etc/sysctl.conf}"
 MEMINFO_FILE="${MEMINFO_FILE:-/proc/meminfo}"
 TARGET_ETC="${TARGET_ETC:-/etc}"
 NETWORK_CONFIG="${NETWORK_CONFIG:-/etc/config/network}"
+FIREWALL_CONFIG="${FIREWALL_CONFIG:-/etc/config/firewall}"
+BOARD_NAME_FILE="${BOARD_NAME_FILE:-/tmp/sysinfo/board_name}"
+CPUINFO_FILE="${CPUINFO_FILE:-/proc/cpuinfo}"
 SYS_MODULE_DIR="${SYS_MODULE_DIR:-/sys/module}"
 
 touch "$SYSCTL_CONF" 2>/dev/null
@@ -178,6 +181,18 @@ if [ -f "$TARGET_ETC/init.d/qca-nss-ecm" ] || [ -f "$TARGET_ETC/modules.d/ecm" ]
 elif [ -f "$NETWORK_CONFIG" ] && command -v uci >/dev/null 2>&1; then
     uci -q set network.@globals[0].packet_steering='1'
     uci commit network
+fi
+
+# MediaTek MT7621 PPE 芯片级硬件 NAT 转发加速 (HNAT)
+# 针对歌华链及搭载 MediaTek PPE 硬件流控单元的设备，首启自动开启硬件流控 offloading_hw，
+# 千兆线速 NAT 转发由芯片级 PPE 硬件处理，CPU 占用降至 1%~2%，彻底释放 CPU 算力给代理与 DNS
+if [ -f "$FIREWALL_CONFIG" ] && command -v uci >/dev/null 2>&1; then
+    if ([ -f "$CPUINFO_FILE" ] && grep -qi "mt7621" "$CPUINFO_FILE" 2>/dev/null) || \
+       ([ -f "$BOARD_NAME_FILE" ] && grep -qi "mt7621\|ghl-r-001" "$BOARD_NAME_FILE" 2>/dev/null); then
+        uci -q set firewall.@defaults[0].flow_offloading='1'
+        uci -q set firewall.@defaults[0].flow_offloading_hw='1'
+        uci commit firewall
+    fi
 fi
 
 # Dnsmasq 缓存池自适应配置

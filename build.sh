@@ -303,8 +303,8 @@ apply_config() {
 
     if [[ "$Dev" == "gehua_ghl-r-001_immwrt" ]]; then
         :
-    elif grep -q "CONFIG_TARGET_qualcommax_ipq60xx=y" "$BASE_PATH/../$BUILD_DIR/.config"; then
-        log_info "Using proxy_lite.config for ipq60xx."
+    elif grep -q "CONFIG_TARGET_qualcommax_ipq60xx=y" "$BASE_PATH/../$BUILD_DIR/.config" || [[ "$Dev" == "p2w_r619ac-128m_immwrt" ]]; then
+        log_info "Using proxy_lite.config for $Dev."
         append_config_fragment "$BASE_PATH/deconfig/proxy_lite.config"
     else
         append_config_fragment "$BASE_PATH/deconfig/proxy.config"
@@ -362,7 +362,7 @@ apply_config() {
             CONFIG_COREMARK_ENABLE_MULTITHREADING
     elif [[ "$Dev" == "p2w_r619ac-128m_immwrt" ]]; then
         echo "Tune packages for p2w_r619ac-128m (128M NAND Flash, 512M RAM)..."
-        # 移除不适合 717MHz A7 弱算力平台的重型服务 (Docker/Samba/AdGuardHome)，保留实用轻量的 SmartDNS
+        # 移除不适合 717MHz A7 弱算力平台的重型服务 (Docker/Samba/AdGuardHome/OAF)，保留轻量实用的代理与加速
         sed -i 's/CONFIG_PACKAGE_luci-app-adguardhome=y/# CONFIG_PACKAGE_luci-app-adguardhome is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
         sed -i 's/CONFIG_PACKAGE_luci-app-dockerman=y/# CONFIG_PACKAGE_luci-app-dockerman is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
         sed -i 's/CONFIG_PACKAGE_luci-i18n-dockerman-zh-cn=y/# CONFIG_PACKAGE_luci-i18n-dockerman-zh-cn is not set/g' "$BASE_PATH/../$BUILD_DIR/.config"
@@ -370,6 +370,17 @@ apply_config() {
         disable_docker_stack_packages "$BASE_PATH/../$BUILD_DIR/.config"
         echo "# CONFIG_PACKAGE_luci-app-dockerman is not set" >> "$BASE_PATH/../$BUILD_DIR/.config"
         echo "# CONFIG_PACKAGE_luci-i18n-dockerman-zh-cn is not set" >> "$BASE_PATH/../$BUILD_DIR/.config"
+
+        disable_config_symbols "$BASE_PATH/../$BUILD_DIR/.config" \
+            CONFIG_PACKAGE_luci-app-samba4 \
+            CONFIG_PACKAGE_samba4-server \
+            CONFIG_PACKAGE_samba4-libs \
+            CONFIG_PACKAGE_luci-app-oaf \
+            CONFIG_PACKAGE_kmod-oaf \
+            CONFIG_PACKAGE_open-app-filter
+
+        # IPQ4019 为 4 核架构，校准 CoreMark 跑分测试线程数
+        sed -i 's/CONFIG_COREMARK_NUMBER_OF_THREADS=6/CONFIG_COREMARK_NUMBER_OF_THREADS=4/g' "$BASE_PATH/../$BUILD_DIR/.config"
     fi
 }
 
