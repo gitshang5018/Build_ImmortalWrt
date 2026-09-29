@@ -54,10 +54,16 @@ grep -q "set wireless.default_radio0.bss_transition='1'" "$UCI_OUT" || { echo "F
 grep -q "set wireless.default_radio0.ieee80211w='0'" "$UCI_OUT" || { echo "FAIL: ieee80211w 应为 0 保证全设备兼容"; exit 1; }
 grep -q "set wireless.radio1.noscan='1'" "$UCI_OUT" || { echo "FAIL: 缺少 2.4G noscan"; exit 1; }
 
-# Wi-Fi 6 空口公平调度 (ATF): airtime_mode 是 hostapd BSS 级选项, 多终端争抢空口时
-# 防止单设备长时间霸占 airtime. 属于 wifi-scripts schema 内的合法选项.
-grep -q "set wireless.default_radio0.airtime_mode='1'" "$UCI_OUT" || { echo "FAIL: 缺少 airtime_mode=1 (Wi-Fi 6 ATF 空口公平调度)"; exit 1; }
-grep -q "set wireless.default_radio1.airtime_mode='1'" "$UCI_OUT" || { echo "FAIL: 2.4G 缺少 airtime_mode=1"; exit 1; }
+# Wi-Fi 6 空口公平调度 (ATF).
+# 层级是关键: airtime_mode 属 wifi-device(radio) 段, 写在 wifi-iface 段 hostapd 不会读
+# (见 files-ucode/usr/share/ucode/wifi/hostapd.uc 的 device 级 generate()).
+grep -q "set wireless.radio0.airtime_mode=" "$UCI_OUT" || { echo "FAIL: 缺少 radio0 airtime_mode (ATF, 必须写在 wifi-device 段)"; exit 1; }
+grep -q "set wireless.radio1.airtime_mode=" "$UCI_OUT" || { echo "FAIL: 缺少 radio1 airtime_mode (ATF, 必须写在 wifi-device 段)"; exit 1; }
+! grep -q "set wireless.default_radio0.airtime_mode=" "$UCI_OUT" || { echo "FAIL: airtime_mode 写在 wifi-iface 段不会生效"; exit 1; }
+! grep -q "set wireless.default_radio1.airtime_mode=" "$UCI_OUT" || { echo "FAIL: airtime_mode 写在 wifi-iface 段不会生效"; exit 1; }
+# 配套的 BSS 权重属 wifi-iface 段, 由 ap.uc 读取
+grep -q "set wireless.default_radio0.airtime_bss_weight='1'" "$UCI_OUT" || { echo "FAIL: 缺少 airtime_bss_weight=1 (ATF BSS 权重, wifi-iface 段)"; exit 1; }
+grep -q "set wireless.default_radio1.airtime_bss_weight='1'" "$UCI_OUT" || { echo "FAIL: 缺少 2.4G airtime_bss_weight=1"; exit 1; }
 
 # 确保移除了导致连接拒绝或 hostapd 语法报错的无效参数
 ! grep -q "ieee80211r='1'" "$UCI_OUT" || { echo "FAIL: 包含导致客户端拒绝连接的 ieee80211r"; exit 1; }
