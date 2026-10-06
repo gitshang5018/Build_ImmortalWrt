@@ -258,6 +258,13 @@ boot() {
     fi
 
     crontab /etc/crontabs/root
+
+    # 开机后关闭 ath11k 内部统计, 降低 Wi-Fi 高并发下的 CPU 软中断与抖动
+    if [ -d /sys/kernel/debug/ath11k ]; then
+        find /sys/kernel/debug/ath11k -name stats_disable 2>/dev/null | while read -r sf; do
+            echo 1 > "$sf" 2>/dev/null
+        done
+    fi
 }
 EOF
     chmod +x "$sh_dir/custom_task"
@@ -303,10 +310,18 @@ update_nss_pbuf_performance() {
     local pbuf_path="$BUILD_DIR/package/kernel/mac80211/files/pbuf.uci"
     if [ -d "$(dirname "$pbuf_path")" ] && [ -f $pbuf_path ]; then
         sed -i "s/auto_scale '1'/auto_scale 'off'/g" $pbuf_path
-        # NSS 机型每次开机由 qca-nss-pbuf(START=89) 按 pbuf.uci 应用调频策略，
+        # NSS 机型每次开机由 qca-nss-pbuf 按 pbuf.uci 应用调频策略，
         # 与 patches/991_custom_settings 的 performance 保持一致；
         # 用通配替换确保不论上游默认值如何都强制为 performance（幂等）。
         sed -i "s/scaling_governor '[^']*'/scaling_governor 'performance'/g" $pbuf_path
+    fi
+
+    # 新版上游 qca-nss-pbuf.init 直接硬编码 governor="schedutil",
+    # 在开机后会覆盖 991_custom_settings 的 performance 设置并引入调频延迟.
+    # 此处统一修正为 performance, 确保整机调频与 NSS 高吞吐策略始终一致.
+    local pbuf_init="$BUILD_DIR/package/kernel/mac80211/files/qca-nss-pbuf.init"
+    if [ -f "$pbuf_init" ]; then
+        sed -i 's/governor="schedutil"/governor="performance"/g' "$pbuf_init"
     fi
 }
 

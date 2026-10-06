@@ -127,4 +127,10 @@ MEMINFO_FILE="$TMP_DIR/proc5/meminfo" SYSCTL_CONF="$TMP_DIR/etc5/sysctl.conf" TA
 grep -q "flow_offloading=1" "$UCI_OUT" || { echo "FAIL: MT7621 应开启软件 flow_offloading"; exit 1; }
 grep -q "flow_offloading_hw=1" "$UCI_OUT" || { echo "FAIL: MT7621 应开启硬件 flow_offloading_hw (PPE)"; exit 1; }
 
+echo "=== 测试 6: ath11k stats_disable 自动关闭测试 ==="
+mkdir -p "$TMP_DIR/debugfs/ath11k/qcn9074"
+echo 0 > "$TMP_DIR/debugfs/ath11k/qcn9074/stats_disable"
+ATH11K_DEBUG_DIR="$TMP_DIR/debugfs/ath11k" MEMINFO_FILE="$TMP_DIR/proc5/meminfo" SYSCTL_CONF="$TMP_DIR/etc5/sysctl.conf" TARGET_ETC="$TMP_DIR/etc5" "$BASH" wrt_core/patches/991_custom_settings
+[ "$(cat "$TMP_DIR/debugfs/ath11k/qcn9074/stats_disable")" = "1" ] || { echo "FAIL: stats_disable 未被置为 1"; exit 1; }
+
 echo "PASS: test_custom_settings"

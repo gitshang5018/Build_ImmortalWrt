@@ -9,6 +9,7 @@ FIREWALL_CONFIG="${FIREWALL_CONFIG:-/etc/config/firewall}"
 BOARD_NAME_FILE="${BOARD_NAME_FILE:-/tmp/sysinfo/board_name}"
 CPUINFO_FILE="${CPUINFO_FILE:-/proc/cpuinfo}"
 SYS_MODULE_DIR="${SYS_MODULE_DIR:-/sys/module}"
+ATH11K_DEBUG_DIR="${ATH11K_DEBUG_DIR:-/sys/kernel/debug/ath11k}"
 
 touch "$SYSCTL_CONF" 2>/dev/null
 
@@ -236,3 +237,11 @@ for policy in /sys/devices/system/cpu/cpufreq/policy*; do
     echo "performance" > "$policy/scaling_governor" 2>/dev/null
     [ -f "$policy/scaling_min_freq" ] && cat "$policy/cpuinfo_max_freq" > "$policy/scaling_min_freq" 2>/dev/null
 done
+
+# 优化 ath11k 无线吞吐: 关闭内部 debugfs 统计计数 (stats_disable),
+# 消除高吞吐大流量下的频繁软中断开销与内核抖动
+if [ -d "$ATH11K_DEBUG_DIR" ]; then
+    find "$ATH11K_DEBUG_DIR" -name stats_disable 2>/dev/null | while read -r stats_file; do
+        echo 1 > "$stats_file" 2>/dev/null
+    done
+fi
