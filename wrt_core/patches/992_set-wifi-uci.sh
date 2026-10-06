@@ -37,6 +37,9 @@ set wireless.default_radio${radio}.key="${key}"
 # 802.11k/v 漫游辅助 (兼顾快速漫游与全客户端兼容，避免 11r 导致的连接拒绝)
 set wireless.default_radio${radio}.ieee80211k='1'
 set wireless.default_radio${radio}.bss_transition='1'
+set wireless.default_radio${radio}.rrm_neighbor_report='1'
+set wireless.default_radio${radio}.rrm_beacon_report='1'
+set wireless.default_radio${radio}.wnm_sleep_mode='1'
 
 # 管理帧保护与稳定防踢、组播转单播消除丢包
 # ieee80211w 设置为 0 确保旧设备与智能家居设备能够正常连接
@@ -45,15 +48,19 @@ set wireless.default_radio${radio}.disassoc_low_ack='0'
 set wireless.default_radio${radio}.multicast_to_unicast='1'
 EOF
 
-	# ATF (Airtime Fairness) 空口公平调度: 仅在 Wi-Fi 6/7 (HE/EHT) 环境下启用,
+	# ATF (Airtime Fairness) 空口公平调度与 Wi-Fi 6 (HE/EHT) 专属射频调度:
 	# 避免多设备争抢时慢速终端拖慢整体 Wi-Fi 6 协商吞吐.
-	# 层级规范: airtime_mode 属 wifi-device(radio) 段 (由 hostapd.uc device 级读取),
+	# 层级规范: airtime_mode/he_* 属 wifi-device(radio) 段 (由 hostapd.uc device 级读取),
 	# 配套的 airtime_bss_weight 属 wifi-iface 段 (由 ap.uc 读取).
 	# 对 Wi-Fi 5 / 4 (HT/VHT) 不强开, 避免基础版 hostapd 解析未知配置项报错.
 	if echo "$htmode" | grep -qE '^(HE|EHT)'; then
 		uci -q batch <<EOF
 set wireless.radio${radio}.airtime_mode='2'
 set wireless.default_radio${radio}.airtime_bss_weight='1'
+set wireless.radio${radio}.he_su_beamformer='1'
+set wireless.radio${radio}.he_su_beamformee='1'
+set wireless.radio${radio}.he_mu_beamformer='1'
+set wireless.radio${radio}.he_twt_responder='1'
 EOF
 	fi
 
@@ -63,10 +70,13 @@ EOF
 set wireless.radio${radio}.noscan='1'
 EOF
         fi
-    # 5G BSS Coloring：密集环境下降低邻居 AP 同频干扰 (OBSS_PD)
+    # 5G BSS Coloring 与空间复用：密集环境下降低邻居 AP 同频干扰 (OBSS_PD)
+    # 必须显式开启 he_bss_color_enabled='1'，否则 hostapd.uc 不会写入 he_bss_color
     if [ "$is_2g" -eq 0 ] && echo "$htmode" | grep -q "^HE"; then
             uci -q batch <<EOF
 set wireless.radio${radio}.he_bss_color='42'
+set wireless.radio${radio}.he_bss_color_enabled='1'
+set wireless.radio${radio}.he_spr_psr_enabled='1'
 EOF
     fi
 }
@@ -83,8 +93,12 @@ jdc_ax6600_wifi_cfg() {
 	configure_wifi 1 1 HE40 23 'JDC_AX6600' '12345678'
 	# Radio2: QCN9074 外挂 5.2GHz 电竞高频宽独立网卡 (4x4 160MHz 4804Mbps, 36~64 信道)
 	configure_wifi 2 44 HE160 25 'JDC_AX6600_5G2' '12345678'
-    # QCN9074 5.2GHz 固定信道 44 (非 DFS)，跳过信道扫描降低延迟
-    uci set wireless.radio2.noscan='1'
+    # QCN9074 5.2GHz 固定信道 44 (非 DFS)，跳过信道扫描降低延迟并声明 4x4 物理天线波束成形规格
+    uci -q batch <<EOF
+set wireless.radio2.noscan='1'
+set wireless.radio2.beamformer_antennas='4'
+set wireless.radio2.beamformee_antennas='4'
+EOF
 }
 
 redmi_ax5_wifi_cfg() {

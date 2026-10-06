@@ -65,6 +65,22 @@ grep -q "set wireless.radio1.airtime_mode=" "$UCI_OUT" || { echo "FAIL: 缺少 r
 grep -q "set wireless.default_radio0.airtime_bss_weight='1'" "$UCI_OUT" || { echo "FAIL: 缺少 airtime_bss_weight=1 (ATF BSS 权重, wifi-iface 段)"; exit 1; }
 grep -q "set wireless.default_radio1.airtime_bss_weight='1'" "$UCI_OUT" || { echo "FAIL: 缺少 2.4G airtime_bss_weight=1"; exit 1; }
 
+# Wi-Fi 6 (HE) 显式波束成形与目标唤醒时间 (TWT)
+grep -q "set wireless.radio0.he_su_beamformer='1'" "$UCI_OUT" || { echo "FAIL: 缺少 radio0 he_su_beamformer"; exit 1; }
+grep -q "set wireless.radio0.he_su_beamformee='1'" "$UCI_OUT" || { echo "FAIL: 缺少 radio0 he_su_beamformee"; exit 1; }
+grep -q "set wireless.radio0.he_mu_beamformer='1'" "$UCI_OUT" || { echo "FAIL: 缺少 radio0 he_mu_beamformer"; exit 1; }
+grep -q "set wireless.radio0.he_twt_responder='1'" "$UCI_OUT" || { echo "FAIL: 缺少 radio0 he_twt_responder"; exit 1; }
+
+# 5G BSS Coloring 与空间复用 (必须包含 he_bss_color_enabled='1' 触发 hostapd.uc 写入)
+grep -q "set wireless.radio0.he_bss_color='42'" "$UCI_OUT" || { echo "FAIL: 缺少 radio0 he_bss_color"; exit 1; }
+grep -q "set wireless.radio0.he_bss_color_enabled='1'" "$UCI_OUT" || { echo "FAIL: 缺少 radio0 he_bss_color_enabled (必要开关)"; exit 1; }
+grep -q "set wireless.radio0.he_spr_psr_enabled='1'" "$UCI_OUT" || { echo "FAIL: 缺少 radio0 he_spr_psr_enabled"; exit 1; }
+
+# 802.11k/v 漫游辅助链补全
+grep -q "set wireless.default_radio0.rrm_neighbor_report='1'" "$UCI_OUT" || { echo "FAIL: 缺少 rrm_neighbor_report"; exit 1; }
+grep -q "set wireless.default_radio0.rrm_beacon_report='1'" "$UCI_OUT" || { echo "FAIL: 缺少 rrm_beacon_report"; exit 1; }
+grep -q "set wireless.default_radio0.wnm_sleep_mode='1'" "$UCI_OUT" || { echo "FAIL: 缺少 wnm_sleep_mode"; exit 1; }
+
 # 确保移除了导致连接拒绝或 hostapd 语法报错的无效参数
 ! grep -q "ieee80211r='1'" "$UCI_OUT" || { echo "FAIL: 包含导致客户端拒绝连接的 ieee80211r"; exit 1; }
 ! grep -q "he_dlofdma='1'" "$UCI_OUT" || { echo "FAIL: 包含无效 UCI 选项 he_dlofdma"; exit 1; }
@@ -83,15 +99,21 @@ grep -q "set wireless.radio0.htmode=\"HE80\"" "$UCI_OUT" || { echo "FAIL: Athena
 grep -q "set wireless.radio1.channel=\"1\"" "$UCI_OUT" || { echo "FAIL: Athena radio1 2.4G 应分配信道 1"; exit 1; }
 grep -q "set wireless.radio2.channel=\"44\"" "$UCI_OUT" || { echo "FAIL: Athena radio2 5.2G 应分配低频信道 (如 44)"; exit 1; }
 grep -q "set wireless.radio2.htmode=\"HE160\"" "$UCI_OUT" || { echo "FAIL: Athena radio2 5.2G 应开启 HE160 (4x4 4804Mbps)"; exit 1; }
+# AX6600 radio2 QCN9074 4x4 规格
+grep -q "set wireless.radio2.beamformer_antennas='4'" "$UCI_OUT" || { echo "FAIL: Athena radio2 应声明 beamformer_antennas=4"; exit 1; }
+grep -q "set wireless.radio2.beamformee_antennas='4'" "$UCI_OUT" || { echo "FAIL: Athena radio2 应声明 beamformee_antennas=4"; exit 1; }
 
-# 3. 测试 Wi-Fi 5 设备 (如歌华链 / R619AC: HT40/VHT80, 不应开启 Wi-Fi 6 ATF)
+# 3. 测试 Wi-Fi 5 设备 (如歌华链 / R619AC: HT40/VHT80, 不应开启 Wi-Fi 6 专有特性)
 echo "gehua,ghl-r-001" > "$TMP_DIR/tmp/sysinfo/board_name"
 > "$UCI_OUT"
 bash "$TMP_DIR/test_run.sh"
 
-echo "=== 检查 Wi-Fi 5 设备输出 (应跳过 ATF) ==="
+echo "=== 检查 Wi-Fi 5 设备输出 (应跳过 ATF 及 HE 专有特性) ==="
 ! grep -q "airtime_mode" "$UCI_OUT" || { echo "FAIL: Wi-Fi 5 设备不应开启 airtime_mode 避免 hostapd 解析报错"; exit 1; }
 ! grep -q "airtime_bss_weight" "$UCI_OUT" || { echo "FAIL: Wi-Fi 5 设备不应开启 airtime_bss_weight"; exit 1; }
+! grep -q "he_bss_color_enabled" "$UCI_OUT" || { echo "FAIL: Wi-Fi 5 设备不应配置 he_bss_color_enabled"; exit 1; }
+! grep -q "he_su_beamformer" "$UCI_OUT" || { echo "FAIL: Wi-Fi 5 设备不应配置 he_su_beamformer"; exit 1; }
+! grep -q "he_twt_responder" "$UCI_OUT" || { echo "FAIL: Wi-Fi 5 设备不应配置 he_twt_responder"; exit 1; }
 grep -q "HT20" "$UCI_OUT" || { echo "FAIL: 歌华链 2.4G 应配置 HT20 根治断流"; exit 1; }
 grep -q "VHT80" "$UCI_OUT" || { echo "FAIL: 歌华链 5G 应配置 VHT80"; exit 1; }
 
