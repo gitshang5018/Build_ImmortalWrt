@@ -103,10 +103,11 @@ enable_affinity() {
     set_affinity 'ppdu-end-interrupts-mac2' 2 1
     set_affinity 'ppdu-end-interrupts-mac3' 3 1
 
-    # assign 4 lan/wan to core 4
-    set_affinity 'edma_txcmpl' 3 1
+    # 均衡分配有线网络 (EDMA) 中断到不同 CPU, 避免集中在 CPU 3 造成单核热点打满:
+    # 将高频 hot path 的接收 (rxdesc) 与发送 (txcmpl) 彻底解耦到不同 CPU
+    set_affinity 'edma_rxdesc' 1 1
+    set_affinity 'edma_txcmpl' 2 1
     set_affinity 'edma_rxfill' 3 1
-    set_affinity 'edma_rxdesc' 3 1
     set_affinity 'edma_misc' 3 1
 
     # assign nss_queue0 to 2-3
@@ -116,6 +117,19 @@ enable_affinity() {
     set_affinity 'bam_dma' 1 1
     set_affinity 'bam_dma' 2 2
     set_affinity 'bam_dma' 3 3
+}
+
+configure_edma_offloads() {
+    local dev dev_path
+
+    command -v ethtool >/dev/null 2>&1 || return
+    for dev_path in /sys/class/net/eth*; do
+        [ -e "$dev_path" ] || continue
+        dev="${dev_path##*/}"
+        ethtool -K "$dev" gro on >/dev/null 2>&1
+        ethtool -K "$dev" rx on >/dev/null 2>&1
+        ethtool -K "$dev" tx on >/dev/null 2>&1
+    done
 }
 
 boot() {
@@ -130,5 +144,8 @@ boot() {
     [ "$enable" -eq 1 ] && enable=true || enable=false
     [ "$enable_log" -eq 1 ] && enable_log=true || enable_log=false
 
-    $enable && enable_affinity
+    if $enable; then
+        enable_affinity
+        configure_edma_offloads
+    fi
 }
