@@ -86,34 +86,37 @@ set_affinity() {
     done
 }
 
+set_affinity_pattern() {
+    local pattern="$1" affinity="$2" bitmask irq name
+    awk -v pat="$pattern" '
+        $0 ~ pat {
+            sub(/:$/,"",$1)
+            print $1, $NF
+        }' /proc/interrupts 2>/dev/null | while read -r irq name; do
+        $enable_log && {
+            log_msg "$name" "$affinity" "$irq"
+        }
+        bitmask=$(cpus_to_bitmask "$affinity") && echo "$bitmask" >"/proc/irq/$irq/smp_affinity" 2>/dev/null
+    done
+}
+
 enable_affinity() {
-    # assign 4 rx interrupts to each core
-    set_affinity 'reo2host-destination-ring1' 0 1
-    set_affinity 'reo2host-destination-ring2' 1 1
-    set_affinity 'reo2host-destination-ring3' 2 1
-    set_affinity 'reo2host-destination-ring4' 3 1
+    # 1. 独立外挂 PCIe 无线网卡 (如 AX6600 雅典娜 QCN9074 5.2G 160MHz) 专属绑定至 CPU 0:
+    # 物理隔离 PCIe 中断与有线 EDMA 中断，防止 160MHz 突发流量与有线网络争抢核心
+    set_affinity_pattern 'ath11k_pci' 0
+    set_affinity_pattern 'pci-msi.*ath11k' 0
 
-    # assign 3 tcl completions to last 3 CPUs
-    set_affinity 'wbm2host-tx-completions-ring1' 1 1
-    set_affinity 'wbm2host-tx-completions-ring2' 2 1
-    set_affinity 'wbm2host-tx-completions-ring3' 3 1
-
-    # assign 3 ppdu mac interrupts to last 3 cores
-    set_affinity 'ppdu-end-interrupts-mac1' 1 1
-    set_affinity 'ppdu-end-interrupts-mac2' 2 1
-    set_affinity 'ppdu-end-interrupts-mac3' 3 1
-
-    # 均衡分配有线网络 (EDMA) 中断到不同 CPU, 避免集中在 CPU 3 造成单核热点打满:
+    # 2. 均衡分配有线网络 (EDMA) 中断到不同 CPU, 避免集中在 CPU 3 造成单核热点打满:
     # 将高频 hot path 的接收 (rxdesc) 与发送 (txcmpl) 彻底解耦到不同 CPU
     set_affinity 'edma_rxdesc' 1 1
     set_affinity 'edma_txcmpl' 2 1
     set_affinity 'edma_rxfill' 3 1
     set_affinity 'edma_misc' 3 1
 
-    # assign nss_queue0 to 2-3
+    # 3. NSS 队列 nss_queue0 分配给 CPU 2-3
     set_affinity 'nss_queue0' 2-3 1
 
-    # assign Copy Engine
+    # 4. Copy Engine DMA 均匀分布
     set_affinity 'bam_dma' 1 1
     set_affinity 'bam_dma' 2 2
     set_affinity 'bam_dma' 3 3
