@@ -307,22 +307,19 @@ sed -ri \'/check_signature/s@^[^#]@#&@\' /etc/opkg.conf\n" $emortal_def_dir/file
 }
 
 update_nss_pbuf_performance() {
-    local pbuf_path="$BUILD_DIR/package/kernel/mac80211/files/pbuf.uci"
-    if [ -d "$(dirname "$pbuf_path")" ] && [ -f $pbuf_path ]; then
-        sed -i "s/auto_scale '1'/auto_scale 'off'/g" $pbuf_path
-        # NSS 机型每次开机由 qca-nss-pbuf 按 pbuf.uci 应用调频策略，
-        # 与 patches/991_custom_settings 的 performance 保持一致；
-        # 用通配替换确保不论上游默认值如何都强制为 performance（幂等）。
-        sed -i "s/scaling_governor '[^']*'/scaling_governor 'performance'/g" $pbuf_path
-    fi
-
-    # 新版上游 qca-nss-pbuf.init 直接硬编码 governor="schedutil",
+    # 上游已废弃 pbuf.uci 转由 qca-nss-pbuf.init 直接硬编码 governor="schedutil",
     # 在开机后会覆盖 991_custom_settings 的 performance 设置并引入调频延迟.
-    # 此处统一修正为 performance, 确保整机调频与 NSS 高吞吐策略始终一致.
-    local pbuf_init="$BUILD_DIR/package/kernel/mac80211/files/qca-nss-pbuf.init"
-    if [ -f "$pbuf_init" ]; then
-        sed -i 's/governor="schedutil"/governor="performance"/g' "$pbuf_init"
-    fi
+    # 此处在构建期统一修正为 performance, 确保整机调频与 NSS 高吞吐策略始终一致 (幂等).
+    local pbuf_inits=(
+        "$BUILD_DIR/package/kernel/mac80211/files/qca-nss-pbuf.init"
+        "$BUILD_DIR/package/qca-nss/qca-nss-pbuf/files/qca-nss-pbuf.init"
+    )
+    local pbuf_init
+    for pbuf_init in "${pbuf_inits[@]}"; do
+        if [ -f "$pbuf_init" ]; then
+            sed -i 's/governor="schedutil"/governor="performance"/g' "$pbuf_init"
+        fi
+    done
 }
 
 set_build_signature() {
@@ -333,11 +330,18 @@ set_build_signature() {
 }
 
 update_nss_diag() {
-    local file="$BUILD_DIR/package/kernel/mac80211/files/nss_diag.sh"
-    if [ -d "$(dirname "$file")" ] && [ -f "$file" ]; then
-        \rm -f "$file"
-        install -Dm755 "$BASE_PATH/patches/nss_diag.sh" "$file"
-    fi
+    local diag_targets=(
+        "$BUILD_DIR/target/linux/qualcommax/base-files/sbin/nss_diag.sh"
+        "$BUILD_DIR/package/base-files/files/sbin/nss_diag.sh"
+        "$BUILD_DIR/package/kernel/mac80211/files/nss_diag.sh"
+    )
+    local target
+    for target in "${diag_targets[@]}"; do
+        if [ -d "$(dirname "$target")" ]; then
+            install -Dm755 "$BASE_PATH/patches/nss_diag.sh" "$target"
+            break
+        fi
+    done
 }
 
 update_menu_location() {
@@ -379,10 +383,16 @@ EOF
 }
 
 update_script_priority() {
-    local qca_drv_path="$BUILD_DIR/package/feeds/nss_packages/qca-nss-drv/files/qca-nss-drv.init"
-    if [ -d "${qca_drv_path%/*}" ] && [ -f "$qca_drv_path" ]; then
-        sed -i 's/START=.*/START=88/g' "$qca_drv_path"
-    fi
+    local qca_drv_paths=(
+        "$BUILD_DIR/package/qca-nss/qca-nss-drv/files/qca-nss-drv.init"
+        "$BUILD_DIR/package/feeds/nss_packages/qca-nss-drv/files/qca-nss-drv.init"
+    )
+    local qca_drv_path
+    for qca_drv_path in "${qca_drv_paths[@]}"; do
+        if [ -f "$qca_drv_path" ]; then
+            sed -i 's/START=.*/START=88/g' "$qca_drv_path"
+        fi
+    done
 
     local pbuf_path="$BUILD_DIR/package/kernel/mac80211/files/qca-nss-pbuf.init"
     if [ -d "${pbuf_path%/*}" ] && [ -f "$pbuf_path" ]; then
