@@ -37,30 +37,30 @@
 - 修改：`wrt_core/patches/tests/test_wifi_uci.sh`
 - 修改：`wrt_core/patches/992_set-wifi-uci.sh`
 
-- [ ] **步骤 1：在 `test_wifi_uci.sh` 中先更新断言（红灯测试）**
+- [x] **步骤 1：在 `test_wifi_uci.sh` 中先更新断言（红灯测试）**
 
 更新断言：
 1. 检查 `multicast_to_unicast_all='1'` 出现，反向断言 `multicast_to_unicast='1'` 不存在；
 2. 检查 5G HE 射频包含 `he_spr_non_srg_obss_pd_max_offset='20'`；
 3. 检查 AX1800 Pro 与 AX6600 的 Radio 1 (2.4G) htmode 为 `HE20`。
 
-- [ ] **步骤 2：运行测试验证失败**
+- [x] **步骤 2：运行测试验证失败**
 
 运行：`& "C:\Program Files\Git\bin\bash.exe" wrt_core/patches/tests/test_wifi_uci.sh`
 预期：FAIL，断言未通过（因为 `992` 尚未修改）。
 
-- [ ] **步骤 3：在 `992_set-wifi-uci.sh` 中实现配置修正**
+- [x] **步骤 3：在 `992_set-wifi-uci.sh` 中实现配置修正**
 
 1. 将 `set wireless.default_radio${radio}.multicast_to_unicast='1'` 替换为 `set wireless.default_radio${radio}.multicast_to_unicast_all='1'`；
 2. 在 5G HE BSS Coloring 段中追加 `set wireless.radio${radio}.he_spr_non_srg_obss_pd_max_offset='20'`；
 3. 将 `jdc_ax1800_pro_wifi_cfg()` 与 `jdc_ax6600_wifi_cfg()` 中的 radio 1 htmode 从 `HE40` 改为 `HE20`。
 
-- [ ] **步骤 4：运行测试验证通过**
+- [x] **步骤 4：运行测试验证通过**
 
 运行：`& "C:\Program Files\Git\bin\bash.exe" wrt_core/patches/tests/test_wifi_uci.sh`
 预期：PASS（全机型信道与兼容性测试通过）。
 
-- [ ] **步骤 5：Commit**
+- [x] **步骤 5：Commit**
 
 ```bash
 git add wrt_core/patches/992_set-wifi-uci.sh wrt_core/patches/tests/test_wifi_uci.sh
@@ -75,23 +75,23 @@ git commit -m "fix(wifi): align multicast_to_unicast_all, add OBSS_PD offset, se
 - 修改：`wrt_core/deconfig/nss.config`
 - 修改：`wrt_core/modules/system.sh`
 
-- [ ] **步骤 1：修正 `wrt_core/deconfig/nss.config`**
+- [x] **步骤 1：修正 `wrt_core/deconfig/nss.config`**
 
 1. 将 `CONFIG_PACKAGE_kmod-qca-nss-drv-vlan=y` 替换为 `CONFIG_PACKAGE_kmod-qca-nss-drv-vlan-mgr=y`；
 2. 移除 `CONFIG_PACKAGE_sqm-scripts-nss=y` 并添加说明注释。
 
-- [ ] **步骤 2：优化 `system.sh` 中的调速器固化与路径清理**
+- [x] **步骤 2：优化 `system.sh` 中的调速器固化与路径清理**
 
 1. 检查 `update_nss_pbuf_performance()`，移除对已不存在的 `pbuf.uci` 的修改，改为直接在构建期将 `package/kernel/mac80211/files/qca-nss-pbuf.init` 中的 `governor="schedutil"` 替换为 `governor="performance"`；
 2. 修正 `update_script_priority()` 中 `qca-nss-drv.init` 的正确路径为 `package/qca-nss/qca-nss-drv/files/qca-nss-drv.init`，移除对不存在的 `nss_packages` feed 的查找；
 3. 移除 `update_nss_diag()` 中对不存在的 `package/kernel/mac80211/files/nss_diag.sh` 的死代码。
 
-- [ ] **步骤 3：语法检查**
+- [x] **步骤 3：语法检查**
 
 运行：`& "C:\Program Files\Git\bin\bash.exe" -n wrt_core/modules/system.sh`
 预期：无语法错误输出。
 
-- [ ] **步骤 4：Commit**
+- [x] **步骤 4：Commit**
 
 ```bash
 git add wrt_core/deconfig/nss.config wrt_core/modules/system.sh
@@ -105,7 +105,7 @@ git commit -m "fix(nss): correct vlan-mgr package name and lock performance gove
 **文件：**
 - 修改：`wrt_core/patches/smp_affinity`
 
-- [ ] **步骤 1：重构 `enable_affinity` 函数**
+- [x] **步骤 1：重构 `enable_affinity` 函数**
 
 1. 移除对已下沉至 NSS 固件的无效中断匹配：`reo2host-destination-ring*`、`wbm2host-tx-completions-ring*`、`ppdu-end-interrupts-mac*`；
 2. 增加对外挂 PCIe 网卡（QCN9074 5.2G 160MHz）的中断绑定至 CPU 0（匹配 `ath11k_pci` 与 `pci` 中断）；
@@ -116,12 +116,12 @@ git commit -m "fix(nss): correct vlan-mgr package name and lock performance gove
    - `edma_misc` 绑 CPU 3
 4. `nss_queue0` 绑定 CPU `2-3`。
 
-- [ ] **步骤 2：脚本语法检查**
+- [x] **步骤 2：脚本语法检查**
 
 运行：`& "C:\Program Files\Git\bin\bash.exe" -n wrt_core/patches/smp_affinity`
 预期：无语法错误输出。
 
-- [ ] **步骤 3：Commit**
+- [x] **步骤 3：Commit**
 
 ```bash
 git add wrt_core/patches/smp_affinity
@@ -136,31 +136,31 @@ git commit -m "perf(smp_affinity): bind PCIe wifi to CPU 0 and eliminate dead AH
 - 修改：`wrt_core/patches/991_custom_settings`
 - 修改：`wrt_core/patches/tests/test_custom_settings.sh`
 
-- [ ] **步骤 1：在 `test_custom_settings.sh` 中增加测试用例**
+- [x] **步骤 1：在 `test_custom_settings.sh` 中增加测试用例**
 
 增加测试：
 1. 测试首启脚本中包含对 `nss_freq` 设置为 `high` 的逻辑；
 2. 测试首启脚本中包含对 ECM `accel_delay_pkts` 收紧至 `1` 的逻辑；
 3. 测试首启脚本中包含对关键守护进程（`hostapd`, `dnsmasq`, `netifd`）的 `oom_score_adj` 保护逻辑。
 
-- [ ] **步骤 2：运行测试验证失败**
+- [x] **步骤 2：运行测试验证失败**
 
 运行：`& "C:\Program Files\Git\bin\bash.exe" wrt_core/patches/tests/test_custom_settings.sh`
 预期：FAIL（新断言失败）。
 
-- [ ] **步骤 3：在 `991_custom_settings` 中实现调优**
+- [x] **步骤 3：在 `991_custom_settings` 中实现调优**
 
 1. 注入 NSS 频率提升：若存在 `/etc/config/nss_freq`，设置 `nss_freq.settings.level='high'`；
 2. 注入 ECM 加速时序：若存在 `/sys/kernel/debug/ecm/ecm_classifier_default`，将 `accel_delay_pkts` 设为 `1`；
 3. 注入 OOM 免死保护：在首启与定时任务中将 `hostapd`, `dnsmasq`, `netifd` 的 `/proc/$pid/oom_score_adj` 置为 `-1000`；
 4. 确认 `vm.swappiness = 60`。
 
-- [ ] **步骤 4：运行测试验证通过**
+- [x] **步骤 4：运行测试验证通过**
 
 运行：`& "C:\Program Files\Git\bin\bash.exe" wrt_core/patches/tests/test_custom_settings.sh`
 预期：PASS。
 
-- [ ] **步骤 5：全量运行所有自动化测试**
+- [x] **步骤 5：全量运行所有自动化测试**
 
 运行：
 1. `& "C:\Program Files\Git\bin\bash.exe" wrt_core/patches/tests/test_wifi_uci.sh`
@@ -169,7 +169,7 @@ git commit -m "perf(smp_affinity): bind PCIe wifi to CPU 0 and eliminate dead AH
 4. `& "C:\Program Files\Git\bin\bash.exe" wrt_core/patches/tests/test_aerowrt.sh`
 预期：全线 PASS。
 
-- [ ] **步骤 6：Commit**
+- [x] **步骤 6：Commit**
 
 ```bash
 git add wrt_core/patches/991_custom_settings wrt_core/patches/tests/test_custom_settings.sh
