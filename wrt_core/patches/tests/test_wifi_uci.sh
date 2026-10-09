@@ -71,10 +71,18 @@ grep -q "set wireless.radio0.he_su_beamformee='1'" "$UCI_OUT" || { echo "FAIL: �
 grep -q "set wireless.radio0.he_mu_beamformer='1'" "$UCI_OUT" || { echo "FAIL: 缺少 radio0 he_mu_beamformer"; exit 1; }
 grep -q "set wireless.radio0.he_twt_responder='1'" "$UCI_OUT" || { echo "FAIL: 缺少 radio0 he_twt_responder"; exit 1; }
 
-# 5G BSS Coloring 与空间复用 (必须包含 he_bss_color_enabled='1' 触发 hostapd.uc 写入)
+# 5G BSS Coloring 与空间复用 (必须包含 he_bss_color_enabled='1' 触发 hostapd.uc 写入, 包含 he_spr_non_srg_obss_pd_max_offset 激活 SR 控制字)
 grep -q "set wireless.radio0.he_bss_color='42'" "$UCI_OUT" || { echo "FAIL: 缺少 radio0 he_bss_color"; exit 1; }
 grep -q "set wireless.radio0.he_bss_color_enabled='1'" "$UCI_OUT" || { echo "FAIL: 缺少 radio0 he_bss_color_enabled (必要开关)"; exit 1; }
 grep -q "set wireless.radio0.he_spr_psr_enabled='1'" "$UCI_OUT" || { echo "FAIL: 缺少 radio0 he_spr_psr_enabled"; exit 1; }
+grep -q "set wireless.radio0.he_spr_non_srg_obss_pd_max_offset='20'" "$UCI_OUT" || { echo "FAIL: 缺少 radio0 he_spr_non_srg_obss_pd_max_offset"; exit 1; }
+
+# 组播转单播真实键名: 必须是对齐 hostapd.sh / hostapd.uc 的 multicast_to_unicast_all
+grep -q "set wireless.default_radio0.multicast_to_unicast_all='1'" "$UCI_OUT" || { echo "FAIL: 缺少 multicast_to_unicast_all='1'"; exit 1; }
+! grep -q "set wireless.default_radio0.multicast_to_unicast='1'" "$UCI_OUT" || { echo "FAIL: 包含无效键名 multicast_to_unicast"; exit 1; }
+
+# 2.4G 带宽策略: AX1800 Pro 2.4G 应锁定 HE20 避免 40MHz 频宽争抢丢包
+grep -q "set wireless.radio1.htmode=\"HE20\"" "$UCI_OUT" || { echo "FAIL: AX1800 Pro 2.4G 应为 HE20"; exit 1; }
 
 # 802.11k/v 漫游辅助链补全
 grep -q "set wireless.default_radio0.rrm_neighbor_report='1'" "$UCI_OUT" || { echo "FAIL: 缺少 rrm_neighbor_report"; exit 1; }
@@ -97,6 +105,7 @@ echo "=== 检查 AX6600 Athena 三频输出 ==="
 grep -q "set wireless.radio0.channel=\"149\"" "$UCI_OUT" || { echo "FAIL: Athena radio0 5.8G 应分配高频信道 (如 149)"; exit 1; }
 grep -q "set wireless.radio0.htmode=\"HE80\"" "$UCI_OUT" || { echo "FAIL: Athena radio0 5.8G 应配置 HE80 (2x2 1201Mbps)"; exit 1; }
 grep -q "set wireless.radio1.channel=\"1\"" "$UCI_OUT" || { echo "FAIL: Athena radio1 2.4G 应分配信道 1"; exit 1; }
+grep -q "set wireless.radio1.htmode=\"HE20\"" "$UCI_OUT" || { echo "FAIL: Athena radio1 2.4G 应配置 HE20"; exit 1; }
 grep -q "set wireless.radio2.channel=\"44\"" "$UCI_OUT" || { echo "FAIL: Athena radio2 5.2G 应分配低频信道 (如 44)"; exit 1; }
 grep -q "set wireless.radio2.htmode=\"HE160\"" "$UCI_OUT" || { echo "FAIL: Athena radio2 5.2G 应开启 HE160 (4x4 4804Mbps)"; exit 1; }
 # AX6600 radio2 QCN9074 4x4 规格

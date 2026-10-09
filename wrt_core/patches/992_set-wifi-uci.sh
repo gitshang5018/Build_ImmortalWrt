@@ -41,11 +41,11 @@ set wireless.default_radio${radio}.rrm_neighbor_report='1'
 set wireless.default_radio${radio}.rrm_beacon_report='1'
 set wireless.default_radio${radio}.wnm_sleep_mode='1'
 
-# 管理帧保护与稳定防踢、组播转单播消除丢包
+# 管理帧保护与稳定防踢、组播转单播消除丢包 (对齐 hostapd.sh / hostapd.uc 的 multicast_to_unicast_all)
 # ieee80211w 设置为 0 确保旧设备与智能家居设备能够正常连接
 set wireless.default_radio${radio}.ieee80211w='0'
 set wireless.default_radio${radio}.disassoc_low_ack='0'
-set wireless.default_radio${radio}.multicast_to_unicast='1'
+set wireless.default_radio${radio}.multicast_to_unicast_all='1'
 EOF
 
 	# ATF (Airtime Fairness) 空口公平调度与 Wi-Fi 6 (HE/EHT) 专属射频调度:
@@ -71,26 +71,28 @@ set wireless.radio${radio}.noscan='1'
 EOF
         fi
     # 5G BSS Coloring 与空间复用：密集环境下降低邻居 AP 同频干扰 (OBSS_PD)
-    # 必须显式开启 he_bss_color_enabled='1'，否则 hostapd.uc 不会写入 he_bss_color
+    # 必须显式开启 he_bss_color_enabled='1'，并配置 he_spr_non_srg_obss_pd_max_offset 激活 SR 控制字
     if [ "$is_2g" -eq 0 ] && echo "$htmode" | grep -q "^HE"; then
             uci -q batch <<EOF
 set wireless.radio${radio}.he_bss_color='42'
 set wireless.radio${radio}.he_bss_color_enabled='1'
 set wireless.radio${radio}.he_spr_psr_enabled='1'
+set wireless.radio${radio}.he_spr_non_srg_obss_pd_max_offset='20'
 EOF
     fi
 }
 
 jdc_ax1800_pro_wifi_cfg() {
 	configure_wifi 0 149 HE80 24 'JDC_AX1800PRO_5G' '12345678'
-	configure_wifi 1 1 HE40 23 'JDC_AX1800PRO' '12345678'
+	# 2.4G 锁定 HE20 集中频谱能量并提升抗干扰能力，根治 40MHz 邻频退避与智能家居丢包
+	configure_wifi 1 1 HE20 23 'JDC_AX1800PRO' '12345678'
 }
 
 jdc_ax6600_wifi_cfg() {
 	# Radio0: IPQ6010 内置 QCN5052 5.8GHz 频段 (2x2 80MHz 1201Mbps, 149~165 信道)
 	configure_wifi 0 149 HE80 24 'JDC_AX6600_5G1' '12345678'
-	# Radio1: IPQ6010 内置 QCN5022 2.4GHz 频段 (2x2 574Mbps, 1~13 信道)
-	configure_wifi 1 1 HE40 23 'JDC_AX6600' '12345678'
+	# Radio1: IPQ6010 内置 QCN5022 2.4GHz 频段 (2x2 287Mbps, 锁定 HE20 保证穿墙与 IoT 稳定)
+	configure_wifi 1 1 HE20 23 'JDC_AX6600' '12345678'
 	# Radio2: QCN9074 外挂 5.2GHz 电竞高频宽独立网卡 (4x4 160MHz 4804Mbps, 36~64 信道)
 	configure_wifi 2 44 HE160 25 'JDC_AX6600_5G2' '12345678'
     # QCN9074 5.2GHz 固定信道 44 (非 DFS)，跳过信道扫描降低延迟并声明 4x4 物理天线波束成形规格
