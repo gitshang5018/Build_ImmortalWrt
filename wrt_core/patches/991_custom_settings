@@ -163,7 +163,7 @@ set_sysctl "net.ipv4.tcp_congestion_control" "bbr"
 
 # ZRAM swappiness 调优（sysctl -p 之前写入，本次启动即生效）
 sed -i "/vm.swappiness/d" "$SYSCTL_CONF" 2>/dev/null
-echo "vm.swappiness = 30" >> "$SYSCTL_CONF"
+echo "vm.swappiness = 60" >> "$SYSCTL_CONF"
 
 if command -v sysctl >/dev/null 2>&1; then
     sysctl -p "$SYSCTL_CONF" >/dev/null 2>&1
@@ -245,3 +245,22 @@ if [ -d "$ATH11K_DEBUG_DIR" ]; then
         echo 1 > "$stats_file" 2>/dev/null
     done
 fi
+
+# NSS 协处理器主频提升至 high 档位 (释放小包与硬件流控极限算力)
+if [ -f "$TARGET_ETC/config/nss_freq" ] && command -v uci >/dev/null 2>&1; then
+    uci -q set nss_freq.settings.level='high'
+    uci commit nss_freq
+fi
+
+# 收紧 ECM 延迟硬件卸载包数至 1 (握手完成立即下发硬件加速，压低突发软中断开销)
+ECM_DEBUG_DIR="${ECM_DEBUG_DIR:-/sys/kernel/debug/ecm/ecm_classifier_default}"
+if [ -d "$ECM_DEBUG_DIR" ]; then
+    echo 1 > "$ECM_DEBUG_DIR/accel_delay_pkts" 2>/dev/null
+fi
+
+# 核心网络守护进程 OOM 免死保护 (为 512MB 设备筑牢防线，防止 hostapd/dnsmasq/netifd 被误杀致断网假死)
+for proc_name in hostapd dnsmasq netifd; do
+    for pid in $(pidof "$proc_name" 2>/dev/null); do
+        echo -1000 > "/proc/$pid/oom_score_adj" 2>/dev/null
+    done
+done

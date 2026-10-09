@@ -133,4 +133,18 @@ echo 0 > "$TMP_DIR/debugfs/ath11k/qcn9074/stats_disable"
 ATH11K_DEBUG_DIR="$TMP_DIR/debugfs/ath11k" MEMINFO_FILE="$TMP_DIR/proc5/meminfo" SYSCTL_CONF="$TMP_DIR/etc5/sysctl.conf" TARGET_ETC="$TMP_DIR/etc5" "$BASH" wrt_core/patches/991_custom_settings
 [ "$(cat "$TMP_DIR/debugfs/ath11k/qcn9074/stats_disable")" = "1" ] || { echo "FAIL: stats_disable 未被置为 1"; exit 1; }
 
+echo "=== 测试 7: NSS 频率提升至 high 与 ECM accel_delay_pkts 收紧 ==="
+mkdir -p "$TMP_DIR/etc7/config" "$TMP_DIR/proc7" "$TMP_DIR/ecm_debug"
+touch "$TMP_DIR/etc7/config/nss_freq" "$TMP_DIR/etc7/sysctl.conf" "$TMP_DIR/etc7/profile"
+echo "MemTotal:         524288 kB" > "$TMP_DIR/proc7/meminfo"
+echo 4 > "$TMP_DIR/ecm_debug/accel_delay_pkts"
+: > "$UCI_OUT"
+
+MEMINFO_FILE="$TMP_DIR/proc7/meminfo" SYSCTL_CONF="$TMP_DIR/etc7/sysctl.conf" TARGET_ETC="$TMP_DIR/etc7" \
+    ECM_DEBUG_DIR="$TMP_DIR/ecm_debug" "$BASH" wrt_core/patches/991_custom_settings
+
+grep -q "set nss_freq.settings.level=high" "$UCI_OUT" || { echo "FAIL: 存在 nss_freq 时应设为 high"; exit 1; }
+[ "$(cat "$TMP_DIR/ecm_debug/accel_delay_pkts")" = "1" ] || { echo "FAIL: accel_delay_pkts 未被收敛为 1"; exit 1; }
+grep -q "vm.swappiness = 60" "$TMP_DIR/etc7/sysctl.conf" || { echo "FAIL: swappiness 应设为 60"; exit 1; }
+
 echo "PASS: test_custom_settings"

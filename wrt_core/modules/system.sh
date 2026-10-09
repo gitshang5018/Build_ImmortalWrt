@@ -265,6 +265,18 @@ boot() {
             echo 1 > "$sf" 2>/dev/null
         done
     fi
+
+    # 收紧 ECM 延迟硬件卸载包数至 1
+    if [ -d /sys/kernel/debug/ecm/ecm_classifier_default ]; then
+        echo 1 > /sys/kernel/debug/ecm/ecm_classifier_default/accel_delay_pkts 2>/dev/null
+    fi
+
+    # 核心网络守护进程 OOM 免死保护 (为 512MB 设备筑牢防线)
+    for proc_name in hostapd dnsmasq netifd; do
+        for pid in $(pidof "$proc_name" 2>/dev/null); do
+            echo -1000 > "/proc/$pid/oom_score_adj" 2>/dev/null
+        done
+    done
 }
 EOF
     chmod +x "$sh_dir/custom_task"
