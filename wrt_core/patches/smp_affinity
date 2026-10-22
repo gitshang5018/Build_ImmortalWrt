@@ -8,6 +8,10 @@ START=93
 
 PROG=smp_affinity
 
+# 路径可注入, 便于单元测试在假 /proc 下验证绑核逻辑
+INTERRUPTS_FILE="${INTERRUPTS_FILE:-/proc/interrupts}"
+PROC_IRQ_DIR="${PROC_IRQ_DIR:-/proc/irq}"
+
 log_msg() {
 
     local irq_name="$1" affinity="$2" irq="$3"
@@ -78,11 +82,11 @@ set_affinity() {
                 sub(/:$/,"",$1)
                 print $1
             }
-        }' /proc/interrupts | while read -r irq; do
+        }' "$INTERRUPTS_FILE" | while read -r irq; do
         $enable_log && {
             log_msg "$irq_name" "$affinity" "$irq"
         }
-        bitmask=$(cpus_to_bitmask "$affinity") && echo "$bitmask" >"/proc/irq/$irq/smp_affinity"
+        bitmask=$(cpus_to_bitmask "$affinity") && echo "$bitmask" >"$PROC_IRQ_DIR/$irq/smp_affinity"
     done
 }
 
@@ -92,19 +96,45 @@ set_affinity_pattern() {
         $0 ~ pat {
             sub(/:$/,"",$1)
             print $1, $NF
-        }' /proc/interrupts 2>/dev/null | while read -r irq name; do
+        }' "$INTERRUPTS_FILE" 2>/dev/null | while read -r irq name; do
         $enable_log && {
             log_msg "$name" "$affinity" "$irq"
         }
-        bitmask=$(cpus_to_bitmask "$affinity") && echo "$bitmask" >"/proc/irq/$irq/smp_affinity" 2>/dev/null
+        bitmask=$(cpus_to_bitmask "$affinity") && echo "$bitmask" >"$PROC_IRQ_DIR/$irq/smp_affinity" 2>/dev/null
+    done
+}
+
+######################################################################
+### 将匹配到的多个中断向量按顺序轮流绑定到给定 CPU 列表.
+## 用于多 MSI-X 向量的 PCIe 无线网卡: 单纯写多核掩码时, GIC 仍会把
+## 中断固定投递到掩码内的第一个核, 只有把不同向量分到不同核才真正并行.
+## 1st argument: 中断名匹配模式 (req)
+## 2nd argument: CPU 列表, 空格分隔 ("0 1") (req)
+######################################################################
+
+set_affinity_alternate() {
+    local pattern="$1" cpus="$2" bitmask irq name cpu idx=0
+    awk -v pat="$pattern" '
+        $0 ~ pat {
+            sub(/:$/,"",$1)
+            print $1, $NF
+        }' "$INTERRUPTS_FILE" 2>/dev/null | while read -r irq name; do
+        cpu=$(echo "$cpus" | awk -v i="$idx" '{n = split($0, a, " "); print a[(i % n) + 1]}')
+        idx=$((idx + 1))
+        $enable_log && {
+            log_msg "$name" "$cpu" "$irq"
+        }
+        bitmask=$(cpus_to_bitmask "$cpu") && echo "$bitmask" >"$PROC_IRQ_DIR/$irq/smp_affinity" 2>/dev/null
     done
 }
 
 enable_affinity() {
-    # 1. 独立外挂 PCIe 无线网卡 (如 AX6600 雅典娜 QCN9074 5.2G 160MHz) 专属绑定至 CPU 0:
-    # 物理隔离 PCIe 中断与有线 EDMA 中断，防止 160MHz 突发流量与有线网络争抢核心
-    set_affinity_pattern 'ath11k_pci' 0
-    set_affinity_pattern 'pci-msi.*ath11k' 0
+    # 1. 外挂 PCIe 无线网卡 (AX6600 雅典娜 QCN9074 5.2G 160MHz) 绑定到 CPU 0-1:
+    # QCN9074 走 PCIe 路径, NSS 卸载的代码只在 AHB 路径, 4x4 HE160 的收包完全由 CPU 处理;
+    # 先把向量池兜底在 0-1, 再按 MSI-X 向量逐个交替分配, 让数据面真正并行到两个核,
+    # 同时避开 CPU 2-3 上的有线 EDMA 与 nss_queue 队列.
+    set_affinity_pattern 'pci-msi.*ath11k' '0-1'
+    set_affinity_alternate 'ath11k_pci' '0 1'
 
     # 2. 均衡分配有线网络 (EDMA) 中断到不同 CPU, 避免集中在 CPU 3 造成单核热点打满:
     # 将高频 hot path 的接收 (rxdesc) 与发送 (txcmpl) 彻底解耦到不同 CPU
