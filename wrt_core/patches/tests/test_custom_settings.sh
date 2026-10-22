@@ -1,7 +1,8 @@
 #!/bin/bash
 set -e
 
-TMP_DIR=$(mktemp -d)
+# 显式指定 /tmp: Git Bash 的默认临时目录是 Windows 风格路径, 反斜杠会被后续 sed 替换吞掉
+TMP_DIR=$(mktemp -d /tmp/wb-custom-test.XXXXXX 2>/dev/null) || TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 # uci 桩: 记录 set 调用, get 恒返回 none (模拟未配置)

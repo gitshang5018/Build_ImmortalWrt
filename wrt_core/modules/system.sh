@@ -133,7 +133,10 @@ update_affinity_script() {
     local affinity_script_dir="$BUILD_DIR/target/linux/qualcommax"
 
     if [ -d "$affinity_script_dir" ]; then
-        find "$affinity_script_dir" -name "set-irq-affinity" -exec rm -f {} \;
+        # 仅替换上游的 IRQ 绑核脚本, 保留上游 set-irq-affinity (START=99)。
+        # 后者不 pin 任何 IRQ, 只负责有线队列的 RPS/XPS 与全局 rps_sock_flow_entries,
+        # 与 qca-nss-pbuf.init 写入的 dev.nss.rps.hash_bitmap 配套;
+        # 早前把它一并删除, 等于静默关掉了上游的软件分发通路。
         find "$affinity_script_dir" -name "smp_affinity" -exec rm -f {} \;
         install -Dm755 "$BASE_PATH/patches/smp_affinity" "$affinity_script_dir/base-files/etc/init.d/smp_affinity"
     fi
