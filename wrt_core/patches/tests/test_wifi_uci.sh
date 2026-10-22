@@ -1,7 +1,8 @@
 #!/bin/bash
 set -e
 
-TMP_DIR=$(mktemp -d)
+# 显式指定 /tmp: Git Bash 的默认临时目录是 Windows 风格路径, 反斜杠会被后续 sed 替换吞掉
+TMP_DIR=$(mktemp -d /tmp/wb-wifi-test.XXXXXX 2>/dev/null) || TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 mkdir -p "$TMP_DIR/tmp/sysinfo" "$TMP_DIR/bin" "$TMP_DIR/etc/init.d"
@@ -65,11 +66,13 @@ grep -q "set wireless.radio1.airtime_mode=" "$UCI_OUT" || { echo "FAIL: 缺少 r
 grep -q "set wireless.default_radio0.airtime_bss_weight='1'" "$UCI_OUT" || { echo "FAIL: 缺少 airtime_bss_weight=1 (ATF BSS 权重, wifi-iface 段)"; exit 1; }
 grep -q "set wireless.default_radio1.airtime_bss_weight='1'" "$UCI_OUT" || { echo "FAIL: 缺少 2.4G airtime_bss_weight=1"; exit 1; }
 
-# Wi-Fi 6 (HE) 显式波束成形与目标唤醒时间 (TWT)
+# Wi-Fi 6 (HE) 显式波束成形; TWT 保持默认关闭 (he_twt_required 会强制 STA 支持 TWT)
 grep -q "set wireless.radio0.he_su_beamformer='1'" "$UCI_OUT" || { echo "FAIL: 缺少 radio0 he_su_beamformer"; exit 1; }
 grep -q "set wireless.radio0.he_su_beamformee='1'" "$UCI_OUT" || { echo "FAIL: 缺少 radio0 he_su_beamformee"; exit 1; }
 grep -q "set wireless.radio0.he_mu_beamformer='1'" "$UCI_OUT" || { echo "FAIL: 缺少 radio0 he_mu_beamformer"; exit 1; }
-grep -q "set wireless.radio0.he_twt_responder='1'" "$UCI_OUT" || { echo "FAIL: 缺少 radio0 he_twt_responder"; exit 1; }
+# he_twt_responder 不在 mac80211.sh 的 config_add_boolean 列表中, 属无效 UCI 键
+! grep -q "he_twt_responder" "$UCI_OUT" || { echo "FAIL: 包含无效 UCI 键 he_twt_responder (上游只读 he_twt_required)"; exit 1; }
+! grep -q "he_twt_required" "$UCI_OUT" || { echo "FAIL: 不应开启 he_twt_required, 会要求 STA 强制支持 TWT"; exit 1; }
 
 # 5G BSS Coloring 与空间复用 (必须包含 he_bss_color_enabled='1' 触发 hostapd.uc 写入, 包含 he_spr_non_srg_obss_pd_max_offset 激活 SR 控制字)
 grep -q "set wireless.radio0.he_bss_color='42'" "$UCI_OUT" || { echo "FAIL: 缺少 radio0 he_bss_color"; exit 1; }
@@ -122,7 +125,7 @@ echo "=== 检查 Wi-Fi 5 设备输出 (应跳过 ATF 及 HE 专有特性) ==="
 ! grep -q "airtime_bss_weight" "$UCI_OUT" || { echo "FAIL: Wi-Fi 5 设备不应开启 airtime_bss_weight"; exit 1; }
 ! grep -q "he_bss_color_enabled" "$UCI_OUT" || { echo "FAIL: Wi-Fi 5 设备不应配置 he_bss_color_enabled"; exit 1; }
 ! grep -q "he_su_beamformer" "$UCI_OUT" || { echo "FAIL: Wi-Fi 5 设备不应配置 he_su_beamformer"; exit 1; }
-! grep -q "he_twt_responder" "$UCI_OUT" || { echo "FAIL: Wi-Fi 5 设备不应配置 he_twt_responder"; exit 1; }
+! grep -q "he_twt_required" "$UCI_OUT" || { echo "FAIL: Wi-Fi 5 设备不应配置 he_twt_required"; exit 1; }
 grep -q "HT20" "$UCI_OUT" || { echo "FAIL: 歌华链 2.4G 应配置 HT20 根治断流"; exit 1; }
 grep -q "VHT80" "$UCI_OUT" || { echo "FAIL: 歌华链 5G 应配置 VHT80"; exit 1; }
 

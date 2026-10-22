@@ -60,8 +60,11 @@ set wireless.default_radio${radio}.airtime_bss_weight='1'
 set wireless.radio${radio}.he_su_beamformer='1'
 set wireless.radio${radio}.he_su_beamformee='1'
 set wireless.radio${radio}.he_mu_beamformer='1'
-set wireless.radio${radio}.he_twt_responder='1'
 EOF
+	# 注: 不写 he_twt_responder —— mac80211.sh 的 config_add_boolean 列表里没有该键,
+	# 写入不会传递到 hostapd.conf; 且 hostapd 的 he_twt_responder 默认即为 1。
+	# 唯一有效的 TWT 旋钮是 he_twt_required (默认 0), 开启会要求 STA 必须支持 TWT,
+	# 存在老设备断连风险, 故保持默认关闭。
 	fi
 
 	# 2.4G 防降速: 锁定 noscan 跳过启动信道扫描, 减少切换延迟
