@@ -38,3 +38,6 @@ android_app/**/build/
 android_app/.gradle/
 android_app/local.properties
 .superpowers/
+
+# 本地 AI 助手工作目录
+.workbuddy-ai/
