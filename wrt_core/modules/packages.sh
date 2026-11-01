@@ -89,6 +89,71 @@ update_golang() {
     fi
 }
 
+# 路径可注入, 便于单元测试在假 feeds 树下验证校验逻辑
+GOLANG_MK_FILE="${GOLANG_MK_FILE:-./feeds/packages/lang/golang/golang/Makefile}"
+FEEDS_SCAN_DIR="${FEEDS_SCAN_DIR:-./feeds}"
+
+# 版本比较: $1 严格小于 $2 时返回 0. 依赖 GNU sort -V (构建机为 Ubuntu).
+version_lt() {
+    [[ "$1" == "$2" ]] && return 1
+    [[ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -n1)" == "$1" ]]
+}
+
+# 校验 feed 内所有 Go 包的版本要求是否被当前 golang 工具链满足.
+#
+# 背景: feeds/small8 等第三方 feed 不受本项目控制, 一旦其中某个包的 go.mod 要求的
+# Go 版本高于 GOLANG_BRANCH 提供的版本, 由于 OpenWrt 的 golang-build.sh 设置了
+# GOTOOLCHAIN=local, go 无法自动拉取新工具链, 会在编译数小时后才以
+# "go.mod requires go >= X.Y (running go X.Z)" 失败, 且极易被误判为其他原因.
+# 这里在编译前快速失败, 并给出明确的调整指引.
+verify_golang_version() {
+    if [[ ! -f "$GOLANG_MK_FILE" ]]; then
+        log_warn "未找到 $GOLANG_MK_FILE, 跳过 Go 版本校验."
+        return 0
+    fi
+
+    local cur_major cur_patch cur
+    cur_major=$(sed -n 's/^GO_VERSION_MAJOR_MINOR:=//p' "$GOLANG_MK_FILE" | head -n1 | tr -d '[:space:]')
+    cur_patch=$(sed -n 's/^GO_VERSION_PATCH:=//p' "$GOLANG_MK_FILE" | head -n1 | tr -d '[:space:]')
+    if [[ -z "$cur_major" ]]; then
+        log_warn "无法从 $GOLANG_MK_FILE 解析 Go 版本, 跳过校验."
+        return 0
+    fi
+    cur="$cur_major${cur_patch:+.$cur_patch}"
+
+    log_info "校验 feed 内 Go 包的版本要求 (当前工具链 $cur)..."
+
+    local failed=0 go_mod pkg req req_mm toolchain
+    while IFS= read -r go_mod; do
+        [[ -n "$go_mod" ]] || continue
+        pkg="${go_mod#"$FEEDS_SCAN_DIR"/}"
+        pkg="${pkg%/go.mod}"
+
+        # go 指令只比较 major.minor, 避免 "1.27.0" 与 "1.27" 被误判为不同版本
+        req=$(sed -n 's/^go[[:space:]]\{1,\}\([0-9][0-9.]*\).*$/\1/p' "$go_mod" | head -n1)
+        if [[ -n "$req" ]]; then
+            req_mm=$(printf '%s' "$req" | cut -d. -f1,2)
+            if version_lt "$cur_major" "$req_mm"; then
+                log_error "$pkg 要求 go $req, 当前工具链仅 $cur"
+                failed=1
+            fi
+        fi
+
+        toolchain=$(sed -n 's/^toolchain[[:space:]]\{1,\}go\([0-9][0-9.]*\).*$/\1/p' "$go_mod" | head -n1)
+        if [[ -n "$toolchain" ]] && version_lt "$cur" "$toolchain"; then
+            log_error "$pkg 要求 toolchain go$toolchain, 当前工具链仅 $cur"
+            failed=1
+        fi
+    done < <(find "$FEEDS_SCAN_DIR" -name go.mod -type f -not -path '*/vendor/*' 2>/dev/null)
+
+    if [[ $failed -eq 1 ]]; then
+        log_error "Go 版本校验未通过. 请将 wrt_core/update.sh 的 GOLANG_BRANCH 调整到匹配的分支, 或回退对应包的版本."
+        exit 1
+    fi
+
+    log_success "Go 版本校验通过: 所有 feed 包要求均满足 $cur."
+}
+
 update_node() {
     if [[ -d ./feeds/packages/lang/node ]]; then
         echo "正在集成预编译 Node.js 软件包 (锁定为原生 ipk 格式)..."

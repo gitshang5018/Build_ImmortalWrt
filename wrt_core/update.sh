@@ -57,6 +57,7 @@ main() {
     fix_default_set
     fix_miniupnpd
     update_golang
+    verify_golang_version
     update_node
     update_mosdns
     change_dnsmasq2full
