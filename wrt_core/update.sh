@@ -22,7 +22,9 @@ fi
 
 FEEDS_CONF="feeds.conf.default"
 GOLANG_REPO="https://github.com/sbwml/packages_lang_golang"
-GOLANG_BRANCH="26.x"
+# 27.x 对应 Go 1.27.3。必须 >= 1.27，否则 feeds/small8 的 xray-core
+# （go.mod 声明 go 1.27）会在 GOTOOLCHAIN=local 下编译失败。
+GOLANG_BRANCH="27.x"
 NODE_PREBUILT_REPO="https://github.com/sbwml/feeds_packages_lang_node-prebuilt"
 THEME_SET="argon"
 LAN_ADDR="10.10.10.1"
